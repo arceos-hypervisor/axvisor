@@ -18,11 +18,11 @@ fn main() {
 
     info!("Hardware support: {:?}", axvm::has_hardware_support());
 
-    hal::enable_virtualization();
+    // hal::enable_virtualization();
 
-    vmm::init();
+    // vmm::init();
 
-    vmm::start();
+    // vmm::start();
 
     info!("VMM shutdown");
 }

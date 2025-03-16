@@ -1,5 +1,6 @@
 [profile.release]
 lto = true
+debug = true
 
 [package]
 name = "axvisor"
@@ -28,7 +29,8 @@ axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm
     "irq",
     "hv",
     "multitask",
-    # "sched_rr"
+    # "sched_rr",
+    "smp",
 ]}
 
 # System dependent modules provided by ArceOS-Hypervisor.
@@ -50,3 +52,10 @@ axconfig = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "
 prettyplease = "0.2"
 quote = "1.0"
 syn = "2.0"
+
+[patch."https://github.com/arceos-hypervisor/arceos.git"]
+axstd = { path = "./crates/arceos/ulib/axstd" }
+
+[patch."https://github.com/arceos-hypervisor/x86_vcpu.git"]
+x86_vcpu = { path = "./crates/x86_vcpu" }
+

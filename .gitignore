@@ -19,6 +19,7 @@ rusty-tags.vi
 # dev env
 /crates
 /Cargo.toml.bk
+/deps
 
 # tools should be downloaded from github
 tools/*

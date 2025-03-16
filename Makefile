@@ -155,6 +155,7 @@ else ifeq ($(PLAT_NAME), aarch64-bsta1000b-virt-hv)
 else ifeq ($(PLAT_NAME), aarch64-rk3588j)
   include scripts/make/rk3588.mk
 endif
+include scripts/vmm/scp.mk
 
 defconfig: _axconfig-gen
 	$(call defconfig)
@@ -174,6 +175,10 @@ justrun:
 
 debug: build
 	$(call run_qemu_debug)
+
+.PHONY: scp_linux
+scp_linux: $(OUT_DIR) $(OUT_BIN)
+	$(call scp_bin)
 
 gdb:
 	$(GDB) $(OUT_ELF) \
