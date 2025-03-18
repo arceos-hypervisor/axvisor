@@ -43,7 +43,7 @@ impl VMVcpus {
     /// # Returns
     ///
     /// A new `VMVcpus` instance with an empty task list and a fresh wait queue.
-    fn new(vm: VMRef) -> Self {
+    fn new(vm: &VMRef) -> Self {
         Self {
             _vm_id: vm.id(),
             wait_queue: WaitQueue::new(),
@@ -175,13 +175,40 @@ fn vcpu_on(vm: VMRef, vcpu_id: usize, entry_point: GuestPhysAddr, arg: usize) {
 pub fn setup_vm_primary_vcpu(vm: VMRef) {
     info!("Initializing VM[{}]'s {} vcpus", vm.id(), vm.vcpu_num());
     let vm_id = vm.id();
-    let mut vm_vcpus = VMVcpus::new(vm.clone());
+    let mut vm_vcpus = VMVcpus::new(&vm);
 
     let primary_vcpu_id = 0;
 
     let primary_vcpu = vm.vcpu_list()[primary_vcpu_id].clone();
     let primary_vcpu_task = alloc_vcpu_task(vm.clone(), primary_vcpu);
     vm_vcpus.add_vcpu_task(primary_vcpu_task);
+    unsafe {
+        VM_VCPU_TASK_WAIT_QUEUE.insert(vm_id, vm_vcpus);
+    }
+}
+
+pub fn setup_vm_all_cpus(vm: VMRef) {
+    info!(
+        "Initializing VM[{}, {}]'s {} vcpus",
+        vm.id(),
+        vm.name(),
+        vm.vcpu_num()
+    );
+
+    if !vm.is_host_vm() {
+        warn!("setup_vm_all_cpus: not host vm");
+        return;
+    }
+
+    let vm_id = vm.id();
+    let mut vm_vcpus = VMVcpus::new(&vm);
+
+    for vcpu_id in 0..vm.vcpu_num() {
+        let vcpu = vm.vcpu_list()[vcpu_id].clone();
+        let vcpu_task = alloc_vcpu_task(vm.clone(), vcpu);
+        vm_vcpus.add_vcpu_task(vcpu_task);
+    }
+
     unsafe {
         VM_VCPU_TASK_WAIT_QUEUE.insert(vm_id, vm_vcpus);
     }

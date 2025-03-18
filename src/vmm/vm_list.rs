@@ -1,5 +1,4 @@
 use alloc::collections::BTreeMap;
-use alloc::vec::Vec;
 
 use spin::Mutex;
 
@@ -106,11 +105,13 @@ pub fn get_vm_by_id(vm_id: usize) -> Option<VMRef> {
     GLOBAL_VM_LIST.lock().get_vm_by_id(vm_id)
 }
 
-pub fn get_vm_list() -> Vec<VMRef> {
-    let global_vm_list = GLOBAL_VM_LIST.lock().vm_list.clone();
-    let mut vm_list = Vec::with_capacity(global_vm_list.len());
-    for (_id, vm) in global_vm_list {
-        vm_list.push(vm.clone());
+pub fn manipulate_each_vm<F>(f: F)
+where
+    F: Fn(VMRef),
+{
+    let vm_list_locked = GLOBAL_VM_LIST.lock();
+    for vm in vm_list_locked.vm_list.values() {
+        debug!("Manipulating VM[{}]...", vm.id());
+        f(vm.clone());
     }
-    vm_list
 }

@@ -518,7 +518,6 @@ dependencies = [
 [[package]]
 name = "axvcpu"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/axvcpu.git#8414a575723f929d5fd24010ce16446d90ecf268"
 dependencies = [
  "axaddrspace",
  "axerrno",
@@ -536,6 +535,7 @@ dependencies = [
  "axstd",
  "axvcpu",
  "axvm",
+ "axvmconfig",
  "bitflags 2.9.0",
  "crate_interface",
  "kspin",
@@ -556,7 +556,6 @@ dependencies = [
 [[package]]
 name = "axvm"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/axvm.git#224fe307b2ba4c83f31bc3e9a6ef288422d1b5a1"
 dependencies = [
  "arm_vcpu",
  "axaddrspace",
