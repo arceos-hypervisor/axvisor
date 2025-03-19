@@ -12,7 +12,7 @@ use api::sys::ax_terminate;
 use api::task::AxCpuMask;
 
 use crate::task::TaskExt;
-use crate::vmm::{VCpuRef, VMRef};
+use crate::vmm::{VCpuRef, VMRef, hypercall};
 
 const KERNEL_STACK_SIZE: usize = 0x40000; // 256 KiB
 
@@ -248,6 +248,14 @@ fn vcpu_run() {
             Ok(exit_reason) => match exit_reason {
                 AxVCpuExitReason::Hypercall { nr, args } => {
                     debug!("Hypercall [{}] args {:x?}", nr, args);
+                    match hypercall::HyperCallId::try_from(nr) {
+                        Ok(hypercall_id) => {
+                            let _ = hypercall::hypercall(hypercall_id, args);
+                        }
+                        Err(e) => {
+                            warn!("Invalid hypercall id {}: {}", nr, e);
+                        }
+                    }
                 }
                 AxVCpuExitReason::FailEntry {
                     hardware_entry_failure_reason,

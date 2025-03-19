@@ -1,4 +1,5 @@
 mod config;
+mod hypercall;
 mod images;
 mod timer;
 mod vcpus;
