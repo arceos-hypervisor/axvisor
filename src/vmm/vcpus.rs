@@ -77,6 +77,10 @@ impl VMVcpus {
     fn notify_one(&mut self) {
         self.wait_queue.notify_one(false);
     }
+
+    fn notify_all(&mut self) {
+        self.wait_queue.notify_all(false);
+    }
 }
 
 /// Blocks the current thread until it is explicitly woken up, using the wait queue
@@ -116,11 +120,18 @@ where
 ///
 /// * `vm_id` - The ID of the VM whose vCPUs are to be notified.
 ///
-pub(crate) fn notify_primary_vcpu(vm_id: usize) {
+fn notify_primary_vcpu(vm_id: usize) {
     // Generally, the primary vCPU is the first and **only** vCPU in the list.
     unsafe { VM_VCPU_TASK_WAIT_QUEUE.get_mut(&vm_id) }
         .unwrap()
         .notify_one()
+}
+
+/// Boots all vCPUs of the specified VM.
+fn notify_all_vcpus(vm_id: usize) {
+    unsafe { VM_VCPU_TASK_WAIT_QUEUE.get_mut(&vm_id) }
+        .unwrap()
+        .notify_all()
 }
 
 /// Boot target vCPU on the specified VM.
@@ -172,7 +183,7 @@ fn vcpu_on(vm: VMRef, vcpu_id: usize, entry_point: GuestPhysAddr, arg: usize) {
 /// # Arguments
 ///
 /// * `vm` - A reference to the VM for which the vCPUs are being set up.
-pub fn setup_vm_primary_vcpu(vm: VMRef) {
+fn setup_vm_primary_vcpu(vm: VMRef) {
     info!("Initializing VM[{}]'s {} vcpus", vm.id(), vm.vcpu_num());
     let vm_id = vm.id();
     let mut vm_vcpus = VMVcpus::new(&vm);
@@ -187,7 +198,7 @@ pub fn setup_vm_primary_vcpu(vm: VMRef) {
     }
 }
 
-pub fn setup_vm_all_cpus(vm: VMRef) {
+fn setup_vm_all_cpus(vm: VMRef) {
     info!(
         "Initializing VM[{}, {}]'s {} vcpus",
         vm.id(),
@@ -201,16 +212,36 @@ pub fn setup_vm_all_cpus(vm: VMRef) {
     }
 
     let vm_id = vm.id();
-    let mut vm_vcpus = VMVcpus::new(&vm);
+    unsafe {
+        VM_VCPU_TASK_WAIT_QUEUE.insert(vm_id, VMVcpus::new(&vm));
+    }
 
     for vcpu_id in 0..vm.vcpu_num() {
         let vcpu = vm.vcpu_list()[vcpu_id].clone();
         let vcpu_task = alloc_vcpu_task(vm.clone(), vcpu);
-        vm_vcpus.add_vcpu_task(vcpu_task);
-    }
 
-    unsafe {
-        VM_VCPU_TASK_WAIT_QUEUE.insert(vm_id, vm_vcpus);
+        unsafe {
+            VM_VCPU_TASK_WAIT_QUEUE
+                .get_mut(&vm_id)
+                .unwrap()
+                .add_vcpu_task(vcpu_task);
+        }
+    }
+}
+
+pub fn setup_vm_cpu(vm: VMRef) {
+    if vm.is_host_vm() {
+        setup_vm_all_cpus(vm);
+    } else {
+        setup_vm_primary_vcpu(vm);
+    }
+}
+
+pub fn boot_vm_cpu(vm: &VMRef) {
+    if vm.is_host_vm() {
+        notify_all_vcpus(vm.id());
+    } else {
+        notify_primary_vcpu(vm.id());
     }
 }
 
@@ -232,7 +263,7 @@ pub fn setup_vm_all_cpus(vm: VMRef) {
 /// * The task is scheduled on the scheduler of arceos after it is spawned.
 fn alloc_vcpu_task(vm: VMRef, vcpu: VCpuRef) -> AxTaskRef {
     info!("Spawning task for VM[{}] Vcpu[{}]", vm.id(), vcpu.id());
-    let mut vcpu_task = TaskInner::new(
+    let mut vcpu_task: TaskInner = TaskInner::new(
         vcpu_run,
         format!("VM[{}]-VCpu[{}]", vm.id(), vcpu.id()),
         KERNEL_STACK_SIZE,
@@ -283,6 +314,7 @@ fn vcpu_run() {
                         "VM[{}] VCpu[{}] run failed with exit code {}",
                         vm_id, vcpu_id, hardware_entry_failure_reason
                     );
+                    wait(vm_id)
                 }
                 AxVCpuExitReason::ExternalInterrupt { vector } => {
                     debug!("VM[{}] run VCpu[{}] get irq {}", vm_id, vcpu_id, vector);

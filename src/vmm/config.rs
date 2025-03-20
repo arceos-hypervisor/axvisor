@@ -12,12 +12,12 @@ pub mod config {
     #[allow(dead_code)]
     pub fn default_static_vm_configs() -> Vec<&'static str> {
         vec![
-            #[cfg(target_arch = "x86_64")]
-            core::include_str!("../../configs/vms/nimbos-x86_64.toml"),
-            #[cfg(target_arch = "aarch64")]
-            core::include_str!("../../configs/vms/nimbos-aarch64.toml"),
-            #[cfg(target_arch = "riscv64")]
-            core::include_str!("../../configs/vms/nimbos-riscv64.toml"),
+            // #[cfg(target_arch = "x86_64")]
+            // core::include_str!("../../configs/vms/nimbos-x86_64.toml"),
+            // #[cfg(target_arch = "aarch64")]
+            // core::include_str!("../../configs/vms/nimbos-aarch64.toml"),
+            // #[cfg(target_arch = "riscv64")]
+            // core::include_str!("../../configs/vms/nimbos-riscv64.toml"),
         ]
     }
 
@@ -53,6 +53,8 @@ pub fn init_host_vm() {
     use axvm::config::AxVMConfig;
     use axvmconfig::{VmMemConfig, VmMemMappingType};
 
+    info!("Creating host VM...");
+
     let mut host_vm_cfg = AxVMConfig::new_host(0, "host".to_string(), axconfig::SMP);
 
     for region in host_memory_regions() {
@@ -64,14 +66,24 @@ pub fn init_host_vm() {
         });
     }
 
-    let mut linux_cpus = Vec::new();
+    // let mut linux_cpus = Vec::new();
 
-    for cpu_id in 0..axconfig::SMP {
-        let linux_cpu_context = axhal::get_linux_context_by_cpu_id(cpu_id);
-        linux_cpus.push(linux_cpu_context);
-    }
+    // for cpu_id in 0..axconfig::SMP {
+    //     let linux_cpu_context = axhal::get_linux_context_by_cpu_id(cpu_id);
+    //     debug!(
+    //         "linux cpu {} at {:#x}",
+    //         cpu_id, linux_cpu_context as *const _ as usize
+    //     );
+
+    //     linux_cpus.push(linux_cpu_context);
+    // }
+
+    let linux_cpus = axhal::get_linux_context_list();
+
+    debug!("linux cpus at {:#x}", linux_cpus.as_ptr() as usize);
 
     // Create VM.
-    let vm = VM::new(host_vm_cfg).expect("Failed to create VM");
+    let vm =
+        VM::new_host(host_vm_cfg, axhal::get_linux_context_list()).expect("Failed to create VM");
     push_vm(vm.clone());
 }

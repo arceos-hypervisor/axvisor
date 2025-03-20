@@ -12,6 +12,7 @@ license = "GPL-3.0-or-later OR Apache-2.0 OR MulanPubL-2.0 OR MulanPSL2"
 
 [features]
 fs = ["axstd/fs"]
+irq = ["axstd/irq"]
 
 [dependencies]
 log = "=0.4.21"
@@ -26,7 +27,7 @@ axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm
     "alloc",
     "paging",
     # "fs",
-    "irq",
+    # "irq",
     "hv",
     "multitask",
     # "sched_rr",
