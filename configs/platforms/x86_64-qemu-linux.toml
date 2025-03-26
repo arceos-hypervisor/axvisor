@@ -11,49 +11,35 @@ platform = "x86_64-qemu-linux" # str
 family = "x86-linux" # str
 
 # Base address of the whole physical memory.
-# phys-memory-base = "0x10000_0000" # uint
-phys-memory-base = "0x3a00_0000" # uint
+phys-memory-base = "0x4000_0000" # uint
 # Size of the whole physical memory. (# 256MB)
 phys-memory-size = "0x1000_0000"  # uint   
 # Base physical address of the kernel image.
 # kernel-base-paddr = "0x10000_0000" # uint
-kernel-base-paddr = "0x3a00_0000" # uint
+kernel-base-paddr = "0x4000_0000" # uint
 # Base virtual address of the kernel image.
 # kernel-base-vaddr = "0xffff_8000_0000_0000" # uint
-kernel-base-vaddr = "0xffff_ff00_0000_0000" # uint
+kernel-base-vaddr = "0xffff_ff80_0000_0000" # uint
 # Linear mapping offset, for quick conversions between physical and virtual
 # addresses. (# kernel-base-vaddr - phys-memory-base)
-# 0xffff_8000_0000_0000 - 0x3a00_0000
-# phys-virt-offset = "0xffff_7fff_c600_0000" # uint
-# 0xffff_ff00_0000_0000 - 0x3a00_0000
-phys-virt-offset = "0xffff_feff_c600_0000" # uint
+# 0xffff_ff80_0000_0000 - 0x4000_0000
+phys-virt-offset = "0xffff_ff7f_c000_0000" # uint
 
 # Offset of bus address and phys address. some boards, the bus address is
 # different from the physical address.
 phys-bus-offset = 0                             # uint
 # Kernel address space base.
-# kernel-aspace-base = "0xffff_8000_0000_0000"    # uint
-# Note: this is extremely tricky, the kernel address space base should be 0xffff_8000_0000_0000 in fact.
-# But, to map Linux's low memory address (below 0x3a00_0000) to the kernel address space,
-# (for example, we need to map 0x1000 to 0xffff7fffc6001000), 
-# we just simply decreate the kernel address space base by 0x1000_0000_0000, to 0xffff700000000000.
-# So, the kernel address space base is 0xffff700000000000, and the kernel address space size is 0x00008fffffff0000.
-# kernel-aspace-base = "0xffff_7000_0000_0000"    # uint
-# kernel-aspace-size = "0x0000_7fff_ffff_f000"    # uint
-# kernel-aspace-size = "0x0000_8fff_ffff_f000"    # uint
 
-# kernel-aspace-base = "0xffff_ff00_0000_0000"    # uint
-# Note: this is extremely tricky, the kernel address space base should be 0xffff_ff00_0000_0000 in fact.
-# But, to map Linux's low memory address (below 0x3a00_0000) to the kernel address space,
-# (for example, we need to map 0x1000 to 0xfffffeffc6001000), 
-# we just simply decreate the kernel address space base by 0x1_0000_0000, to 0xffff_feff_0000_0000.
-# So, the kernel address space base is 0xffff_feff_0000_0000, and the kernel address space size is 0x0000_0100_ffff_f000.
-kernel-aspace-base = "0xffff_feff_0000_0000"    # uint
+# kernel-aspace-base = "0xffff_ff80_0000_0000"    # uint
+# Note: this is extremely tricky, the kernel address space base should be 0xffff_ff80_0000_0000 in fact.
+# But, to map Linux's low memory address (below 0x4000_0000) to the kernel address space,
+# (for example, we need to map 0x1000 to 0xffffff7fc0001000), 
+# we just simply decreate the kernel address space base by 0x10_0000_0000, to 0xffff_ff70_0000_0000.
+# So, the kernel address space base is 0xffff_ff70_0000_0000, and the kernel address space size is 0x0000_008f_ffff_f000.
+kernel-aspace-base = "0xffff_ff70_0000_0000"    # uint
 # Kernel address space size.
-# kernel-aspace-size = "0x0000_00ff_ffff_f000"    # uint
-kernel-aspace-size = "0x0000_0100_ffff_f000"    # uint
-
-# FFFFFEFFC6000000
+# kernel-aspace-size = "0x0000_007f_ffff_f000"    # uint
+kernel-aspace-size = "0x0000_008f_ffff_f000"    # uint
 
 #
 # Device specifications

@@ -175,7 +175,6 @@ checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
 [[package]]
 name = "axaddrspace"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/axaddrspace.git#f1ab1108c1477f6f4f56035b74ea76c8932d6b8d"
 dependencies = [
  "axerrno",
  "bit_field",
@@ -522,6 +521,7 @@ dependencies = [
  "axaddrspace",
  "axerrno",
  "memory_addr",
+ "page_table_multiarch",
  "percpu",
 ]
 
@@ -853,6 +853,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
+name = "iced-x86"
+version = "1.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c447cff8c7f384a7d4f741cfcff32f75f3ad02b406432e8d6c878d56b1edf6b"
+dependencies = [
+ "lazy_static",
+]
+
+[[package]]
 name = "indexmap"
 version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -899,6 +908,9 @@ name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
+dependencies = [
+ "spin",
+]
 
 [[package]]
 name = "lazyinit"
@@ -1672,10 +1684,12 @@ dependencies = [
  "bitflags 2.9.0",
  "cfg-if",
  "crate_interface",
+ "iced-x86",
  "log",
  "memory_addr",
  "numeric-enum-macro",
  "page_table_entry",
+ "page_table_multiarch",
  "raw-cpuid 11.5.0",
  "x86",
  "x86_64 0.15.2",

@@ -1,7 +1,6 @@
 use std::os::arceos;
 
 use memory_addr::{PAGE_SIZE_4K, align_up_4k};
-use page_table_multiarch::PagingHandler;
 
 use arceos::modules::{axalloc, axhal};
 use axaddrspace::{HostPhysAddr, HostVirtAddr};
@@ -45,23 +44,22 @@ impl AxVMHal for AxVMHalImpl {
     }
 }
 
+pub struct EPTTranslatorImpl;
+
+impl axaddrspace::EPTTranslator for EPTTranslatorImpl {
+    fn guest_phys_to_host_phys(gpa: axaddrspace::GuestPhysAddr) -> Option<HostPhysAddr> {
+        use std::os::arceos::modules::axtask::{self, TaskExtRef};
+        axtask::current().task_ext().vm.guest_phys_to_host_phys(gpa)
+    }
+}
+
 pub struct AxVCpuHalImpl;
 
 impl AxVCpuHal for AxVCpuHalImpl {
-    fn alloc_frame() -> Option<HostPhysAddr> {
-        <AxVMHalImpl as AxVMHal>::PagingHandler::alloc_frame()
-    }
+    type EPTTranslator = EPTTranslatorImpl;
+    type PagingHandler = axhal::paging::PagingHandlerImpl;
 
-    fn dealloc_frame(paddr: HostPhysAddr) {
-        <AxVMHalImpl as AxVMHal>::PagingHandler::dealloc_frame(paddr)
-    }
-
-    #[inline]
-    fn phys_to_virt(paddr: HostPhysAddr) -> HostVirtAddr {
-        <AxVMHalImpl as AxVMHal>::PagingHandler::phys_to_virt(paddr)
-    }
-
-    fn virt_to_phys(vaddr: axaddrspace::HostVirtAddr) -> axaddrspace::HostPhysAddr {
+    fn virt_to_phys(vaddr: HostVirtAddr) -> axaddrspace::HostPhysAddr {
         std::os::arceos::modules::axhal::mem::virt_to_phys(vaddr)
     }
 

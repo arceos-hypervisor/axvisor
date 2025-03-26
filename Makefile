@@ -180,6 +180,10 @@ debug: build
 scp_linux: $(OUT_DIR) $(OUT_BIN)
 	$(call scp_bin)
 
+.PNONY: ssh
+ssh:
+	ssh -p $(PORT) ubuntu@localhost
+
 gdb:
 	$(GDB) $(OUT_ELF) \
 	  -ex 'target remote localhost:1234' \

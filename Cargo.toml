@@ -32,7 +32,7 @@ axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm
     "multitask",
     # "sched_rr",
     "smp",
-]}
+] }
 
 # System dependent modules provided by ArceOS-Hypervisor.
 axvm = { git = "https://github.com/arceos-hypervisor/axvm.git" }
@@ -66,3 +66,6 @@ axvm = { path = "./crates/axvm" }
 
 [patch."https://github.com/arceos-hypervisor/axvcpu.git"]
 axvcpu = { path = "./crates/axvcpu" }
+
+[patch."https://github.com/arceos-hypervisor/axaddrspace.git"]
+axaddrspace = { path = "./crates/axaddrspace" }

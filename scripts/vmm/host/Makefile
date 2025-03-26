@@ -23,7 +23,7 @@ qemu_args := \
   -drive file=$(qemu_image) \
   -net user,id=net,hostfwd=tcp::$(PORT)-:22 -net nic,model=e1000e \
   -serial mon:stdio \
-  -serial telnet:localhost:$(TELNET_PORT),server#,nowait
+  -serial telnet:localhost:$(TELNET_PORT),server,nowait
 
 $(qemu_image):
 	wget -nc https://cloud-images.ubuntu.com/releases/$(RELEASE_NAME)/release/$(qemu_image)
