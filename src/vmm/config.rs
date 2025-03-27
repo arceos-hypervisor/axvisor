@@ -1,5 +1,3 @@
-use std::vec::Vec;
-
 use axvm::config::{AxVMConfig, AxVMCrateConfig};
 
 use crate::vmm::{VM, images::load_vm_images, vm_list::push_vm};
