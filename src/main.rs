@@ -12,6 +12,8 @@ mod hal;
 mod task;
 mod vmm;
 
+mod libos;
+
 #[unsafe(no_mangle)]
 fn main() {
     info!("Starting virtualization...");

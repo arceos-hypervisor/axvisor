@@ -6,6 +6,8 @@ mod timer;
 mod vcpus;
 mod vm_list;
 
+mod hypercall;
+
 use std::os::arceos::api::task::{self, AxWaitQueueHandle};
 
 use core::sync::atomic::AtomicUsize;

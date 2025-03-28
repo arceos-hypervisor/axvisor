@@ -302,10 +302,23 @@ fn vcpu_run() {
 
     loop {
         match vm.run_vcpu(vcpu_id) {
-            // match vcpu.run() {
             Ok(exit_reason) => match exit_reason {
                 AxVCpuExitReason::Hypercall { nr, args } => {
-                    debug!("Hypercall [{}] args {:x?}", nr, args);
+                    debug!("Hypercall [{:#x}] args {:x?}", nr, args);
+                    use crate::vmm::hypercall::HyperCall;
+
+                    match HyperCall::new(vcpu.clone(), vm.clone(), nr, args) {
+                        Ok(hypercall) => {
+                            vcpu.bind().unwrap();
+                            if let Err(err) = hypercall.execute() {
+                                warn!("Hypercall [{}] failed: {:?}", nr, err);
+                            }
+                            vcpu.unbind().unwrap();
+                        }
+                        Err(err) => {
+                            warn!("Hypercall [{}] failed: {:?}", nr, err);
+                        }
+                    }
                 }
                 AxVCpuExitReason::FailEntry {
                     hardware_entry_failure_reason,

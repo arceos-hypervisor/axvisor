@@ -30,8 +30,8 @@ static inline long hypercall(int num) {
 int main () {
 	signal(SIGSEGV, sig_handler);
 	signal(SIGILL, sig_handler);
-	int ret = hypercall(2333);
-	if (ret == 2333) {
+	int ret = hypercall(0xc0000000);
+	if (ret == 0xc0000000) {
 		in_guest();
 	} else {
 		in_host();
