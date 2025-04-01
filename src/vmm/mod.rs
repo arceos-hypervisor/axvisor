@@ -1,4 +1,5 @@
 mod config;
+mod hypercall;
 mod images;
 #[allow(unused)] //TODO: remove this with "irq" feature.
 mod timer;

@@ -35,6 +35,7 @@ axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm
 axvm = { git = "https://github.com/arceos-hypervisor/axvm.git" }
 axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git" }
 axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git" }
+numeric-enum-macro = { git = "https://github.com/mexus/numeric-enum-macro.git" }
 
 # System independent crates provided by ArceOS, these crates could be imported by remote url. 
 crate_interface = "0.1"
