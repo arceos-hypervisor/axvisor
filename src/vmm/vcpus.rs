@@ -2,7 +2,7 @@ use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 
 use std::os::arceos::api;
-use std::os::arceos::modules::axtask;
+use std::os::arceos::modules::{axhal, axtask};
 
 use axaddrspace::GuestPhysAddr;
 use axtask::{AxTaskRef, TaskExtRef, TaskInner, WaitQueue};
@@ -11,7 +11,7 @@ use axvcpu::{AxVCpuExitReason, VCpuState};
 use api::sys::ax_terminate;
 use api::task::AxCpuMask;
 
-use crate::task::TaskExt;
+use crate::task_ext::{TaskExt, TaskExtType};
 use crate::vmm::{VCpuRef, VMRef};
 
 const KERNEL_STACK_SIZE: usize = 0x40000; // 256 KiB
@@ -264,7 +264,7 @@ pub fn boot_vm_cpu(vm: &VMRef) {
 fn alloc_vcpu_task(vm: VMRef, vcpu: VCpuRef) -> AxTaskRef {
     info!("Spawning task for VM[{}] Vcpu[{}]", vm.id(), vcpu.id());
     let mut vcpu_task: TaskInner = TaskInner::new(
-        vcpu_run,
+        crate::vmm::vcpu_run,
         format!("VM[{}]-VCpu[{}]", vm.id(), vcpu.id()),
         KERNEL_STACK_SIZE,
     );
@@ -272,7 +272,8 @@ fn alloc_vcpu_task(vm: VMRef, vcpu: VCpuRef) -> AxTaskRef {
     if let Some(phys_cpu_set) = vcpu.phys_cpu_set() {
         vcpu_task.set_cpumask(AxCpuMask::from_raw_bits(phys_cpu_set));
     }
-    vcpu_task.init_task_ext(TaskExt::new(vm, vcpu));
+
+    vcpu_task.init_task_ext(TaskExt::new(TaskExtType::VM(vm), vcpu));
 
     info!(
         "Vcpu task {} created {:?}",
@@ -282,16 +283,7 @@ fn alloc_vcpu_task(vm: VMRef, vcpu: VCpuRef) -> AxTaskRef {
     axtask::spawn_task(vcpu_task)
 }
 
-/// The main routine for vCPU task.
-/// This function is the entry point for the vCPU tasks, which are spawned for each vCPU of a VM.
-///
-/// When the vCPU first starts running, it waits for the VM to be in the running state.
-/// It then enters a loop where it runs the vCPU and handles the various exit reasons.
-fn vcpu_run() {
-    let curr = axtask::current();
-
-    let vm = curr.task_ext().vm.clone();
-    let vcpu = curr.task_ext().vcpu.clone();
+pub fn vm_vcpu_run(vm: VMRef, vcpu: VCpuRef) {
     let vm_id = vm.id();
     let vcpu_id = vcpu.id();
 
@@ -333,8 +325,8 @@ fn vcpu_run() {
                     debug!("VM[{}] run VCpu[{}] get irq {}", vm_id, vcpu_id, vector);
                 }
                 AxVCpuExitReason::Halt => {
-                    debug!("VM[{}] run VCpu[{}] Halt", vm_id, vcpu_id);
-                    wait(vm_id)
+                    warn!("VM[{}] run VCpu[{}] Halt", vm_id, vcpu_id);
+                    axhal::misc::terminate()
                 }
                 AxVCpuExitReason::Nothing => {}
                 AxVCpuExitReason::CpuDown { _state } => {

@@ -1,10 +1,13 @@
+
+
+use alloc::sync::Arc;
 use bit_field::BitField;
 use numeric_enum_macro::numeric_enum;
 
 use axerrno::{AxResult, ax_err, ax_err_type};
-use axvcpu::AxVcpuAccessGuestState;
+use axvcpu::{AxArchVCpu, AxVcpuAccessGuestState};
 
-use crate::vmm::{VCpuRef, VMRef};
+use crate::vmm::{VCpu, VCpuRef, VMRef};
 
 const HYPER_CALL_CODE_PRIVILEGED_MASK: u32 = 0xc000_0000;
 
@@ -15,8 +18,9 @@ numeric_enum! {
         HypervisorDisable = 0,
         HDebug = HYPER_CALL_CODE_PRIVILEGED_MASK | 0,
         HCreateInstance = HYPER_CALL_CODE_PRIVILEGED_MASK | 1,
-        HClone = HYPER_CALL_CODE_PRIVILEGED_MASK | 2,
+        HCreateInitProcess = HYPER_CALL_CODE_PRIVILEGED_MASK | 2,
         HMMAP = HYPER_CALL_CODE_PRIVILEGED_MASK | 3,
+        HClone = HYPER_CALL_CODE_PRIVILEGED_MASK | 4,
     }
 }
 
@@ -27,8 +31,11 @@ impl core::fmt::Debug for HyperCallCode {
             HyperCallCode::HypervisorDisable => write!(f, "HypervisorDisable {:#x}", *self as u32),
             HyperCallCode::HDebug => write!(f, "HDebug {:#x}", *self as u32),
             HyperCallCode::HCreateInstance => write!(f, "HCreateInstance {:#x}", *self as u32),
-            HyperCallCode::HClone => write!(f, "HClone {:#x}", *self as u32),
+            HyperCallCode::HCreateInitProcess => {
+                write!(f, "HCreateInitProcess {:#x}", *self as u32)
+            }
             HyperCallCode::HMMAP => write!(f, "HMMAP {:#x}", *self as u32),
+            HyperCallCode::HClone => write!(f, "HClone {:#x}", *self as u32),
         }?;
         write!(f, ")")
     }
@@ -80,7 +87,7 @@ impl HyperCall {
             );
             return ax_err!(PermissionDenied);
         }
-        debug!("Hypercall: {:?} args: {:?}", self.code, self.args);
+        warn!("Hypercall: {:?} args: {:#x?}", self.code, self.args);
 
         if self.vcpu.get_arch_vcpu().guest_is_privileged() {
             self.execute_privileged()
@@ -104,8 +111,13 @@ impl HyperCall {
             HyperCallCode::HCreateInstance => {
                 self.create_instance(self.args[0], self.args[1], self.args[2], self.args[3])
             }
+            HyperCallCode::HCreateInitProcess => {
+                self.create_init_process(self.args[0], self.args[1])
+            }
             HyperCallCode::HClone => self.clone(),
-            HyperCallCode::HMMAP => self.mmap(),
+            HyperCallCode::HMMAP => {
+                self.mmap(self.args[0], self.args[1], self.args[2], self.args[3])
+            }
             _ => {
                 unimplemented!();
             }
@@ -132,11 +144,11 @@ impl HyperCall {
         memory_cfg_pages_count: u64,
     ) -> AxResult {
         info!(
-            "HCreateInstance pid:{} mm_cnt:{} base_gva:{:#x} pages_cnt: {}",
+            "HCreateInstance iid:{} mm_cnt:{} base_gva:{:#x} pages_cnt: {}",
             id, memory_region_cnt, memory_cfg_pages_base_gva, memory_cfg_pages_count
         );
 
-        crate::libos::def::process_libos_memory_regions(
+        let process_regions = crate::libos::def::process_libos_memory_regions(
             memory_region_cnt as _,
             memory_cfg_pages_base_gva as _,
             memory_cfg_pages_count as _,
@@ -144,7 +156,19 @@ impl HyperCall {
             &self.vm,
         );
 
+        let host_ctx = self.vcpu.get_arch_vcpu().load_host()?;
+        let instance_vcpu = Arc::new(VCpu::new_host(id as _, host_ctx, None)?);
+
+        crate::libos::instance::create_instance(id as usize, process_regions, instance_vcpu)?;
+
         Ok(())
+    }
+
+    fn create_init_process(&self, iid: u64, pid: u64) -> AxResult {
+        info!("HCreateInitProcess iid:{} pid:{}", iid, pid);
+        crate::libos::instance::manipulate_instance(iid as _, |instance| {
+            instance.create_init_process(pid as usize)
+        })
     }
 
     fn clone(&self) -> AxResult {
@@ -152,8 +176,11 @@ impl HyperCall {
         Ok(())
     }
 
-    fn mmap(&self) -> AxResult {
-        info!("HMMAP");
+    fn mmap(&self, addr: u64, len: u64, prot: u64, flags: u64) -> AxResult {
+        info!(
+            "HMMAP addr:{:#x} len:{} prot:{} flags:{}",
+            addr, len, prot, flags
+        );
         Ok(())
     }
 }

@@ -21,6 +21,7 @@ pub use timer::init_percpu as init_timer_percpu;
 pub type VM = axvm::AxVM<AxVMHalImpl, AxVCpuHalImpl>;
 pub type VMRef = axvm::AxVMRef<AxVMHalImpl, AxVCpuHalImpl>;
 
+pub type VCpu = axvm::VCpu<AxVCpuHalImpl>;
 pub type VCpuRef = axvm::AxVCpuRef<AxVCpuHalImpl>;
 
 static VMM: AxWaitQueueHandle = AxWaitQueueHandle::new();
@@ -57,4 +58,30 @@ pub fn start() {
 
     // Do not exit until all VMs are stopped.
     task::ax_wait_queue_wait_until(&VMM, || RUNNING_VM_COUNT.load(Ordering::Acquire) == 0, None);
+}
+
+use std::os::arceos::modules::axtask;
+
+use axaddrspace::GuestPhysAddr;
+use axtask::TaskExtRef;
+
+use crate::task_ext::TaskExtType;
+
+/// The main routine for vCPU task.
+/// This function is the entry point for the vCPU tasks, which are spawned for each vCPU of a VM.
+///
+/// When the vCPU first starts running, it waits for the VM to be in the running state.
+/// It then enters a loop where it runs the vCPU and handles the various exit reasons.
+pub fn vcpu_run() {
+    let curr = axtask::current();
+
+    let vm = match &curr.task_ext().ext {
+        TaskExtType::VM(vm) => {
+            crate::vmm::vcpus::vm_vcpu_run(vm.clone(), curr.task_ext().vcpu.clone());
+        }
+        TaskExtType::LibOS(instance) => {
+            crate::libos::libos_vcpu_run(instance.clone(), curr.task_ext().vcpu.clone());
+        }
+    };
+    let vcpu = curr.task_ext().vcpu.clone();
 }

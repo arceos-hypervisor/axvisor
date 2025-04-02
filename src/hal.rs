@@ -49,7 +49,14 @@ pub struct EPTTranslatorImpl;
 impl axaddrspace::EPTTranslator for EPTTranslatorImpl {
     fn guest_phys_to_host_phys(gpa: axaddrspace::GuestPhysAddr) -> Option<HostPhysAddr> {
         use std::os::arceos::modules::axtask::{self, TaskExtRef};
-        axtask::current().task_ext().vm.guest_phys_to_host_phys(gpa)
+        use crate::task_ext::TaskExtType;
+
+        match &axtask::current().task_ext().ext {
+            TaskExtType::VM(vm) => {
+                vm.guest_phys_to_host_phys(gpa)
+            }
+            _ => None
+        }
     }
 }
 

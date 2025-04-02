@@ -1,12 +1,30 @@
-use alloc::string::ToString;
+use alloc::string::{String, ToString};
 use core::ffi::CStr;
 
-use axaddrspace::{GuestVirtAddr, MappingFlags};
+use memory_addr::MemoryAddr;
+use page_table_multiarch::PageSize;
 
 use axhal::mem::phys_to_virt;
-use std::os::arceos::modules::axhal;
+use std::{os::arceos::modules::axhal, vec::Vec};
+
+use axaddrspace::{GuestPhysAddr, GuestVirtAddr, HostPhysAddr, MappingFlags};
 
 use crate::vmm::{VCpuRef, VMRef};
+
+/// Metadata of VMX shadow page tables.
+pub struct ShadowPageTableMetadata;
+
+impl page_table_multiarch::PagingMetaData for ShadowPageTableMetadata {
+    const LEVELS: usize = 4;
+    const PA_MAX_BITS: usize = 52;
+    const VA_MAX_BITS: usize = 48;
+
+    type VirtAddr = axaddrspace::GuestVirtAddr;
+
+    fn flush_tlb(_vaddr: Option<GuestVirtAddr>) {
+        todo!()
+    }
+}
 
 /// The structure of the memory region.
 #[repr(C, packed)]
@@ -21,15 +39,39 @@ struct CMemoryRegion {
     flags: u64,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ProcessMemoryRegionMapping {
+    pub gpa: GuestPhysAddr,
+    pub page_size: PageSize,
+    pub hpa: Option<HostPhysAddr>,
+}
+
+#[derive(Debug)]
+pub struct ProcessMemoryRegion {
+    pub gva: GuestVirtAddr,
+    pub size: usize,
+    pub flags: MappingFlags,
+    // GVA to GPA mapping: may not be established by host Linux yet
+    //      maybe we need to inject a page fault into Linux?
+    // GPA to HPA mapping: may not be established by hypervisor yet.
+    pub mapping: Option<ProcessMemoryRegionMapping>,
+    pub offset: u64,
+    pub device: [i8; 6],
+    pub inode: u64,
+    pub pathname: String,
+}
+
 pub fn process_libos_memory_regions(
     total_count: usize,
     pages_start_gva: usize,
     pages_count: usize,
     vcpu: &VCpuRef,
     vm: &VMRef,
-) {
+) -> Vec<ProcessMemoryRegion> {
     let mut page_index = 0;
     let mut remaining = total_count;
+
+    let mut process_regons: Vec<ProcessMemoryRegion> = Vec::new();
 
     let pages_base_gpa = vcpu
         .get_arch_vcpu()
@@ -77,6 +119,15 @@ pub fn process_libos_memory_regions(
             let region_end = GuestVirtAddr::from_usize(region.end as usize);
             let inode = region.inode;
 
+            let region_mapping = match vcpu.get_arch_vcpu().guest_page_table_query(region_start) {
+                Ok((gpa, _flags, page_size)) => Some(ProcessMemoryRegionMapping {
+                    gpa,
+                    page_size,
+                    hpa: vm.guest_phys_to_host_phys(gpa),
+                }),
+                Err(_) => None,
+            };
+
             // Parse flags
             let flags = MappingFlags::from_bits_truncate(region.flags as usize);
 
@@ -91,6 +142,17 @@ pub fn process_libos_memory_regions(
                 path
             );
 
+            process_regons.push(ProcessMemoryRegion {
+                gva: region_start,
+                mapping: region_mapping,
+                size: region_end.sub_addr(region_start) as usize,
+                flags,
+                offset: region.offset,
+                device: region.device,
+                inode,
+                pathname: path,
+            });
+
             remaining -= 1;
             if remaining == 0 {
                 break;
@@ -99,4 +161,6 @@ pub fn process_libos_memory_regions(
 
         page_index += 1;
     }
+
+    process_regons
 }

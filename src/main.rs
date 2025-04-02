@@ -9,7 +9,7 @@ extern crate alloc;
 extern crate axstd as std;
 
 mod hal;
-mod task;
+mod task_ext;
 mod vmm;
 
 mod libos;

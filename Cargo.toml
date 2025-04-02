@@ -72,3 +72,7 @@ axvcpu = { path = "./crates/axvcpu" }
 
 [patch."https://github.com/arceos-hypervisor/axaddrspace.git"]
 axaddrspace = { path = "./crates/axaddrspace" }
+
+[patch.crates-io]
+memory_addr = { path = "./crates/memory_addr/memory_addr" }
+memory_set ={ path = "./crates/memory_addr/memory_set" }

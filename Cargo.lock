@@ -985,14 +985,10 @@ dependencies = [
 [[package]]
 name = "memory_addr"
 version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5438b8df0f13e16e1f46140de247695a95952a5a4479e47197a8711bf1063373"
 
 [[package]]
 name = "memory_set"
 version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4552d02c866c57e8b06b919ea8c2f8f398cad245b8f6aac726657bc972d663d"
 dependencies = [
  "memory_addr",
 ]
