@@ -2,6 +2,7 @@ pub mod def;
 pub mod instance;
 pub mod process;
 mod run;
+mod region;
 
 pub use run::libos_vcpu_run;
 

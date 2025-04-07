@@ -17,7 +17,7 @@ endif
 
 qemu_image := ubuntu-$(UV)-server-cloudimg-amd64.img
 qemu_args := \
-  -smp $(SMP) -m 4G -accel kvm -nographic \
+  -smp $(SMP) -m 16G -accel kvm -nographic \
   -machine q35,kernel_irqchip=split \
   -cpu host,-la57,-kvm-asyncpf,-kvm-pv-eoi,-kvm-pv-ipi,-kvm-pv-sched-yield,-kvm-pv-unhalt,-kvm-steal-time,-kvmclock \
   -drive file=$(qemu_image) \

@@ -5,7 +5,9 @@ use core::mem::MaybeUninit;
 use std::os::arceos::modules::axhal;
 
 use axerrno::{AxResult, ax_err_type};
-use memory_addr::{MemoryAddr, PAGE_SIZE_4K, PageIter4K, PhysAddr, is_aligned_4k};
+use memory_addr::{
+    MemoryAddr, PAGE_SIZE_2M, PAGE_SIZE_4K, PageIter2M, PageIter4K, PhysAddr, is_aligned_4k,
+};
 use page_table_entry::x86_64::X64PTE;
 use page_table_multiarch::{PagingHandler, PagingMetaData};
 
@@ -70,25 +72,6 @@ impl<H: PagingHandler> Instance<H> {
                 p_region.flags,
             )?;
 
-            if p_region.mapping.is_none() {
-                warn!(
-                    "Process memory region [{:?} - {:?}] {:?} is not mapped by Linux, skipping",
-                    p_region.gva,
-                    p_region.gva + p_region.size,
-                    p_region.flags
-                );
-                continue;
-            } else if p_region.mapping.unwrap().hpa.is_none() {
-                error!(
-                    "Process memory region GVA [{:?} - {:?}] {:?} GPA {:?} is not mapped by hypervisor, skipping",
-                    p_region.gva,
-                    p_region.gva + p_region.size,
-                    p_region.mapping.unwrap().gpa,
-                    p_region.flags
-                );
-                continue;
-            }
-
             if !p_region.gva.is_aligned_4k() || !is_aligned_4k(p_region.size) {
                 warn!(
                     "Process memory region [{:?} - {:?}] {:?} is not aligned to 4K, skipping",
@@ -98,27 +81,46 @@ impl<H: PagingHandler> Instance<H> {
                 );
             }
 
-            // Map as populated mapping to ensure that the memory mapping is established.
-            init_addrspace.map_alloc(p_region.gva, p_region.size, p_region.flags, true)?;
+            for (p_gva, mapping) in &p_region.mappings {
+                if let Some(mapping) = mapping {
+                    if mapping.hpa.is_none() {
+                        error!(
+                            "Process memory region GVA [{:?} - {:?}] {:?} GPA {:?} is not mapped by hypervisor, skipping",
+                            p_region.gva,
+                            p_region.gva + PAGE_SIZE_4K,
+                            mapping.gpa,
+                            p_region.flags
+                        );
+                        continue;
+                    }
 
-            for gva in PageIter4K::new(p_region.gva, p_region.gva + p_region.size)
-                .expect("Failed to create PageIter4K")
-            {
-                let host_region_hva = H::phys_to_virt(p_region.mapping.unwrap().hpa.unwrap());
+                    // Map as populated mapping to ensure that the memory mapping is established.
+                    init_addrspace.map_alloc(
+                        *p_gva,
+                        mapping.page_size as usize,
+                        p_region.flags,
+                        true,
+                    )?;
 
-                let instance_region_hva = H::phys_to_virt(
-                    init_addrspace
-                        .translate(gva)
-                        .expect(alloc::format!("GVA {:#x} not mapped", gva).as_str()),
-                );
-
-                unsafe {
-                    core::ptr::copy_nonoverlapping(
-                        host_region_hva.as_ptr(),
-                        instance_region_hva.as_mut_ptr(),
-                        PAGE_SIZE_4K,
-                    )
-                };
+                    let host_region_hpa = mapping.hpa.unwrap();
+                    let (instance_region_hpa, _flags, instance_page_size) = init_addrspace
+                        .translate(*p_gva)
+                        .expect(alloc::format!("GVA {:#x} not mapped", p_gva).as_str());
+                    unsafe {
+                        core::ptr::copy_nonoverlapping(
+                            H::phys_to_virt(host_region_hpa).as_ptr(),
+                            H::phys_to_virt(instance_region_hpa).as_mut_ptr(),
+                            mapping.page_size as usize,
+                        )
+                    };
+                } else {
+                    warn!(
+                        "Process memory region [{:?} - {:?}] {:?} is not mapped by Linux, skipping",
+                        p_gva,
+                        p_region.gva + PAGE_SIZE_4K,
+                        p_region.flags
+                    );
+                }
             }
         }
 
@@ -153,6 +155,8 @@ impl<H: PagingHandler> Instance<H> {
     }
 }
 
+/// Create a new instance.
+/// This function will create a new instance and allocate a task for the vCPU.
 pub fn create_instance(
     id: usize,
     process_regions: Vec<ProcessMemoryRegion>,

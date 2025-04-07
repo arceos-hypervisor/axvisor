@@ -1,5 +1,3 @@
-
-
 use alloc::sync::Arc;
 use bit_field::BitField;
 use numeric_enum_macro::numeric_enum;
@@ -157,8 +155,19 @@ impl HyperCall {
         );
 
         let host_ctx = self.vcpu.get_arch_vcpu().load_host()?;
-        let instance_vcpu = Arc::new(VCpu::new_host(id as _, host_ctx, None)?);
 
+        let instance_cpu_mask = crate::vmm::config::alloc_instance_cpus_bitmap(1);
+
+        debug!(
+            "Generate instance {} vcpu, cpu mask: {:#x}, host ctx: {:x?}",
+            id, instance_cpu_mask, host_ctx
+        );
+
+        let instance_vcpu = Arc::new(VCpu::new_host(
+            id as _,
+            host_ctx,
+            Some(instance_cpu_mask as _),
+        )?);
         crate::libos::instance::create_instance(id as usize, process_regions, instance_vcpu)?;
 
         Ok(())

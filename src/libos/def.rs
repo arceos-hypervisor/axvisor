@@ -1,7 +1,7 @@
 use alloc::string::{String, ToString};
 use core::ffi::CStr;
 
-use memory_addr::MemoryAddr;
+use memory_addr::{MemoryAddr, PAGE_SIZE_1G, PAGE_SIZE_2M, PAGE_SIZE_4K};
 use page_table_multiarch::PageSize;
 
 use axhal::mem::phys_to_virt;
@@ -54,7 +54,7 @@ pub struct ProcessMemoryRegion {
     // GVA to GPA mapping: may not be established by host Linux yet
     //      maybe we need to inject a page fault into Linux?
     // GPA to HPA mapping: may not be established by hypervisor yet.
-    pub mapping: Option<ProcessMemoryRegionMapping>,
+    pub mappings: Vec<(GuestVirtAddr, Option<ProcessMemoryRegionMapping>)>,
     pub offset: u64,
     pub device: [i8; 6],
     pub inode: u64,
@@ -119,6 +119,37 @@ pub fn process_libos_memory_regions(
             let region_end = GuestVirtAddr::from_usize(region.end as usize);
             let inode = region.inode;
 
+            let mut mappings = Vec::new();
+
+            let mut start = region_start;
+
+            while start < region_end {
+                match vcpu.get_arch_vcpu().guest_page_table_query(start) {
+                    Ok((gpa, _flags, page_size)) => {
+                        if !start.is_aligned(page_size as usize) {
+                            warn!(
+                                "Process memory gva {:?} is {:?} mapped but not aligned to page size {:?}",
+                                start, page_size, page_size
+                            );
+                        }
+
+                        mappings.push((
+                            start,
+                            Some(ProcessMemoryRegionMapping {
+                                gpa,
+                                page_size,
+                                hpa: vm.guest_phys_to_host_phys(gpa),
+                            }),
+                        ));
+                        start = start.add(page_size as usize);
+                    }
+                    Err(_) => {
+                        mappings.push((start, None));
+                        start = start.add(PAGE_SIZE_4K);
+                    }
+                }
+            }
+
             let region_mapping = match vcpu.get_arch_vcpu().guest_page_table_query(region_start) {
                 Ok((gpa, _flags, page_size)) => Some(ProcessMemoryRegionMapping {
                     gpa,
@@ -144,7 +175,7 @@ pub fn process_libos_memory_regions(
 
             process_regons.push(ProcessMemoryRegion {
                 gva: region_start,
-                mapping: region_mapping,
+                mappings,
                 size: region_end.sub_addr(region_start) as usize,
                 flags,
                 offset: region.offset,
