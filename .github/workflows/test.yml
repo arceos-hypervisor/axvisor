@@ -80,4 +80,72 @@ jobs:
           cd ~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && make ARCH=x86_64 defconfig
           cd ~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && make ARCH=x86_64 DISK_IMG=$(pwd)/disk-x86_64.img LOG=info BLK=y ACCEL=y VM_CONFIGS=$(pwd)/configs/vms/nimbos-x86_64.toml APP_FEATURES=fs run
           cd ~ && rm -rf ~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}
-
+  remote_test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64]
+        rust-toolchain: [nightly-2024-12-25, nightly]
+    steps:
+    - uses: actions/checkout@v4
+    - name: Compress source code
+      run: tar -czf ~/source.tar.gz -C ${{ github.workspace }} .
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: ${{ matrix.rust-toolchain }}
+        components: rust-src
+    - uses: Swatinem/rust-cache@v2
+    - run: cargo install cargo-binutils
+    - uses: ./.github/workflows/actions/setup-nimbos-guest-image
+      with:
+        nimbos-version: 'tags/v0.7'
+        arch: ${{ matrix.arch }}
+        disk-path: ${{ github.workspace }}/disk-${{ matrix.arch }}.img
+    - name: Copy files to current directory
+      run: |
+        cp ~/source.tar.gz .
+    # - name: Copy files to remote runner
+    #   uses: appleboy/scp-action@v0.1.7
+    #   with:
+    #     host: ${{ secrets.HOST }}
+    #     username: ${{ secrets.USERNAME }}
+    #     password: ${{ secrets.PASSWORD }}
+    #     port: ${{ secrets.PORT }}
+    #     source: './disk-x86_64.img,./source.tar.gz'
+    #     target: '~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}'
+    # - name: Running on remote runner
+    #   uses: appleboy/ssh-action@v1.1.0
+    #   with:
+    #     host: ${{ secrets.HOST }}
+    #     username: ${{ secrets.USERNAME }}
+    #     password: ${{ secrets.PASSWORD }}
+    #     port: ${{ secrets.PORT }}
+    #     script: |
+    #       set -e
+    #       cd ~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && tar -xzf source.tar.gz
+    #       cd ~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && make ARCH=x86_64 defconfig
+    #       cd ~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && make ARCH=x86_64 DISK_IMG=$(pwd)/disk-x86_64.img LOG=info BLK=y ACCEL=y VM_CONFIGS=$(pwd)/configs/vms/nimbos-x86_64.toml APP_FEATURES=fs run
+    #       cd ~ && rm -rf ~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}    
+    - name: Copy files to remote runner 2
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ secrets.HOST2 }}
+        username: ${{ secrets.USERNAME2 }}
+        password: ${{ secrets.PASSWORD2 }}
+        port: ${{ secrets.PORT2 }}
+        source: './disk-x86_64.img,./source.tar.gz'
+        target: '~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}'
+    - name: Running on remote runner 2
+      uses: appleboy/ssh-action@v1.1.0
+      with:
+        host: ${{ secrets.HOST2 }}
+        username: ${{ secrets.USERNAME2 }}
+        password: ${{ secrets.PASSWORD2 }}
+        port: ${{ secrets.PORT2 }}
+        script: |
+          set -e
+          cd ~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && tar -xzf source.tar.gz
+          cd ~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && make ARCH=x86_64 defconfig
+          cd ~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && make ARCH=x86_64 DISK_IMG=$(pwd)/disk-x86_64.img LOG=info BLK=y ACCEL=y VM_CONFIGS=$(pwd)/configs/vms/nimbos-x86_64.toml APP_FEATURES=fs run
+          cd ~ && rm -rf ~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}    
