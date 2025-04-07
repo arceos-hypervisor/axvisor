@@ -2,21 +2,24 @@ use alloc::collections::btree_map::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;
+use core::sync::atomic::AtomicBool;
 use std::os::arceos::modules::axhal;
 
-use axerrno::{AxResult, ax_err_type};
 use memory_addr::{
     MemoryAddr, PAGE_SIZE_2M, PAGE_SIZE_4K, PageIter2M, PageIter4K, PhysAddr, is_aligned_4k,
 };
 use page_table_entry::x86_64::X64PTE;
 use page_table_multiarch::{PagingHandler, PagingMetaData};
 
+use axaddrspace::{AddrSpace, GuestPhysAddr, GuestVirtAddr};
+use axerrno::{AxResult, ax_err_type};
+use axhal::paging::PagingHandlerImpl;
+use axstd::sync::Mutex;
+use axvcpu::{AxArchVCpu, AxVCpuExitReason, AxVcpuAccessGuestState};
+
 use crate::libos::def::{ProcessMemoryRegion, ShadowPageTableMetadata};
 use crate::libos::process::{INIT_PROCESS_ID, Process, ProcessRef};
 use crate::vmm::VCpuRef;
-use axaddrspace::{AddrSpace, GuestPhysAddr, GuestVirtAddr};
-use axhal::paging::PagingHandlerImpl;
-use axstd::sync::Mutex;
 
 static INSTANCES: Mutex<BTreeMap<usize, InstanceRef>> = Mutex::new(BTreeMap::new());
 
@@ -30,6 +33,9 @@ pub struct Instance<H: PagingHandler> {
     id: usize,
     processes: Mutex<Vec<ProcessRef<H>>>,
     process_regions: Vec<ProcessMemoryRegion>,
+
+    running: AtomicBool,
+
     vcpu: Mutex<VCpuRef>,
     /// For Stage-1 address translation, which translates guest virtual address to guest physical address,
     /// here we just use a direct one-to-one mapping, so this page table can be used by all processes.
@@ -137,6 +143,7 @@ impl<H: PagingHandler> Instance<H> {
         processes.push(init_process);
         Ok(Self {
             id,
+            running: AtomicBool::new(false),
             processes: Mutex::new(processes),
             process_regions,
             linear_addrspace,
@@ -148,10 +155,40 @@ impl<H: PagingHandler> Instance<H> {
         self.id
     }
 
+    pub fn running(&self) -> bool {
+        self.running.load(core::sync::atomic::Ordering::Acquire)
+    }
+
     pub fn create_init_process(&self, pid: usize) -> AxResult {
         info!("Instance {} create init process: pid = {}", self.id, pid);
 
+        // Use this API to notify the instance to finish fork.
+        self.running
+            .store(true, core::sync::atomic::Ordering::Release);
+
         Ok(())
+    }
+
+    pub fn run_vcpu(&self) -> AxResult<AxVCpuExitReason> {
+        let vcpu = self.vcpu.lock().clone();
+
+        info!("Instance[{}] Vcpu[{}] run_vcpu()", self.id, vcpu.id());
+
+        vcpu.set_return_value(axhal::cpu::this_cpu_id());
+
+        vcpu.bind()?;
+
+        let exit_reason: axvcpu::AxVCpuExitReason = loop {
+            let exit_reason = vcpu.run()?;
+
+            debug!("Vcpu[{}] exit reason: {:?}", vcpu.id(), exit_reason);
+
+            break exit_reason;
+        };
+
+        vcpu.unbind()?;
+
+        Ok(exit_reason)
     }
 }
 

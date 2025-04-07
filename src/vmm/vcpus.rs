@@ -302,9 +302,16 @@ pub fn vm_vcpu_run(vm: VMRef, vcpu: VCpuRef) {
                     match HyperCall::new(vcpu.clone(), vm.clone(), nr, args) {
                         Ok(hypercall) => {
                             vcpu.bind().unwrap();
-                            if let Err(err) = hypercall.execute() {
-                                warn!("Hypercall [{}] failed: {:?}", nr, err);
-                            }
+
+                            let ret_val = match hypercall.execute() {
+                                Ok(ret_val) => ret_val as isize,
+                                Err(err) => {
+                                    warn!("Hypercall [{}] failed: {:?}", nr, err);
+                                    -1
+                                }
+                            };
+
+                            vcpu.set_return_value(ret_val as usize);
                             vcpu.unbind().unwrap();
                         }
                         Err(err) => {

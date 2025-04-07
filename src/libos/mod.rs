@@ -1,8 +1,8 @@
 pub mod def;
 pub mod instance;
 pub mod process;
-mod run;
 mod region;
+mod run;
 
 pub use run::libos_vcpu_run;
 

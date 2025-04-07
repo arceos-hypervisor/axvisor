@@ -45,12 +45,15 @@ impl HyperCallCode {
     }
 }
 
+pub type HyperCallResult = AxResult<usize>;
+
 pub struct HyperCall {
     vcpu: VCpuRef,
     vm: VMRef,
     code: HyperCallCode,
     args: [u64; 6],
 }
+
 impl HyperCall {
     pub fn new(vcpu: VCpuRef, vm: VMRef, code: u64, args: [u64; 6]) -> AxResult<Self> {
         let code = HyperCallCode::try_from(code as u32).map_err(|e| {
@@ -66,7 +69,7 @@ impl HyperCall {
         })
     }
 
-    pub fn execute(&self) -> AxResult {
+    pub fn execute(&self) -> HyperCallResult {
         // First, check if the vcpu is allowed to execute the hypercall.
         if self.code.is_privileged() ^ self.vcpu.get_arch_vcpu().guest_is_privileged() {
             warn!(
@@ -94,7 +97,7 @@ impl HyperCall {
         }
     }
 
-    fn execute_privileged(&self) -> AxResult {
+    fn execute_privileged(&self) -> HyperCallResult {
         match self.code {
             HyperCallCode::HypervisorDisable => self.hypervisor_disable(),
             _ => {
@@ -103,7 +106,7 @@ impl HyperCall {
         }
     }
 
-    fn execute_unprivileged(&self) -> AxResult {
+    fn execute_unprivileged(&self) -> HyperCallResult {
         match self.code {
             HyperCallCode::HDebug => self.debug(),
             HyperCallCode::HCreateInstance => {
@@ -124,14 +127,14 @@ impl HyperCall {
 }
 
 impl HyperCall {
-    fn hypervisor_disable(&self) -> AxResult {
+    fn hypervisor_disable(&self) -> HyperCallResult {
         info!("HypervisorDisable");
-        Ok(())
+        Ok(0)
     }
 
-    fn debug(&self) -> AxResult {
+    fn debug(&self) -> HyperCallResult {
         info!("HDebug {:#x?}", self.args);
-        Ok(())
+        Ok(HyperCallCode::HDebug as usize)
     }
 
     fn create_instance(
@@ -140,7 +143,7 @@ impl HyperCall {
         memory_region_cnt: u64,
         memory_cfg_pages_base_gva: u64,
         memory_cfg_pages_count: u64,
-    ) -> AxResult {
+    ) -> HyperCallResult {
         info!(
             "HCreateInstance iid:{} mm_cnt:{} base_gva:{:#x} pages_cnt: {}",
             id, memory_region_cnt, memory_cfg_pages_base_gva, memory_cfg_pages_count
@@ -170,26 +173,27 @@ impl HyperCall {
         )?);
         crate::libos::instance::create_instance(id as usize, process_regions, instance_vcpu)?;
 
-        Ok(())
+        Ok(0)
     }
 
-    fn create_init_process(&self, iid: u64, pid: u64) -> AxResult {
+    fn create_init_process(&self, iid: u64, pid: u64) -> HyperCallResult {
         info!("HCreateInitProcess iid:{} pid:{}", iid, pid);
         crate::libos::instance::manipulate_instance(iid as _, |instance| {
             instance.create_init_process(pid as usize)
-        })
+        })?;
+        Ok(0)
     }
 
-    fn clone(&self) -> AxResult {
+    fn clone(&self) -> HyperCallResult {
         info!("HClone");
-        Ok(())
+        Ok(0)
     }
 
-    fn mmap(&self, addr: u64, len: u64, prot: u64, flags: u64) -> AxResult {
+    fn mmap(&self, addr: u64, len: u64, prot: u64, flags: u64) -> HyperCallResult {
         info!(
             "HMMAP addr:{:#x} len:{} prot:{} flags:{}",
             addr, len, prot, flags
         );
-        Ok(())
+        Ok(0)
     }
 }
