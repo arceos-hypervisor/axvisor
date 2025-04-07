@@ -1,11 +1,15 @@
 use std::os::arceos;
 
+use arceos::modules::{axalloc, axhal};
+
 use memory_addr::{PAGE_SIZE_4K, align_up_4k};
 
-use arceos::modules::{axalloc, axhal};
 use axaddrspace::{HostPhysAddr, HostVirtAddr};
-use axvcpu::AxVCpuHal;
+use axerrno::{AxResult, ax_err_type};
+use axvcpu::{AxArchVCpu, AxVCpuHal};
 use axvm::{AxVMHal, AxVMPerCpu};
+
+use crate::vmm::VCpuRef;
 
 /// Implementation for `AxVMHal` trait.
 pub struct AxVMHalImpl;
@@ -127,4 +131,28 @@ pub(crate) fn enable_virtualization() {
         // Use `yield_now` instead of `core::hint::spin_loop` to avoid deadlock.
         thread::yield_now();
     }
+}
+
+pub(crate) fn disable_virtualization(vcpu: VCpuRef, ret_code: usize) -> AxResult {
+    let percpu = unsafe { AXVM_PER_CPU.current_ref_mut_raw() };
+
+    let cpu_id = percpu
+        .cpu_id()
+        .ok_or_else(|| ax_err_type!(BadState, "Virtualization is not enabled on this core"))?;
+
+    info!(
+        "vCPU {} try to disable virtualization on core {}",
+        vcpu.id(),
+        cpu_id
+    );
+
+    vcpu.set_return_value(ret_code);
+    let host_ctx = vcpu.get_arch_vcpu().load_host()?;
+    vcpu.unbind()?;
+    percpu.hardware_disable()?;
+    host_ctx.restore();
+
+    host_ctx.return_to_linux(vcpu.get_arch_vcpu().regs());
+
+    Ok(())
 }

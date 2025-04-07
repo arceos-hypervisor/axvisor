@@ -1,3 +1,5 @@
+use core::sync::atomic::{AtomicUsize, Ordering};
+
 use alloc::sync::Arc;
 use bit_field::BitField;
 use numeric_enum_macro::numeric_enum;
@@ -129,7 +131,20 @@ impl HyperCall {
 impl HyperCall {
     fn hypervisor_disable(&self) -> HyperCallResult {
         info!("HypervisorDisable");
-        Ok(0)
+
+        let reserved_cpus = crate::vmm::config::get_reserved_cpus();
+
+        static TRY_DISABLED_CPUS: AtomicUsize = AtomicUsize::new(0);
+        TRY_DISABLED_CPUS.fetch_add(1, Ordering::SeqCst);
+
+        // Wait for all CPUs to trgger the hypervisor disable HVC from Linux.
+        while TRY_DISABLED_CPUS.load(Ordering::SeqCst) < reserved_cpus {
+            core::hint::spin_loop();
+        }
+
+        crate::hal::disable_virtualization(self.vcpu.clone(), 0)?;
+
+        unreachable!("HypervisorDisable should not reach here");
     }
 
     fn debug(&self) -> HyperCallResult {

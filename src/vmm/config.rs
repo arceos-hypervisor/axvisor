@@ -49,6 +49,7 @@ pub fn init_guest_vms() {
 }
 
 static INSTANCE_CPU_BITMAP: Mutex<u128> = Mutex::new(0);
+static RESERVED_CPUS: AtomicUsize = AtomicUsize::new(0);
 
 pub fn init_host_vm() {
     use std::os::arceos::modules::axhal;
@@ -59,6 +60,9 @@ pub fn init_host_vm() {
     info!("Creating host VM...");
 
     let reserved_cpus = axhal::hvheader::HvHeader::get().reserved_cpus() as usize;
+
+    // Set reserved CPUs.
+    RESERVED_CPUS.store(reserved_cpus, Ordering::Release);
 
     // Set CPU bitmap for host VM.
     // Note: The first reserved_cpus CPUs are reserved for the host VM currently.
@@ -88,6 +92,10 @@ pub fn init_host_vm() {
     let vm =
         VM::new_host(host_vm_cfg, axhal::get_linux_context_list()).expect("Failed to create VM");
     push_vm(vm.clone());
+}
+
+pub fn get_reserved_cpus() -> usize {
+    RESERVED_CPUS.load(Ordering::Acquire)
 }
 
 /// Allocates a CPU bitmap for an instance according to the given CPU number.
