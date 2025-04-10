@@ -5,9 +5,7 @@ use core::mem::MaybeUninit;
 use core::sync::atomic::AtomicBool;
 use std::os::arceos::modules::axhal;
 
-use memory_addr::{
-    MemoryAddr, PAGE_SIZE_2M, PAGE_SIZE_4K, PageIter2M, PageIter4K, PhysAddr, is_aligned_4k,
-};
+use memory_addr::{MemoryAddr, PAGE_SIZE_4K, PhysAddr, is_aligned_4k};
 use page_table_entry::x86_64::X64PTE;
 use page_table_multiarch::{PagingHandler, PagingMetaData};
 
@@ -15,7 +13,7 @@ use axaddrspace::{AddrSpace, GuestPhysAddr, GuestVirtAddr};
 use axerrno::{AxResult, ax_err_type};
 use axhal::paging::PagingHandlerImpl;
 use axstd::sync::Mutex;
-use axvcpu::{AxArchVCpu, AxVCpuExitReason, AxVcpuAccessGuestState};
+use axvcpu::AxVCpuExitReason;
 
 use crate::libos::def::{ProcessMemoryRegion, ShadowPageTableMetadata};
 use crate::libos::process::{INIT_PROCESS_ID, Process, ProcessRef};
@@ -112,6 +110,11 @@ impl<H: PagingHandler> Instance<H> {
                     let (instance_region_hpa, _flags, instance_page_size) = init_addrspace
                         .translate(*p_gva)
                         .expect(alloc::format!("GVA {:#x} not mapped", p_gva).as_str());
+                    assert_eq!(
+                        instance_page_size, mapping.page_size,
+                        "Page size mismatch: {:?} != {:?}",
+                        instance_page_size, mapping.page_size
+                    );
                     unsafe {
                         core::ptr::copy_nonoverlapping(
                             H::phys_to_virt(host_region_hpa).as_ptr(),

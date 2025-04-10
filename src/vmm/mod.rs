@@ -62,7 +62,6 @@ pub fn start() {
 
 use std::os::arceos::modules::axtask;
 
-use axaddrspace::GuestPhysAddr;
 use axtask::TaskExtRef;
 
 use crate::task_ext::TaskExtType;
@@ -75,7 +74,7 @@ use crate::task_ext::TaskExtType;
 pub fn vcpu_run() {
     let curr = axtask::current();
 
-    let vm = match &curr.task_ext().ext {
+    match &curr.task_ext().ext {
         TaskExtType::VM(vm) => {
             crate::vmm::vcpus::vm_vcpu_run(vm.clone(), curr.task_ext().vcpu.clone());
         }
@@ -83,5 +82,4 @@ pub fn vcpu_run() {
             crate::libos::libos_vcpu_run(instance.clone(), curr.task_ext().vcpu.clone());
         }
     };
-    let vcpu = curr.task_ext().vcpu.clone();
 }

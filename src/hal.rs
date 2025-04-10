@@ -5,7 +5,7 @@ use std::os::arceos;
 use std::thread;
 
 use arceos::api::config::SMP;
-use arceos::api::task::{AxCpuMask, ax_set_current_affinity};
+use arceos::api::task::AxCpuMask;
 use arceos::modules::axhal::arch::wait_for_irqs;
 use arceos::modules::axhal::cpu::{this_cpu_id, this_cpu_is_reserved};
 use arceos::modules::{axalloc, axhal, axtask};
@@ -109,7 +109,7 @@ pub(crate) fn enable_virtualization() {
     for cpu_id in 0..SMP {
         // Avoid to use `thread::spawn` and `ax_set_current_affinity` here,
         // in case "irq" is not enabled and the system result in deadlock.
-        let mut task = axtask::TaskInner::new(
+        let task = axtask::TaskInner::new(
             move || {
                 assert_eq!(
                     cpu_id,
@@ -163,7 +163,7 @@ pub(crate) fn disable_virtualization_on_remaining_cores() -> AxResult {
     for cpu_id in reserved_cpus..SMP {
         // Avoid to use `thread::spawn` and `ax_set_current_affinity` here,
         // in case "irq" is not enabled and the system result in deadlock.
-        let mut task = axtask::TaskInner::new(
+        let task = axtask::TaskInner::new(
             move || {
                 assert_eq!(
                     cpu_id,
@@ -230,6 +230,7 @@ pub(crate) fn disable_virtualization_on_remaining_cores() -> AxResult {
 /// This function should be called when the hypervisor is shutting down,
 /// and the current core is reserved for the hypervisor.
 /// It will unbind the vCPU from the core and restore the host context.
+#[allow(unreachable_code)]
 pub(crate) fn disable_virtualization(vcpu: VCpuRef, ret_code: usize) -> AxResult {
     assert!(this_cpu_is_reserved(), "This CPU is not reserved");
 
@@ -255,5 +256,5 @@ pub(crate) fn disable_virtualization(vcpu: VCpuRef, ret_code: usize) -> AxResult
 
     host_ctx.return_to_linux(vcpu.get_arch_vcpu().regs());
 
-    Ok(())
+    unreachable!("CPU {} vCPU {} not return to Linux", cpu_id, vcpu.id());
 }

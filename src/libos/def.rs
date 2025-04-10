@@ -1,7 +1,7 @@
 use alloc::string::{String, ToString};
 use core::ffi::CStr;
 
-use memory_addr::{MemoryAddr, PAGE_SIZE_1G, PAGE_SIZE_2M, PAGE_SIZE_4K};
+use memory_addr::{MemoryAddr, PAGE_SIZE_4K};
 use page_table_multiarch::PageSize;
 
 use axhal::mem::phys_to_virt;
@@ -159,15 +159,6 @@ pub fn process_libos_memory_regions(
                     }
                 }
             }
-
-            let region_mapping = match vcpu.get_arch_vcpu().guest_page_table_query(region_start) {
-                Ok((gpa, _flags, page_size)) => Some(ProcessMemoryRegionMapping {
-                    gpa,
-                    page_size,
-                    hpa: vm.guest_phys_to_host_phys(gpa),
-                }),
-                Err(_) => None,
-            };
 
             // Parse flags
             let flags = MappingFlags::from_bits_truncate(region.flags as usize);

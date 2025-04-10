@@ -49,10 +49,16 @@ static void create_instance()
 	}
 	else if (res > 0)
 	{
+		for (;;)
+		{
+		}
 		printf("Create instance res %d > 0.\n", res);
 	}
 	else
 	{
+		for (;;)
+		{
+		}
 		printf("Create instance res %d < 0.\n", res);
 	}
 	cleanup_pages();

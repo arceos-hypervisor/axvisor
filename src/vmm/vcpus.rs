@@ -5,7 +5,7 @@ use std::os::arceos::api;
 use std::os::arceos::modules::{axhal, axtask};
 
 use axaddrspace::GuestPhysAddr;
-use axtask::{AxTaskRef, TaskExtRef, TaskInner, WaitQueue};
+use axtask::{AxTaskRef, TaskInner, WaitQueue};
 use axvcpu::{AxVCpuExitReason, VCpuState};
 
 use api::sys::ax_terminate;

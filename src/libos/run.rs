@@ -1,5 +1,3 @@
-use axerrno::AxResult;
-
 use crate::libos::instance::InstanceRef;
 use crate::vmm::VCpuRef;
 
