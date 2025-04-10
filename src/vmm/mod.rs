@@ -1,3 +1,5 @@
+#[cfg(target_arch = "aarch64")]
+mod cache;
 mod config;
 mod images;
 #[allow(unused)] //TODO: remove this with "irq" feature.
