@@ -1,8 +1,8 @@
 use alloc::string::ToString;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use spin::Mutex;
-
 use std::os::arceos::modules::axconfig;
+
+use spin::Mutex;
 
 use axvm::config::{AxVMConfig, AxVMCrateConfig};
 
@@ -49,7 +49,10 @@ pub fn init_guest_vms() {
 }
 
 static INSTANCE_CPU_BITMAP: Mutex<u128> = Mutex::new(0);
+// Cores reserved for host VM.
 static RESERVED_CPUS: AtomicUsize = AtomicUsize::new(0);
+// Cores reserved for instances.
+static INSTANCE_CPUS: AtomicUsize = AtomicUsize::new(0);
 
 pub fn init_host_vm() {
     use std::os::arceos::modules::axhal;
@@ -57,12 +60,19 @@ pub fn init_host_vm() {
     use axvm::config::AxVMConfig;
     use axvmconfig::{VmMemConfig, VmMemMappingType};
 
-    info!("Creating host VM...");
-
     let reserved_cpus = axhal::hvheader::HvHeader::get().reserved_cpus() as usize;
 
     // Set reserved CPUs.
     RESERVED_CPUS.store(reserved_cpus, Ordering::Release);
+
+    // Set instance CPUs.
+    INSTANCE_CPUS.store(axconfig::SMP - reserved_cpus, Ordering::Release);
+
+    info!(
+        "Creating host VM...\n{} CPUS reserved\n{} CPUS available for instances",
+        reserved_cpus,
+        axconfig::SMP - reserved_cpus
+    );
 
     // Set CPU bitmap for host VM.
     // Note: The first reserved_cpus CPUs are reserved for the host VM currently.
@@ -79,6 +89,7 @@ pub fn init_host_vm() {
 
     let mut host_vm_cfg = AxVMConfig::new_host(0, "host".to_string(), reserved_cpus);
 
+    // Map host VM memory regions.
     for region in axhal::host_memory_regions() {
         host_vm_cfg.append_memory_region(VmMemConfig {
             gpa: region.paddr.as_usize(),
@@ -96,6 +107,18 @@ pub fn init_host_vm() {
 
 pub fn get_reserved_cpus() -> usize {
     RESERVED_CPUS.load(Ordering::Acquire)
+}
+
+pub fn get_instance_cpus() -> usize {
+    INSTANCE_CPUS.load(Ordering::Acquire)
+}
+
+pub fn descrease_instance_cpus() {
+    if get_instance_cpus() == 0 {
+        warn!("No instance CPUs");
+    }
+
+    INSTANCE_CPUS.fetch_sub(1, Ordering::Release);
 }
 
 /// Allocates a CPU bitmap for an instance according to the given CPU number.

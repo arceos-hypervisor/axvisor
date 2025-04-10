@@ -1,6 +1,14 @@
-use std::os::arceos;
+use core::sync::atomic::AtomicUsize;
+use core::sync::atomic::Ordering;
 
-use arceos::modules::{axalloc, axhal};
+use std::os::arceos;
+use std::thread;
+
+use arceos::api::config::SMP;
+use arceos::api::task::{AxCpuMask, ax_set_current_affinity};
+use arceos::modules::axhal::arch::wait_for_irqs;
+use arceos::modules::axhal::cpu::{this_cpu_id, this_cpu_is_reserved};
+use arceos::modules::{axalloc, axhal, axtask};
 
 use memory_addr::{PAGE_SIZE_4K, align_up_4k};
 
@@ -10,6 +18,10 @@ use axvcpu::{AxArchVCpu, AxVCpuHal};
 use axvm::{AxVMHal, AxVMPerCpu};
 
 use crate::vmm::VCpuRef;
+use crate::vmm::config::descrease_instance_cpus;
+use crate::vmm::config::{get_instance_cpus, get_reserved_cpus};
+
+pub(crate) const KERNEL_STACK_SIZE: usize = 0x40000; // 256 KiB
 
 /// Implementation for `AxVMHal` trait.
 pub struct AxVMHalImpl;
@@ -89,51 +101,138 @@ impl AxVCpuHal for AxVCpuHalImpl {
 static mut AXVM_PER_CPU: AxVMPerCpu<AxVCpuHalImpl> = AxVMPerCpu::<AxVCpuHalImpl>::new_uninit();
 
 /// Init hardware virtualization support in each core.
+///
+/// It will spawn a task on each core to enable virtualization.
 pub(crate) fn enable_virtualization() {
-    use core::sync::atomic::AtomicUsize;
-    use core::sync::atomic::Ordering;
-
-    use std::thread;
-
-    use arceos::api::config;
-    use arceos::api::task::{AxCpuMask, ax_set_current_affinity};
-    use arceos::modules::axhal::cpu::this_cpu_id;
-
     static CORES: AtomicUsize = AtomicUsize::new(0);
 
-    for cpu_id in 0..config::SMP {
-        thread::spawn(move || {
-            // Initialize cpu affinity here.
-            assert!(
-                ax_set_current_affinity(AxCpuMask::one_shot(cpu_id)).is_ok(),
-                "Initialize CPU affinity failed!"
-            );
+    for cpu_id in 0..SMP {
+        // Avoid to use `thread::spawn` and `ax_set_current_affinity` here,
+        // in case "irq" is not enabled and the system result in deadlock.
+        let mut task = axtask::TaskInner::new(
+            move || {
+                assert_eq!(
+                    cpu_id,
+                    this_cpu_id(),
+                    "CPU ID mismatch when enabling virtualization"
+                );
 
-            #[cfg(feature = "irq")]
-            crate::vmm::init_timer_percpu();
+                #[cfg(feature = "irq")]
+                crate::vmm::init_timer_percpu();
 
-            let percpu = unsafe { AXVM_PER_CPU.current_ref_mut_raw() };
-            percpu
-                .init(this_cpu_id())
-                .expect("Failed to initialize percpu state");
-            percpu
-                .hardware_enable()
-                .expect("Failed to enable virtualization");
+                let percpu = unsafe { AXVM_PER_CPU.current_ref_mut_raw() };
+                percpu
+                    .init(this_cpu_id())
+                    .expect("Failed to initialize percpu state");
+                percpu
+                    .hardware_enable()
+                    .expect("Failed to enable virtualization");
 
-            info!("Hardware virtualization support enabled on core {}", cpu_id);
+                info!("Hardware virtualization support enabled on core {}", cpu_id);
 
-            let _ = CORES.fetch_add(1, Ordering::Release);
-        });
+                let _ = CORES.fetch_add(1, Ordering::Release);
+            },
+            format!("Cpu[{}]-Enable-Virt", cpu_id),
+            KERNEL_STACK_SIZE,
+        );
+
+        // Set the CPU affinity for the task,
+        // so that it can run on the specified CPU core directly without migration.
+        task.set_cpumask(AxCpuMask::from_raw_bits(1 << cpu_id));
+        let _ = axtask::spawn_task(task);
     }
 
     // Wait for all cores to enable virtualization.
-    while CORES.load(Ordering::Acquire) != config::SMP {
+    while CORES.load(Ordering::Acquire) != SMP {
         // Use `yield_now` instead of `core::hint::spin_loop` to avoid deadlock.
         thread::yield_now();
     }
 }
 
+/// Disable virtualization on remaining cores.
+/// This function should be called when the hypervisor is shutting down,
+/// and the current core is not reserved for the hypervisor.
+///
+/// It will spawn a task on each core to disable virtualization.
+pub(crate) fn disable_virtualization_on_remaining_cores() -> AxResult {
+    let reserved_cpus = get_reserved_cpus();
+
+    debug!("Reserved CPUs: {}", reserved_cpus);
+
+    // Disable virtualization on remaining cores.
+    for cpu_id in reserved_cpus..SMP {
+        // Avoid to use `thread::spawn` and `ax_set_current_affinity` here,
+        // in case "irq" is not enabled and the system result in deadlock.
+        let mut task = axtask::TaskInner::new(
+            move || {
+                assert_eq!(
+                    cpu_id,
+                    this_cpu_id(),
+                    "CPU ID mismatch when disabling virtualization"
+                );
+
+                assert!(
+                    !this_cpu_is_reserved(),
+                    "Reserved CPU {} is trying to disable virtualization",
+                    cpu_id
+                );
+
+                info!("Trying to disable instance CPU {}", cpu_id);
+
+                // TODO: we need to handle tasks on this Core.
+
+                let percpu = unsafe { AXVM_PER_CPU.current_ref_mut_raw() };
+                percpu
+                    .hardware_disable()
+                    .expect("Failed to disable virtualization");
+
+                descrease_instance_cpus();
+                info!("Hardware virtualization disabled on core {}", cpu_id);
+
+                // Enter WFI state actively waiting for this core to be shutdown.
+                // See `axhal::shutdown_secondary_cpus()` for more details.
+                loop {
+                    wait_for_irqs();
+                }
+            },
+            format!("Cpu[{}]-Disable-Virt", cpu_id),
+            KERNEL_STACK_SIZE,
+        );
+
+        // Set the CPU affinity for the task,
+        // so that it can run on the specified CPU core directly without migration.
+        task.set_cpumask(AxCpuMask::from_raw_bits(1 << cpu_id));
+
+        debug!(
+            "Spawning thread to disable virtualization on core {}",
+            cpu_id
+        );
+
+        let _ = axtask::spawn_task(task);
+    }
+
+    // Wait for all instance cores to disable virtualization.
+    while get_instance_cpus() > 0 {
+        // DO NOT need to use `yield_now` here,
+        // because current task is not running on instance cores.
+        core::hint::spin_loop();
+    }
+
+    // Shutdown all secondary CPUs.
+    axhal::shutdown_secondary_cpus();
+
+    info!("All secondary CPUs are shutdown");
+
+    Ok(())
+}
+
+/// Disable virtualization on the current core.
+/// This function should be called when the hypervisor is shutting down,
+/// and the current core is reserved for the hypervisor.
+/// It will unbind the vCPU from the core and restore the host context.
 pub(crate) fn disable_virtualization(vcpu: VCpuRef, ret_code: usize) -> AxResult {
+    assert!(this_cpu_is_reserved(), "This CPU is not reserved");
+
     let percpu = unsafe { AXVM_PER_CPU.current_ref_mut_raw() };
 
     let cpu_id = percpu
@@ -147,7 +246,9 @@ pub(crate) fn disable_virtualization(vcpu: VCpuRef, ret_code: usize) -> AxResult
     );
 
     vcpu.set_return_value(ret_code);
-    let host_ctx = vcpu.get_arch_vcpu().load_host()?;
+
+    let mut host_ctx = axhal::get_linux_context_list()[this_cpu_id() as usize].clone();
+    vcpu.get_arch_vcpu().load_host(&mut host_ctx)?;
     vcpu.unbind()?;
     percpu.hardware_disable()?;
     host_ctx.restore();

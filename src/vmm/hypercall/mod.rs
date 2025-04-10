@@ -1,6 +1,9 @@
-use core::sync::atomic::{AtomicUsize, Ordering};
-
 use alloc::sync::Arc;
+use core::sync::atomic::{AtomicUsize, Ordering};
+use std::os::arceos;
+
+use arceos::modules::axhal;
+
 use bit_field::BitField;
 use numeric_enum_macro::numeric_enum;
 
@@ -15,7 +18,10 @@ numeric_enum! {
     #[repr(u32)]
     #[derive(Eq, PartialEq, Copy, Clone)]
     pub enum HyperCallCode {
+        /// Disable the hypervisor.
         HypervisorDisable = 0,
+        /// Prepare to disable the hypervisor, map the hypervisor memory to the guest.
+        HyperVisorPrepareDisable = 1,
         HDebug = HYPER_CALL_CODE_PRIVILEGED_MASK | 0,
         HCreateInstance = HYPER_CALL_CODE_PRIVILEGED_MASK | 1,
         HCreateInitProcess = HYPER_CALL_CODE_PRIVILEGED_MASK | 2,
@@ -29,6 +35,9 @@ impl core::fmt::Debug for HyperCallCode {
         write!(f, "(")?;
         match self {
             HyperCallCode::HypervisorDisable => write!(f, "HypervisorDisable {:#x}", *self as u32),
+            HyperCallCode::HyperVisorPrepareDisable => {
+                write!(f, "HyperVisorPrepareDisable {:#x}", *self as u32)
+            }
             HyperCallCode::HDebug => write!(f, "HDebug {:#x}", *self as u32),
             HyperCallCode::HCreateInstance => write!(f, "HCreateInstance {:#x}", *self as u32),
             HyperCallCode::HCreateInitProcess => {
@@ -135,10 +144,20 @@ impl HyperCall {
         let reserved_cpus = crate::vmm::config::get_reserved_cpus();
 
         static TRY_DISABLED_CPUS: AtomicUsize = AtomicUsize::new(0);
-        TRY_DISABLED_CPUS.fetch_add(1, Ordering::SeqCst);
+
+        if TRY_DISABLED_CPUS.fetch_add(1, Ordering::SeqCst) == 0 {
+            // We need to disable virtualization on CPUs belonging to ArceOS,
+            // then shutdown these CPUs.
+            crate::hal::disable_virtualization_on_remaining_cores()?;
+
+            // Add `1` to TRY_DISABLED_CPUS to indicate that virtualization on other CPUs
+            // has been disabled.
+            TRY_DISABLED_CPUS.fetch_add(1, Ordering::SeqCst);
+        }
 
         // Wait for all CPUs to trgger the hypervisor disable HVC from Linux.
-        while TRY_DISABLED_CPUS.load(Ordering::SeqCst) < reserved_cpus {
+        // Wait for all other CPUs to disable virtualization.
+        while TRY_DISABLED_CPUS.load(Ordering::SeqCst) < reserved_cpus + 1 {
             core::hint::spin_loop();
         }
 
@@ -172,7 +191,10 @@ impl HyperCall {
             &self.vm,
         );
 
-        let host_ctx = self.vcpu.get_arch_vcpu().load_host()?;
+        let mut host_ctx =
+            axhal::get_linux_context_list()[axhal::cpu::this_cpu_id() as usize].clone();
+
+        self.vcpu.get_arch_vcpu().load_host(&mut host_ctx)?;
 
         let instance_cpu_mask = crate::vmm::config::alloc_instance_cpus_bitmap(1);
 

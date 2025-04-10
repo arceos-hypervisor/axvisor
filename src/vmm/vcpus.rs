@@ -11,10 +11,9 @@ use axvcpu::{AxVCpuExitReason, VCpuState};
 use api::sys::ax_terminate;
 use api::task::AxCpuMask;
 
+use crate::hal::KERNEL_STACK_SIZE;
 use crate::task_ext::{TaskExt, TaskExtType};
 use crate::vmm::{VCpuRef, VMRef};
-
-const KERNEL_STACK_SIZE: usize = 0x40000; // 256 KiB
 
 /// A global static BTreeMap that holds the wait queues for vCPUs
 /// associated with their respective VMs, identified by their VM IDs.
