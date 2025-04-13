@@ -69,7 +69,7 @@ impl axaddrspace::EPTTranslator for EPTTranslatorImpl {
 
         match &axtask::current().task_ext().ext {
             TaskExtType::VM(vm) => vm.guest_phys_to_host_phys(gpa),
-            _ => None,
+            TaskExtType::LibOS => unimplemented!(),
         }
     }
 }
@@ -249,7 +249,7 @@ pub(crate) fn disable_virtualization(vcpu: VCpuRef, ret_code: usize) -> AxResult
     vcpu.set_return_value(ret_code);
 
     let mut host_ctx = axhal::get_linux_context_list()[this_cpu_id() as usize].clone();
-    vcpu.get_arch_vcpu().load_host(&mut host_ctx)?;
+    vcpu.get_arch_vcpu().load_context(&mut host_ctx)?;
     vcpu.unbind()?;
     percpu.hardware_disable()?;
     host_ctx.restore();

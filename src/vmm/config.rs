@@ -1,6 +1,6 @@
 use alloc::string::ToString;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use std::os::arceos::modules::axconfig;
+use std::os::arceos::{api::task::AxCpuMask, modules::axconfig};
 
 use spin::Mutex;
 
@@ -48,7 +48,7 @@ pub fn init_guest_vms() {
     }
 }
 
-static INSTANCE_CPU_BITMAP: Mutex<u128> = Mutex::new(0);
+static mut INSTANCE_CPU_MASK: AxCpuMask = AxCpuMask::new();
 // Cores reserved for host VM.
 static RESERVED_CPUS: AtomicUsize = AtomicUsize::new(0);
 // Cores reserved for instances.
@@ -79,9 +79,10 @@ pub fn init_host_vm() {
     // The rest CPUs are available for instances.
     // We need to ensure that the reserved CPUs' id starts from 0.
     for i in 0..axconfig::SMP {
-        if i < reserved_cpus {
-            let mut cpu_bitmap = INSTANCE_CPU_BITMAP.lock();
-            *cpu_bitmap |= 1 << i;
+        if i >= reserved_cpus {
+            unsafe {
+                INSTANCE_CPU_MASK.set(i, true);
+            }
         } else {
             break;
         }
@@ -121,31 +122,6 @@ pub fn descrease_instance_cpus() {
     INSTANCE_CPUS.fetch_sub(1, Ordering::Release);
 }
 
-/// Allocates a CPU bitmap for an instance according to the given CPU number.
-pub fn alloc_instance_cpus_bitmap(cpu_num: usize) -> u128 {
-    let mut cpu_bitmap = INSTANCE_CPU_BITMAP.lock();
-    let mut cpu_mask: u128 = 0;
-
-    for i in 0..axconfig::SMP {
-        if (*cpu_bitmap & (1 << i)) == 0 {
-            *cpu_bitmap |= 1 << i;
-            cpu_mask |= 1 << i;
-        }
-        if cpu_mask.count_ones() == cpu_num as u32 {
-            break;
-        }
-    }
-
-    // Check if we have enough CPUs available.
-    // If not, just panic for now.
-    if cpu_mask.count_ones() < cpu_num as u32 {
-        panic!("No CPU available for instance");
-    }
-    cpu_mask
-}
-
-/// Frees the CPU bitmap for an instance.
-pub fn free_instance_cpus_bitmap(cpu_mask: u128) {
-    let mut cpu_bitmap = INSTANCE_CPU_BITMAP.lock();
-    *cpu_bitmap &= !cpu_mask;
+pub fn get_instance_cpus_mask() -> &AxCpuMask {
+    unsafe { &INSTANCE_CPU_MASK }
 }

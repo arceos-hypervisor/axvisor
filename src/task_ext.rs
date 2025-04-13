@@ -2,13 +2,11 @@ use std::os::arceos::modules::axtask::def_task_ext;
 
 use crate::vmm::{VCpuRef, VMRef};
 
-use crate::libos::instance::InstanceRef;
-
 pub enum TaskExtType {
     /// The task is a VM task.
     VM(VMRef),
     /// The task is a LibOS task.
-    LibOS(InstanceRef),
+    LibOS,
 }
 
 /// Task extended data for the hypervisor.

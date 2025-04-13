@@ -78,8 +78,8 @@ pub fn vcpu_run() {
         TaskExtType::VM(vm) => {
             crate::vmm::vcpus::vm_vcpu_run(vm.clone(), curr.task_ext().vcpu.clone());
         }
-        TaskExtType::LibOS(instance) => {
-            crate::libos::libos_vcpu_run(instance.clone(), curr.task_ext().vcpu.clone());
+        TaskExtType::LibOS => {
+            crate::libos::libos_vcpu_run(curr.task_ext().vcpu.clone());
         }
     };
 }

@@ -22,9 +22,6 @@ kspin = "0.1"
 lazyinit = "0.2"
 timer_list = "0.1.0"
 
-numeric-enum-macro = "0.2"
-bit_field = "0.10"
-
 # System dependent modules provided by ArceOS.
 axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm", features = [
     "alloc",
@@ -42,6 +39,7 @@ axvm = { git = "https://github.com/arceos-hypervisor/axvm.git" }
 axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git" }
 axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git" }
 axvmconfig = { git = "https://github.com/arceos-hypervisor/axvmconfig.git", default-features = false }
+axhvc = { git = "https://github.com/arceos-hypervisor/axhvc.git" }
 
 # System independent crates provided by ArceOS, these crates could be imported by remote url. 
 crate_interface = "0.1"
@@ -72,6 +70,9 @@ axvcpu = { path = "./crates/axvcpu" }
 
 [patch."https://github.com/arceos-hypervisor/axaddrspace.git"]
 axaddrspace = { path = "./crates/axaddrspace" }
+
+[patch."https://github.com/arceos-hypervisor/axhvc.git"]
+axhvc = { path = "./crates/axhvc" }
 
 [patch.crates-io]
 memory_addr = { path = "./crates/memory_addr/memory_addr" }

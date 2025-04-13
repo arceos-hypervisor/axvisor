@@ -3,29 +3,35 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 use core::sync::atomic::AtomicBool;
+use lazyinit::LazyInit;
 use std::os::arceos::modules::axhal;
 
 use memory_addr::{MemoryAddr, PAGE_SIZE_4K, PhysAddr, is_aligned_4k};
 use page_table_entry::x86_64::X64PTE;
 use page_table_multiarch::{PagingHandler, PagingMetaData};
 
-use axaddrspace::{AddrSpace, GuestPhysAddr, GuestVirtAddr};
+use axaddrspace::{AddrSpace, GuestPhysAddr, GuestVirtAddr, HostPhysAddr};
 use axerrno::{AxResult, ax_err_type};
 use axhal::paging::PagingHandlerImpl;
 use axstd::sync::Mutex;
-use axvcpu::AxVCpuExitReason;
+use axvcpu::{AxArchVCpu, AxVCpuExitReason, VCpuState};
+use axvm::HostContext;
 
 use crate::libos::def::{ProcessMemoryRegion, ShadowPageTableMetadata};
 use crate::libos::process::{INIT_PROCESS_ID, Process, ProcessRef};
-use crate::vmm::VCpuRef;
+use crate::vmm::{VCpu, VCpuRef};
+
+// How to init gate instance
+// First, init addrspace on one core.
+// can we use remap pfn range???
+// the most simplist way is that axcli to extablish it's own mapping first, can we can copy from it's memory region.
+// Then we can reuse the `CMemoryRegion` and `ProcessMemoryRegion`.
+// Next, fork each gate process on each core.
 
 static INSTANCES: Mutex<BTreeMap<usize, InstanceRef>> = Mutex::new(BTreeMap::new());
 
 /// The reference type of a task.
 pub type InstanceRef = Arc<Instance<PagingHandlerImpl>>;
-
-#[percpu::def_percpu]
-static CURRENT_INSTANCE: MaybeUninit<InstanceRef> = MaybeUninit::uninit();
 
 pub struct Instance<H: PagingHandler> {
     id: usize,
@@ -33,8 +39,9 @@ pub struct Instance<H: PagingHandler> {
     process_regions: Vec<ProcessMemoryRegion>,
 
     running: AtomicBool,
+    entry: GuestVirtAddr,
+    ctx: HostContext,
 
-    vcpu: Mutex<VCpuRef>,
     /// For Stage-1 address translation, which translates guest virtual address to guest physical address,
     /// here we just use a direct one-to-one mapping, so this page table can be used by all processes.
     /// We need to map the page table root (in HPA) to LibOS's CR3 (in GPA) in EPT.
@@ -49,8 +56,11 @@ impl<H: PagingHandler> Instance<H> {
     pub fn new(
         id: usize,
         process_regions: Vec<ProcessMemoryRegion>,
-        vcpu: VCpuRef,
-    ) -> AxResult<Self> {
+        ctx: HostContext,
+        entry: GuestVirtAddr,
+    ) -> AxResult<Arc<Self>> {
+        debug!("Generate instance {}", id);
+
         let mut linear_addrspace = AddrSpace::new_empty(
             GuestVirtAddr::from_usize(0),
             1 << ShadowPageTableMetadata::VA_MAX_BITS,
@@ -62,11 +72,6 @@ impl<H: PagingHandler> Instance<H> {
         )?;
 
         for p_region in &process_regions {
-            if p_region.gva + p_region.size > (1 << ShadowPageTableMetadata::VA_MAX_BITS).into() {
-                // TODO: handle [vsyscall] region @ 0xffffffffff600000.
-                continue;
-            }
-
             // Map the whole address space as one-to-one mapping by 1G pages.
             // TODO: distinguish user application and LibOS address space.
             linear_addrspace.map_linear(
@@ -133,25 +138,40 @@ impl<H: PagingHandler> Instance<H> {
             }
         }
 
-        vcpu.setup(
-            // This is just a place holder,
-            // For vCpu with host context, the entry will be set as the host context's RIP.
-            GuestPhysAddr::from_usize(0),
-            init_addrspace.page_table_root(),
-            axvm::AxVCpuCreateConfig::default(),
-        )?;
-
         let mut processes = Vec::new();
         let init_process = Process::new(INIT_PROCESS_ID, init_addrspace);
         processes.push(init_process);
-        Ok(Self {
+        Ok(Arc::new(Self {
             id,
             running: AtomicBool::new(false),
             processes: Mutex::new(processes),
+            entry,
+            ctx,
             process_regions,
             linear_addrspace,
-            vcpu: Mutex::new(vcpu),
-        })
+        }))
+    }
+
+    pub fn init_gate_processes(&self) -> AxResult {
+        let instance_cpu_mask = crate::vmm::config::get_instance_cpus_mask();
+
+        let mut processes = self.processes.lock();
+
+        let first_process = processes[0];
+
+        for i in 0..crate::vmm::config::get_instance_cpus() - 1 {
+            let process = Process::new(INIT_PROCESS_ID + 1 + i, self.linear_addrspace.clone());
+            processes.push(process);
+        }
+
+        for (cpu_id, process) in instance_cpu_mask.into_iter().zip(processes.into_iter()) {
+            let vcpu = VCpu::new(cpu_id, 0, 1 << cpu_id, ())?;
+            vcpu.setup_from_context(process.addrspace().page_table_root(), self.ctx.clone())?;
+
+            crate::libos::percpu::init_instance_percore_task(cpu_id, Arc::new(vcpu));
+        }
+
+        Ok(())
     }
 
     pub fn id(&self) -> usize {
@@ -172,26 +192,35 @@ impl<H: PagingHandler> Instance<H> {
         Ok(())
     }
 
-    pub fn run_vcpu(&self) -> AxResult<AxVCpuExitReason> {
-        let vcpu = self.vcpu.lock().clone();
+    /// Translates a guest physical address to a host physical address.
+    /// Returns None if the translation fails or the address is not mapped.
+    pub fn guest_phys_to_host_phys(&self, gpa: GuestPhysAddr) -> Option<HostPhysAddr> {
+        let gva = GuestVirtAddr::from_usize(gpa.as_usize());
 
-        info!("Instance[{}] Vcpu[{}] run_vcpu()", self.id, vcpu.id());
+        // Check if the address is mapped in the linear address space.
+        // TODO: this is totally hacked, do not use it.
+        if self
+            .process_regions
+            .iter()
+            .find_map(|region| {
+                if gva >= region.gva && gva < region.gva + region.size {
+                    return Some(region);
+                }
+                None
+            })
+            .is_none()
+        {
+            warn!(
+                "Instance[{}] gpa {:#x} is not mapped in the linear address space",
+                self.id, gpa
+            );
+            return None;
+        }
 
-        vcpu.set_return_value(axhal::cpu::this_cpu_id());
-
-        vcpu.bind()?;
-
-        let exit_reason: axvcpu::AxVCpuExitReason = loop {
-            let exit_reason = vcpu.run()?;
-
-            debug!("Vcpu[{}] exit reason: {:?}", vcpu.id(), exit_reason);
-
-            break exit_reason;
-        };
-
-        vcpu.unbind()?;
-
-        Ok(exit_reason)
+        self.processes
+            .lock()
+            .iter()
+            .find_map(|process| process.translate_gva(gva).map(|(hpa, _, _)| hpa))
     }
 }
 
@@ -200,14 +229,21 @@ impl<H: PagingHandler> Instance<H> {
 pub fn create_instance(
     id: usize,
     process_regions: Vec<ProcessMemoryRegion>,
-    vcpu: VCpuRef,
+    ctx: HostContext,
+    entry: GuestVirtAddr,
 ) -> AxResult<InstanceRef> {
-    let instance = Instance::<PagingHandlerImpl>::new(id, process_regions, vcpu.clone())?;
-    let instance_ref = Arc::new(instance);
+    if INSTANCES.lock().contains_key(&id) {
+        return Err(ax_err_type!(InvalidInput, "Instance ID already exists"));
+    }
 
-    crate::libos::alloc_vcpu_task(instance_ref.clone(), vcpu);
+    let instance_ref = Instance::<PagingHandlerImpl>::new(id, process_regions, ctx, entry)?;
 
     INSTANCES.lock().insert(id, instance_ref.clone());
+
+    if id == 0 {
+        instance_ref.init_gate_processes();
+    }
+
     Ok(instance_ref)
 }
 

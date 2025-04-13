@@ -1,5 +1,4 @@
-use alloc::string::{String, ToString};
-use core::ffi::CStr;
+use axerrno::{AxResult, ax_err_type};
 
 use memory_addr::{MemoryAddr, PAGE_SIZE_4K};
 use page_table_multiarch::PageSize;
@@ -24,6 +23,18 @@ impl page_table_multiarch::PagingMetaData for ShadowPageTableMetadata {
     fn flush_tlb(_vaddr: Option<GuestVirtAddr>) {
         todo!()
     }
+}
+
+/// The structure of the memory region.
+#[repr(C, packed)]
+#[derive(Debug, Clone, Copy)]
+struct ELFMemoryRegion {
+    /// Start address of the memory region (8 bytes).
+    start: u64,
+    /// End address of the memory region (8 bytes).
+    end: u64,
+    /// Flags associated with the memory region (8 bytes).
+    flags: u64,
 }
 
 /// The structure of the memory region.
@@ -65,43 +76,68 @@ pub struct ProcessMemoryRegion {
     //      maybe we need to inject a page fault into Linux?
     // GPA to HPA mapping: may not be established by hypervisor yet.
     pub mappings: Vec<(GuestVirtAddr, Option<ProcessMemoryRegionMapping>)>,
-    pub offset: u64,
-    pub device: [i8; 8],
-    pub inode: u64,
-    pub pathname: String,
 }
 
-pub fn process_libos_memory_regions(
+impl ProcessMemoryRegion {
+    pub fn contains(&self, addr: GuestVirtAddr) -> bool {
+        self.gva <= addr && addr < self.gva.add(self.size)
+    }
+}
+
+pub fn process_elf_memory_regions(
     total_count: usize,
     pages_start_gva: usize,
     pages_count: usize,
     vcpu: &VCpuRef,
     vm: &VMRef,
-) -> Vec<ProcessMemoryRegion> {
+) -> AxResult<Vec<ProcessMemoryRegion>> {
     let mut page_index = 0;
     let mut remaining = total_count;
-
-    let mut process_regons: Vec<ProcessMemoryRegion> = Vec::new();
 
     let pages_base_gpa = vcpu
         .get_arch_vcpu()
         .guest_page_table_query(GuestVirtAddr::from_usize(pages_start_gva))
-        .unwrap()
+        .map_err(|paging_err| {
+            error!(
+                "Failed to query guest page table: {:?}, gva {:#x}",
+                paging_err, pages_start_gva
+            );
+            ax_err_type!(BadAddress, "GVA Not mapped to GPA")
+        })?
         .0;
-    let pages_base_hva = phys_to_virt(vm.guest_phys_to_host_phys(pages_base_gpa).unwrap());
+
+    let pages_base_hva =
+        phys_to_virt(vm.guest_phys_to_host_phys(pages_base_gpa).ok_or_else(|| {
+            error!("GPA {:#x} is not mapped to HPA", pages_base_gpa);
+            ax_err_type!(BadAddress, "GPA Not mapped to HPA")
+        })?);
     let pages_ptr = pages_base_hva.as_ptr() as *const usize;
     let pages_slice: &[usize] = unsafe { core::slice::from_raw_parts(pages_ptr, pages_count) };
+
+    let mut process_regions: Vec<ProcessMemoryRegion> = Vec::new();
 
     while remaining > 0 && page_index < pages_count {
         let page_base_gva = pages_slice[page_index];
         let (page_base_gpa, _flags, page_size) = vcpu
             .get_arch_vcpu()
             .guest_page_table_query(GuestVirtAddr::from_usize(page_base_gva))
-            .unwrap();
-        let page_base_hva = phys_to_virt(vm.guest_phys_to_host_phys(page_base_gpa).unwrap());
-        let region_ptr = page_base_hva.as_ptr() as *const CMemoryRegion;
+            .map_err(|paging_err| {
+                error!(
+                    "Failed to query guest page table: {:?}, gva {:#x}",
+                    paging_err, page_base_gva
+                );
+                ax_err_type!(BadAddress, "GVA Not mapped to GPA")
+            })?;
 
-        let max_memory_region_in_page = page_size as usize / core::mem::size_of::<CMemoryRegion>();
+        let page_base_hva =
+            phys_to_virt(vm.guest_phys_to_host_phys(page_base_gpa).ok_or_else(|| {
+                error!("GPA {:#x} is not mapped to HPA", page_base_gpa);
+                ax_err_type!(BadAddress, "GPA Not mapped to HPA")
+            })?);
+        let region_ptr = page_base_hva.as_ptr() as *const ELFMemoryRegion;
+
+        let max_memory_region_in_page =
+            page_size as usize / core::mem::size_of::<ELFMemoryRegion>();
 
         let regions_in_page = if remaining > max_memory_region_in_page {
             max_memory_region_in_page
@@ -113,21 +149,14 @@ pub fn process_libos_memory_regions(
             unsafe { core::slice::from_raw_parts(region_ptr, regions_in_page as usize) };
 
         for region in region_slice {
-            // Convert C strings
-            let perms = unsafe { CStr::from_ptr(region.permissions.as_ptr()).to_string_lossy() };
-            let path = unsafe { CStr::from_ptr(region.pathname.as_ptr()) }
-                .to_string_lossy()
-                .clone();
-
-            let path = if path.is_empty() {
-                "[No Path]".to_string()
-            } else {
-                path.trim_ascii().trim_end_matches('\0').to_string()
-            };
-
+            let mapping_flags =
+                MappingFlags::from_bits(region.flags as usize).ok_or_else(|| {
+                    let flags = region.flags;
+                    error!("Invalid mapping flags: {:#x}", flags);
+                    ax_err_type!(InvalidInput, "Invalid mapping flags")
+                })?;
             let region_start = GuestVirtAddr::from_usize(region.start as usize);
             let region_end = GuestVirtAddr::from_usize(region.end as usize);
-            let inode = region.inode;
 
             let mut mappings = Vec::new();
 
@@ -135,11 +164,18 @@ pub fn process_libos_memory_regions(
 
             while start < region_end {
                 match vcpu.get_arch_vcpu().guest_page_table_query(start) {
-                    Ok((gpa, _flags, page_size)) => {
+                    Ok((gpa, flags, page_size)) => {
                         if !start.is_aligned(page_size as usize) {
                             warn!(
                                 "Process memory gva {:?} is {:?} mapped but not aligned to page size {:?}",
                                 start, page_size, page_size
+                            );
+                        }
+
+                        if flags != mapping_flags {
+                            warn!(
+                                "Process memory gva {:?} is mapped with flags {:?} but expected {:?}",
+                                start, flags, mapping_flags
                             );
                         }
 
@@ -160,29 +196,11 @@ pub fn process_libos_memory_regions(
                 }
             }
 
-            // Parse flags
-            let flags = MappingFlags::from_bits_truncate(region.flags as usize);
-
-            info!(
-                "[{}] {:016x}-{:016x} {} {:?} {} \"{}\"",
-                total_count - remaining,
-                region_start,
-                region_end,
-                perms,
-                flags,
-                inode,
-                path
-            );
-
-            process_regons.push(ProcessMemoryRegion {
+            process_regions.push(ProcessMemoryRegion {
                 gva: region_start,
+                size: region_end.sub_addr(region_start),
+                flags: mapping_flags,
                 mappings,
-                size: region_end.sub_addr(region_start) as usize,
-                flags,
-                offset: region.offset,
-                device: region.device,
-                inode,
-                pathname: path,
             });
 
             remaining -= 1;
@@ -193,6 +211,5 @@ pub fn process_libos_memory_regions(
 
         page_index += 1;
     }
-
-    process_regons
+    Ok(process_regions)
 }

@@ -167,7 +167,7 @@ fn vcpu_on(vm: VMRef, vcpu_id: usize, entry_point: GuestPhysAddr, arg: usize) {
         vcpu.set_gpr(1, arg);
     }
 
-    let vcpu_task = alloc_vcpu_task(vm.clone(), vcpu);
+    let vcpu_task = vm_alloc_vcpu_task(vm.clone(), vcpu);
 
     unsafe { VM_VCPU_TASK_WAIT_QUEUE.get_mut(&vm.id()) }
         .unwrap()
@@ -190,7 +190,7 @@ fn setup_vm_primary_vcpu(vm: VMRef) {
     let primary_vcpu_id = 0;
 
     let primary_vcpu = vm.vcpu_list()[primary_vcpu_id].clone();
-    let primary_vcpu_task = alloc_vcpu_task(vm.clone(), primary_vcpu);
+    let primary_vcpu_task = vm_alloc_vcpu_task(vm.clone(), primary_vcpu);
     vm_vcpus.add_vcpu_task(primary_vcpu_task);
     unsafe {
         VM_VCPU_TASK_WAIT_QUEUE.insert(vm_id, vm_vcpus);
@@ -217,7 +217,7 @@ fn setup_vm_all_cpus(vm: VMRef) {
 
     for vcpu_id in 0..vm.vcpu_num() {
         let vcpu = vm.vcpu_list()[vcpu_id].clone();
-        let vcpu_task = alloc_vcpu_task(vm.clone(), vcpu);
+        let vcpu_task = vm_alloc_vcpu_task(vm.clone(), vcpu);
 
         unsafe {
             VM_VCPU_TASK_WAIT_QUEUE
@@ -260,7 +260,7 @@ pub fn boot_vm_cpu(vm: &VMRef) {
 ///
 /// * The task associated with the vCPU is created with a kernel stack size of 256 KiB.
 /// * The task is scheduled on the scheduler of arceos after it is spawned.
-fn alloc_vcpu_task(vm: VMRef, vcpu: VCpuRef) -> AxTaskRef {
+fn vm_alloc_vcpu_task(vm: VMRef, vcpu: VCpuRef) -> AxTaskRef {
     info!("Spawning task for VM[{}] Vcpu[{}]", vm.id(), vcpu.id());
     let mut vcpu_task: TaskInner = TaskInner::new(
         crate::vmm::vcpu_run,
