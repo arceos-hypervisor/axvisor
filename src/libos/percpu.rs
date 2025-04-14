@@ -1,31 +1,44 @@
-use core::sync::atomic::AtomicBool;
-use std::collections::btree_map::BTreeMap;
 use std::os::arceos::modules::axhal::cpu::this_cpu_id;
 use std::os::arceos::modules::{axconfig, axtask};
-use std::sync::Arc;
 
 use lazyinit::LazyInit;
 
 use axconfig::SMP;
-use axtask::{AxCpuMask, AxTaskRef, TaskInner};
+use axtask::{AxCpuMask, TaskInner};
 
-use crate::libos::instance::InstanceRef;
 use crate::task_ext::{TaskExt, TaskExtType};
-use crate::vmm::{VCpu, VCpuRef};
-
-use instance::InstanceRef;
+use crate::vmm::VCpuRef;
+use crate::vmm::config::get_instance_cpus_mask;
 
 const KERNEL_STACK_SIZE: usize = 0x40000; // 256 KiB
 
-#[derive(Default)]
 struct LibOSPerCpu {
-    vcpu: LazyInit<VCpuRef>,
-    running: AtomicBool,
+    vcpu: VCpuRef,
+    // running: AtomicBool,
 }
 
-static LIBOS_PERCPU: [LibOSPerCpu; SMP] = [LibOSPerCpu::default(); SMP];
+#[percpu::def_percpu]
+static LIBOS_PERCPU: LazyInit<LibOSPerCpu> = LazyInit::new();
 
 pub fn init_instance_percore_task(cpu_id: usize, vcpu: VCpuRef) {
+    assert!(cpu_id < SMP, "Invalid CPU ID: {}", cpu_id);
+    if !get_instance_cpus_mask().get(cpu_id) {
+        warn!(
+            "CPU {} is not in the instance CPU mask, skipping task creation",
+            cpu_id
+        );
+        return;
+    }
+
+    let remote_percpu = unsafe { LIBOS_PERCPU.remote_ref_raw(cpu_id) };
+
+    if remote_percpu.is_inited() {
+        warn!("PerCPU data for CPU {} is already initialized", cpu_id);
+        return;
+    }
+
+    remote_percpu.init_once(LibOSPerCpu { vcpu: vcpu.clone() });
+
     let mut vcpu_task: TaskInner = TaskInner::new(
         crate::vmm::vcpu_run,
         format!("ICore [{}]", cpu_id),
@@ -36,7 +49,7 @@ pub fn init_instance_percore_task(cpu_id: usize, vcpu: VCpuRef) {
 
     vcpu_task.set_cpumask(AxCpuMask::one_shot(cpu_id));
 
-    axtask::spawn_task(vcpu_task).expect("Failed to spawn vcpu task");
+    axtask::spawn_task(vcpu_task);
 }
 
 /// TODO: maybe we tend to pin each vCpu on every physical CPU.
@@ -50,16 +63,16 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
         cpu_id, vcpu_id
     );
 
-    let percpu = &LIBOS_PERCPU[cpu_id];
+    let _percpu = unsafe { LIBOS_PERCPU.current_ref_raw() };
 
     // Wait for the instance to be in the running state.
-    while !percpu.running.load(core::sync::atomic::Ordering::SeqCst) {
-        info!(
-            "Vcpu[{}] waiting for instance to be running",
-            instance_id, vcpu_id
-        );
-        core::hint::spin_loop();
-    }
+    // while !percpu.running.load(core::sync::atomic::Ordering::SeqCst) {
+    //     info!(
+    //         "Vcpu[{}] on Core [{}] waiting for instance to be running",
+    //         vcpu_id, cpu_id
+    //     );
+    //     core::hint::spin_loop();
+    // }
 
     loop {
         match vcpu.run() {

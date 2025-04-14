@@ -1,9 +1,9 @@
 use alloc::sync::Arc;
 
-use page_table_multiarch::{PageSize, PagingHandler};
+use page_table_multiarch::PagingHandler;
 
+use axaddrspace::AddrSpace;
 use axaddrspace::npt::EPTEntry;
-use axaddrspace::{AddrSpace, GuestVirtAddr, HostPhysAddr, MappingFlags};
 
 use crate::libos::def::ShadowPageTableMetadata;
 
@@ -27,22 +27,7 @@ impl<H: PagingHandler> Process<H> {
         Arc::new(Self { pid, ept_addrspace })
     }
 
-    pub fn set_pid(&mut self, pid: usize) {
-        self.pid = pid;
-    }
-
-    pub fn pid(&self) -> usize {
-        self.pid
-    }
-
     pub fn addrspace(&self) -> &AddrSpace<ShadowPageTableMetadata, EPTEntry, H> {
         &self.ept_addrspace
-    }
-
-    pub fn translate_gva(
-        &self,
-        gva: GuestVirtAddr,
-    ) -> Option<(HostPhysAddr, MappingFlags, PageSize)> {
-        self.ept_addrspace.translate(gva)
     }
 }

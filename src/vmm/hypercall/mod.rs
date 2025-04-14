@@ -1,4 +1,3 @@
-use axaddrspace::GuestVirtAddr;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use std::os::arceos;
 
@@ -79,9 +78,6 @@ impl HyperCall {
                 self.args[3],
                 self.args[4],
             ),
-            HyperCallCode::HCreateInitProcess => {
-                self.create_init_process(self.args[0], self.args[1])
-            }
             HyperCallCode::HClone => self.clone(),
             HyperCallCode::HMMAP => {
                 self.mmap(self.args[0], self.args[1], self.args[2], self.args[3])
@@ -148,26 +144,15 @@ impl HyperCall {
             &self.vm,
         )?;
 
-        let mut host_ctx =
+        let mut ctx =
             axhal::get_linux_context_list()[axhal::cpu::this_cpu_id() as usize].clone();
 
-        self.vcpu.get_arch_vcpu().load_context(&mut host_ctx)?;
+        self.vcpu.get_arch_vcpu().load_context(&mut ctx)?;
 
-        crate::libos::instance::create_instance(
-            id as usize,
-            process_regions,
-            host_ctx,
-            GuestVirtAddr::from_usize(entry as usize),
-        )?;
+        ctx.rip = entry as u64;
 
-        Ok(0)
-    }
+        crate::libos::instance::create_instance(id as usize, process_regions, ctx)?;
 
-    fn create_init_process(&self, iid: u64, pid: u64) -> HyperCallResult {
-        info!("HCreateInitProcess iid:{} pid:{}", iid, pid);
-        crate::libos::instance::manipulate_instance(iid as _, |instance| {
-            instance.create_init_process(pid as usize)
-        })?;
         Ok(0)
     }
 

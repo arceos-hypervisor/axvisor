@@ -37,29 +37,6 @@ struct ELFMemoryRegion {
     flags: u64,
 }
 
-/// The structure of the memory region.
-#[repr(C, packed)]
-struct CMemoryRegion {
-    /// Start address of the memory region (8 bytes).
-    start: u64,
-    /// End address of the memory region (8 bytes).
-    end: u64,
-    /// Access permissions (e.g., read/write/execute) and flags (e.g., private/shared),
-    /// stored as a fixed-size array of 8 bytes.
-    permissions: [i8; 8],
-    /// Offset in the mapped file (8 bytes).
-    offset: u64,
-    /// Device number (major:minor) for special files, stored as a fixed-size array of 8 bytes.
-    device: [i8; 8],
-    /// Inode number of the mapped file (8 bytes).
-    inode: u64,
-    /// Fixed-size buffer for the path: Mapped file path or region name (e.g., "[heap]"),
-    /// stored as a 256-byte array.
-    pathname: [i8; 256],
-    /// Flags associated with the memory region (8 bytes).
-    flags: u64,
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct ProcessMemoryRegionMapping {
     pub gpa: GuestPhysAddr,
@@ -76,12 +53,6 @@ pub struct ProcessMemoryRegion {
     //      maybe we need to inject a page fault into Linux?
     // GPA to HPA mapping: may not be established by hypervisor yet.
     pub mappings: Vec<(GuestVirtAddr, Option<ProcessMemoryRegionMapping>)>,
-}
-
-impl ProcessMemoryRegion {
-    pub fn contains(&self, addr: GuestVirtAddr) -> bool {
-        self.gva <= addr && addr < self.gva.add(self.size)
-    }
 }
 
 pub fn process_elf_memory_regions(

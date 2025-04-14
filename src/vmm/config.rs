@@ -2,8 +2,6 @@ use alloc::string::ToString;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use std::os::arceos::{api::task::AxCpuMask, modules::axconfig};
 
-use spin::Mutex;
-
 use axvm::config::{AxVMConfig, AxVMCrateConfig};
 
 use crate::vmm::{VM, images::load_vm_images, vm_list::push_vm};
@@ -48,7 +46,7 @@ pub fn init_guest_vms() {
     }
 }
 
-static mut INSTANCE_CPU_MASK: AxCpuMask = AxCpuMask::new();
+static mut INSTANCE_CPU_MASK: usize = 0;
 // Cores reserved for host VM.
 static RESERVED_CPUS: AtomicUsize = AtomicUsize::new(0);
 // Cores reserved for instances.
@@ -81,7 +79,7 @@ pub fn init_host_vm() {
     for i in 0..axconfig::SMP {
         if i >= reserved_cpus {
             unsafe {
-                INSTANCE_CPU_MASK.set(i, true);
+                INSTANCE_CPU_MASK = INSTANCE_CPU_MASK | (1 << i);
             }
         } else {
             break;
@@ -122,6 +120,6 @@ pub fn descrease_instance_cpus() {
     INSTANCE_CPUS.fetch_sub(1, Ordering::Release);
 }
 
-pub fn get_instance_cpus_mask() -> &AxCpuMask {
-    unsafe { &INSTANCE_CPU_MASK }
+pub fn get_instance_cpus_mask() -> AxCpuMask {
+    AxCpuMask::from_raw_bits(unsafe { INSTANCE_CPU_MASK })
 }
