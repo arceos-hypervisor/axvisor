@@ -1,6 +1,6 @@
 use alloc::string::ToString;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use std::os::arceos::{api::task::AxCpuMask, modules::axconfig};
+use std::os::arceos::{api::task::AxCpuMask, modules::axconfig, modules::axhal::hvconfig};
 
 use axvm::config::{AxVMConfig, AxVMCrateConfig};
 
@@ -59,31 +59,38 @@ pub fn init_host_vm() {
     use axvmconfig::{VmMemConfig, VmMemMappingType};
 
     let reserved_cpus = axhal::hvheader::HvHeader::get().reserved_cpus() as usize;
+    let instance_cpus = axconfig::SMP - reserved_cpus;
 
     // Set reserved CPUs.
     RESERVED_CPUS.store(reserved_cpus, Ordering::Release);
 
     // Set instance CPUs.
-    INSTANCE_CPUS.store(axconfig::SMP - reserved_cpus, Ordering::Release);
+    INSTANCE_CPUS.store(instance_cpus, Ordering::Release);
 
     info!(
         "Creating host VM...\n{} CPUS reserved\n{} CPUS available for instances",
-        reserved_cpus,
-        axconfig::SMP - reserved_cpus
+        reserved_cpus, instance_cpus
     );
 
     // Set CPU bitmap for host VM.
     // Note: The first reserved_cpus CPUs are reserved for the host VM currently.
     // The rest CPUs are available for instances.
     // We need to ensure that the reserved CPUs' id starts from 0.
+    let mut instance_cpu_cnt = 0;
     for i in 0..axconfig::SMP {
-        if i >= reserved_cpus {
+        if !hvconfig::cpu_is_reserved(i) {
             unsafe {
                 INSTANCE_CPU_MASK = INSTANCE_CPU_MASK | (1 << i);
             }
-        } else {
-            break;
+            instance_cpu_cnt += 1;
         }
+    }
+
+    if instance_cpu_cnt != instance_cpus {
+        error!(
+            "CPU mask does not match instance CPU count: {} != {}",
+            instance_cpu_cnt, instance_cpus
+        );
     }
 
     let mut host_vm_cfg = AxVMConfig::new_host(0, "host".to_string(), reserved_cpus);

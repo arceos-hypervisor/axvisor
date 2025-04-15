@@ -73,7 +73,12 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
     //     );
     //     core::hint::spin_loop();
     // }
-
+    vcpu.bind()
+        .inspect_err(|err| {
+            error!("Vcpu[{}] bind error: {:?}", vcpu_id, err);
+            return;
+        })
+        .unwrap();
     loop {
         match vcpu.run() {
             Ok(exit_reason) => {
@@ -87,4 +92,9 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
             }
         }
     }
+    vcpu.unbind()
+        .inspect_err(|err| {
+            error!("Vcpu[{}] unbind error: {:?}", vcpu_id, err);
+        })
+        .unwrap();
 }

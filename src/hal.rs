@@ -17,6 +17,7 @@ use axerrno::{AxResult, ax_err_type};
 use axvcpu::{AxArchVCpu, AxVCpuHal};
 use axvm::{AxVMHal, AxVMPerCpu};
 
+use crate::libos::instance::get_instances_by_id;
 use crate::vmm::VCpuRef;
 use crate::vmm::config::descrease_instance_cpus;
 use crate::vmm::config::{get_instance_cpus, get_reserved_cpus};
@@ -69,7 +70,7 @@ impl axaddrspace::EPTTranslator for EPTTranslatorImpl {
 
         match &axtask::current().task_ext().ext {
             TaskExtType::VM(vm) => vm.guest_phys_to_host_phys(gpa),
-            TaskExtType::LibOS => unimplemented!(),
+            TaskExtType::LibOS => get_instances_by_id(0).unwrap().guest_phys_to_host_phys(gpa),
         }
     }
 }
@@ -211,11 +212,20 @@ pub(crate) fn disable_virtualization_on_remaining_cores() -> AxResult {
         let _ = axtask::spawn_task(task);
     }
 
+    use axhal::time::wall_time;
+    use core::time::Duration;
+
+    let deadline = wall_time() + Duration::from_secs(2);
+
     // Wait for all instance cores to disable virtualization.
     while get_instance_cpus() > 0 {
         // DO NOT need to use `yield_now` here,
         // because current task is not running on instance cores.
         core::hint::spin_loop();
+        if axhal::time::wall_time() > deadline {
+            warn!("Timeout waiting for instance cores to disable virtualization");
+            break;
+        }
     }
 
     // Shutdown all secondary CPUs.

@@ -7,12 +7,13 @@ use memory_addr::{MemoryAddr, PAGE_SIZE_4K, PhysAddr, is_aligned_4k};
 use page_table_entry::x86_64::X64PTE;
 use page_table_multiarch::{PagingHandler, PagingMetaData};
 
-use axaddrspace::{AddrSpace, GuestVirtAddr};
+use axaddrspace::{AddrSpace, GuestPhysAddr, GuestVirtAddr, MappingFlags};
 use axerrno::{AxResult, ax_err_type};
 use axhal::paging::PagingHandlerImpl;
 use axstd::sync::Mutex;
 use axvm::HostContext;
 
+use crate::hal::KERNEL_STACK_SIZE;
 use crate::libos::def::{ProcessMemoryRegion, ShadowPageTableMetadata};
 use crate::libos::process::{INIT_PROCESS_ID, Process, ProcessRef};
 use crate::vmm::VCpu;
@@ -35,40 +36,79 @@ pub struct Instance<H: PagingHandler> {
     processes: Mutex<Vec<ProcessRef<H>>>,
 
     ctx: HostContext,
-
-    /// For Stage-1 address translation, which translates guest virtual address to guest physical address,
-    /// here we just use a direct one-to-one mapping, so this page table can be used by all processes.
-    /// We need to map the page table root (in HPA) to LibOS's CR3 (in GPA) in EPT.
-    linear_addrspace: AddrSpace<ShadowPageTableMetadata, X64PTE, H>,
+    // / For Stage-1 address translation, which translates guest virtual address to guest physical address,
+    // / here we just use a direct one-to-one mapping, so this page table can be used by all processes.
+    // / We need to map the page table root (in HPA) to LibOS's CR3 (in GPA) in EPT.
+    // linear_addrspace: AddrSpace<ShadowPageTableMetadata, X64PTE, H>,
 }
 
 impl<H: PagingHandler> Instance<H> {
     pub fn new(
         id: usize,
         elf_regions: Vec<ProcessMemoryRegion>,
-        ctx: HostContext,
+        mut ctx: HostContext,
     ) -> AxResult<Arc<Self>> {
         debug!("Generate instance {}", id);
 
-        let mut linear_addrspace = AddrSpace::new_empty(
-            GuestVirtAddr::from_usize(0),
-            1 << ShadowPageTableMetadata::VA_MAX_BITS,
-        )?;
+        // // Process first-level PT.
+        // let mut linear_addrspace = AddrSpace::new_empty(
+        //     GuestVirtAddr::from_usize(0),
+        //     1 << ShadowPageTableMetadata::VA_MAX_BITS,
+        // )?;
 
+        let cr3_value = 0x4000_0000; // PGD
+        let cr3_first_pud = 0x4000_1000; // PUD
+
+        let stack_top = GuestVirtAddr::from_usize(0xe000_0000);
+
+        // Process second-level PT.
         let mut init_addrspace = AddrSpace::new_empty(
             GuestVirtAddr::from_usize(0),
             1 << ShadowPageTableMetadata::VA_MAX_BITS,
         )?;
 
+        init_addrspace.map_alloc(
+            GuestVirtAddr::from_usize(cr3_value),
+            PAGE_SIZE_4K,
+            MappingFlags::READ | MappingFlags::WRITE,
+            true,
+        )?;
+        init_addrspace.map_alloc(
+            GuestVirtAddr::from(cr3_first_pud),
+            PAGE_SIZE_4K,
+            MappingFlags::READ | MappingFlags::WRITE,
+            true,
+        )?;
+
+        let (cr3_hpa, _flags, _pgsize) = init_addrspace
+            .translate(GuestVirtAddr::from_usize(cr3_value))
+            .expect(alloc::format!("GVA {:#x} not mapped", cr3_value).as_str());
+        let (cr3_first_pud_hpa, _flags, _pgsize) = init_addrspace
+            .translate(GuestVirtAddr::from_usize(cr3_first_pud))
+            .expect(alloc::format!("GVA {:#x} not mapped", cr3_first_pud).as_str());
+
+        unsafe {
+            H::phys_to_virt(cr3_hpa)
+                .as_mut_ptr_of::<u64>()
+                .write(cr3_first_pud as u64 | 0x3);
+            H::phys_to_virt(cr3_first_pud_hpa)
+                .as_mut_ptr_of::<u64>()
+                .write(0x83);
+            H::phys_to_virt(cr3_first_pud_hpa)
+                .as_mut_ptr_of::<u64>()
+                .offset(1)
+                .write(0x83);
+        }
+
         for p_region in &elf_regions {
-            // Map the whole address space as one-to-one mapping by 1G pages.
-            // TODO: distinguish user application and LibOS address space.
-            linear_addrspace.map_linear(
-                p_region.gva,
-                PhysAddr::from_usize(p_region.gva.as_usize()),
-                p_region.size,
-                p_region.flags,
-            )?;
+            // // Map the whole address space as one-to-one mapping by 1G pages.
+            // // TODO: distinguish user application and LibOS address space.
+            // linear_addrspace.map_linear(
+            //     p_region.gva,
+            //     PhysAddr::from_usize(p_region.gva.as_usize()),
+            //     p_region.size,
+            //     p_region.flags,
+            // )?;
 
             if !p_region.gva.is_aligned_4k() || !is_aligned_4k(p_region.size) {
                 warn!(
@@ -128,6 +168,15 @@ impl<H: PagingHandler> Instance<H> {
             }
         }
 
+        init_addrspace.map_alloc(
+            stack_top,
+            0x1000,
+            MappingFlags::READ | MappingFlags::WRITE,
+            true,
+        )?;
+        ctx.cr3 = cr3_value as u64;
+        ctx.rsp = stack_top.as_usize() as u64 + 0x1000 as u64 - 1;
+
         let mut processes = Vec::new();
         let init_process = Process::new(INIT_PROCESS_ID, init_addrspace);
         processes.push(init_process);
@@ -135,7 +184,7 @@ impl<H: PagingHandler> Instance<H> {
             id,
             processes: Mutex::new(processes),
             ctx,
-            linear_addrspace,
+            // linear_addrspace,
         }))
     }
 
@@ -143,9 +192,13 @@ impl<H: PagingHandler> Instance<H> {
         info!("Instance {}: init gate processes", self.id());
 
         let instance_cpu_mask = get_instance_cpus_mask();
+        let cpu_ids: Vec<usize> = instance_cpu_mask.into_iter().collect();
+
+        if cpu_ids.len() != get_instance_cpus() {
+            return Err(ax_err_type!(InvalidData, "Incorrect CPU mask"));
+        }
 
         let mut processes = self.processes.lock();
-        let cpu_ids: Vec<usize> = instance_cpu_mask.into_iter().collect();
 
         let first_process = processes[0].clone();
 
@@ -169,6 +222,13 @@ impl<H: PagingHandler> Instance<H> {
     pub fn id(&self) -> usize {
         self.id
     }
+
+    pub fn guest_phys_to_host_phys(&self, gpa: GuestPhysAddr) -> Option<PhysAddr> {
+        self.processes.lock()[0]
+            .addrspace()
+            .translate(GuestVirtAddr::from_usize(gpa.as_usize()))
+            .map(|(hpa, _, _)| hpa)
+    }
 }
 
 /// Create a new instance.
@@ -176,7 +236,7 @@ impl<H: PagingHandler> Instance<H> {
 pub fn create_instance(
     id: usize,
     process_regions: Vec<ProcessMemoryRegion>,
-    ctx: HostContext,
+    mut ctx: HostContext,
 ) -> AxResult<InstanceRef> {
     if INSTANCES.lock().contains_key(&id) {
         return Err(ax_err_type!(InvalidInput, "Instance ID already exists"));
@@ -191,4 +251,8 @@ pub fn create_instance(
     }
 
     Ok(instance_ref)
+}
+
+pub fn get_instances_by_id(id: usize) -> Option<InstanceRef> {
+    INSTANCES.lock().get(&id).cloned()
 }
