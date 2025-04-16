@@ -3,6 +3,8 @@ pub mod instance;
 mod percpu;
 pub mod process;
 mod region;
-mod eaddrspace;
+
+mod gaddrspace;
+mod gpt;
 
 pub use percpu::libos_vcpu_run;

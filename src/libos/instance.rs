@@ -20,7 +20,7 @@ use crate::libos::process::{INIT_PROCESS_ID, Process, ProcessRef};
 use crate::vmm::VCpu;
 use crate::vmm::config::{get_instance_cpus, get_instance_cpus_mask};
 
-use super::eaddrspace::GuestAddrSpace;
+use super::gaddrspace::GuestAddrSpace;
 
 // How to init gate instance
 // First, init addrspace on one core.
@@ -36,9 +36,12 @@ pub type InstanceRef = Arc<Instance<PagingHandlerImpl>>;
 
 pub struct Instance<H: PagingHandler> {
     id: usize,
-    processes: Mutex<Vec<ProcessRef<H>>>,
+    pub processes: Mutex<Vec<ProcessRef<H>>>,
     ctx: HostContext,
 }
+
+const USER_STACK_SIZE: usize = 4096 * 4; // 16K
+const USER_STACK_BASE: usize = 0x400_000 - USER_STACK_SIZE;
 
 impl<H: PagingHandler> Instance<H> {
     pub fn new(
@@ -52,15 +55,6 @@ impl<H: PagingHandler> Instance<H> {
         let mut init_addrspace = GuestAddrSpace::new()?;
 
         for p_region in &elf_regions {
-            // // Map the whole address space as one-to-one mapping by 1G pages.
-            // // TODO: distinguish user application and LibOS address space.
-            // linear_addrspace.map_linear(
-            //     p_region.gva,
-            //     PhysAddr::from_usize(p_region.gva.as_usize()),
-            //     p_region.size,
-            //     p_region.flags,
-            // )?;
-
             if !p_region.gva.is_aligned_4k() || !is_aligned_4k(p_region.size) {
                 warn!(
                     "Process memory region [{:?} - {:?}] {:?} is not aligned to 4K, skipping",
@@ -72,6 +66,13 @@ impl<H: PagingHandler> Instance<H> {
             }
 
             for (p_gva, mapping) in &p_region.mappings {
+                debug!(
+                    "Processing instance memory region GVA [{:?} - {:?}] {:?}",
+                    p_region.gva,
+                    p_region.gva + p_region.size,
+                    p_region.flags
+                );
+
                 if let Some(mapping) = mapping {
                     if mapping.hpa.is_none() {
                         error!(
@@ -84,30 +85,21 @@ impl<H: PagingHandler> Instance<H> {
                         continue;
                     }
 
-                    // // Map as populated mapping to ensure that the memory mapping is established.
-                    // init_addrspace.map_alloc(
-                    //     *p_gva,
-                    //     mapping.page_size as usize,
-                    //     p_region.flags,
-                    //     true,
-                    // )?;
+                    // Map as populated mapping to ensure that the memory mapping is established.
+                    init_addrspace.guest_map_alloc(
+                        *p_gva,
+                        mapping.page_size as usize,
+                        p_region.flags,
+                        true,
+                    )?;
 
-                    // let host_region_hpa = mapping.hpa.unwrap();
-                    // let (instance_region_hpa, _flags, instance_page_size) = init_addrspace
-                    //     .translate(*p_gva)
-                    //     .expect(alloc::format!("GVA {:#x} not mapped", p_gva).as_str());
-                    // assert_eq!(
-                    //     instance_page_size, mapping.page_size,
-                    //     "Page size mismatch: {:?} != {:?}",
-                    //     instance_page_size, mapping.page_size
-                    // );
-                    // unsafe {
-                    //     core::ptr::copy_nonoverlapping(
-                    //         H::phys_to_virt(host_region_hpa).as_ptr(),
-                    //         H::phys_to_virt(instance_region_hpa).as_mut_ptr(),
-                    //         mapping.page_size as usize,
-                    //     )
-                    // };
+                    let host_region_hpa = mapping.hpa.unwrap();
+
+                    init_addrspace.guest_memcpy(
+                        H::phys_to_virt(host_region_hpa),
+                        *p_gva,
+                        mapping.page_size.into(),
+                    )?;
                 } else {
                     warn!(
                         "Process memory region [{:?} - {:?}] {:?} is not mapped by Linux, skipping",
@@ -119,14 +111,15 @@ impl<H: PagingHandler> Instance<H> {
             }
         }
 
-        // init_addrspace.map_alloc(
-        //     stack_top,
-        //     0x1000,
-        //     MappingFlags::READ | MappingFlags::WRITE,
-        //     true,
-        // )?;
-        // ctx.cr3 = cr3_value as u64;
-        // ctx.rsp = stack_top.as_usize() as u64 + 0x1000 as u64 - 1;
+        init_addrspace.guest_map_alloc(
+            GuestVirtAddr::from_usize(USER_STACK_BASE),
+            USER_STACK_SIZE,
+            MappingFlags::READ | MappingFlags::WRITE | MappingFlags::USER,
+            true,
+        )?;
+
+        ctx.cr3 = init_addrspace.guest_page_table_root_gpa().as_usize() as u64;
+        ctx.rsp = (USER_STACK_BASE + USER_STACK_SIZE) as u64;
 
         let mut processes = Vec::new();
         let init_process = Process::new(INIT_PROCESS_ID, init_addrspace);
@@ -135,7 +128,6 @@ impl<H: PagingHandler> Instance<H> {
             id,
             processes: Mutex::new(processes),
             ctx,
-            // linear_addrspace,
         }))
     }
 
@@ -162,7 +154,7 @@ impl<H: PagingHandler> Instance<H> {
             let cpu_id = cpu_ids[i];
 
             let vcpu = VCpu::new(cpu_id, 0, Some(1 << cpu_id), ())?;
-            vcpu.setup_from_context(processes[i].addrspace().page_table_root(), self.ctx.clone())?;
+            vcpu.setup_from_context(processes[i].addrspace().ept_root_hpa(), self.ctx.clone())?;
 
             crate::libos::percpu::init_instance_percore_task(cpu_id, Arc::new(vcpu));
         }

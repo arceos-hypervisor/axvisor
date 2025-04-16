@@ -1,0 +1,731 @@
+use alloc::vec::Vec;
+use core::fmt;
+use std::collections::btree_map::BTreeMap;
+use std::os::arceos::modules::axhal::trap::PAGE_FAULT;
+
+use axerrno::{AxError, AxResult, ax_err, ax_err_type};
+use memory_addr::{
+    AddrRange, MemoryAddr, PAGE_SIZE_2M, PAGE_SIZE_4K, PageIter4K, PhysAddr, is_aligned_4k,
+};
+use page_table_multiarch::{
+    GenericPTE, MappingFlags, PageSize, PageTable64, PagingError, PagingHandler, PagingMetaData,
+    PagingResult,
+};
+
+use axaddrspace::npt::EPTMetadata;
+use axaddrspace::{AddrSpace, GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr};
+
+use super::gpt::{ENTRY_COUNT, MoreGenericPTE, p1_index, p2_index, p3_index, p4_index, p5_index};
+
+const GUEST_MEM_REGION_BASE: GuestPhysAddr = GuestPhysAddr::from_usize(0);
+
+// Copy from `axmm`.
+fn paging_err_to_ax_err(err: PagingError) -> AxError {
+    warn!("Paging error: {:?}", err);
+    match err {
+        PagingError::NoMemory => AxError::NoMemory,
+        PagingError::NotAligned => AxError::InvalidInput,
+        PagingError::NotMapped => AxError::NotFound,
+        PagingError::AlreadyMapped => AxError::AlreadyExists,
+        PagingError::MappedToHugePage => AxError::InvalidInput,
+    }
+}
+
+/// The virtual memory address space.
+pub struct GuestAddrSpace<
+    M: PagingMetaData,
+    EPTE: GenericPTE,
+    GPTE: MoreGenericPTE,
+    H: PagingHandler,
+> {
+    ept_addrspace: AddrSpace<M, EPTE, H>,
+    /// Manage LibOS's memory addrspace at 2MB granularity.
+    current_region_base: GuestPhysAddr,
+    huge_page_num: usize,
+
+    // These two indexed should be synchronized with guest LibOS somehow.
+    mem_pos: usize,  // Incremented from 0.
+    page_pos: usize, // Decremented from 0x1FF.
+
+    // Below are used for guest addrspace.
+    gva_range: AddrRange<GuestVirtAddr>,
+    gva_areas: BTreeMap<GuestVirtAddr, (AddrRange<GuestVirtAddr>, MappingFlags)>,
+    /// Guest Page Table
+    guest_root_gpa: GuestPhysAddr,
+    levels: usize,
+
+    phontom: core::marker::PhantomData<GPTE>,
+}
+
+impl<
+    M: PagingMetaData<VirtAddr = GuestPhysAddr>,
+    EPTE: GenericPTE,
+    GPTE: MoreGenericPTE<PhysAddr = GuestPhysAddr>,
+    H: PagingHandler,
+> GuestAddrSpace<M, EPTE, GPTE, H>
+{
+    pub fn clone(&self) -> AxResult<Self> {
+        let cloned_aspace = Self::new()?;
+
+        Ok(cloned_aspace)
+    }
+}
+
+impl<
+    M: PagingMetaData<VirtAddr = GuestPhysAddr>,
+    EPTE: GenericPTE,
+    GPTE: MoreGenericPTE<PhysAddr = GuestPhysAddr>,
+    H: PagingHandler,
+> GuestAddrSpace<M, EPTE, GPTE, H>
+{
+    /// Creates a new guest address space.
+    pub fn new() -> AxResult<Self> {
+        let mut ept_addrspace = AddrSpace::new_empty(
+            GuestPhysAddr::from_usize(0),
+            1 << <EPTMetadata as PagingMetaData>::VA_MAX_BITS,
+        )?;
+
+        ept_addrspace.map_alloc(
+            GUEST_MEM_REGION_BASE,
+            PAGE_SIZE_2M,
+            MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
+            true,
+        )?;
+
+        let mem_pos = 0;
+
+        // Use last page in first 2MB region for guest page table root.
+        let page_pos = 0x200 - 2;
+        let guest_root_gpa = GUEST_MEM_REGION_BASE + PAGE_SIZE_4K * (page_pos + 1);
+
+        let mut guest_addrspace = Self {
+            ept_addrspace,
+            current_region_base: GUEST_MEM_REGION_BASE,
+            huge_page_num: 1,
+            mem_pos,
+            page_pos,
+            gva_range: AddrRange::from_start_size(
+                GuestVirtAddr::from_usize(0),
+                1 << <EPTMetadata as PagingMetaData>::VA_MAX_BITS,
+            ),
+            gva_areas: BTreeMap::new(),
+            guest_root_gpa,
+            levels: M::LEVELS,
+            phontom: core::marker::PhantomData,
+        };
+
+        Ok(guest_addrspace)
+    }
+
+    pub fn ept_root_hpa(&self) -> HostPhysAddr {
+        self.ept_addrspace.page_table_root()
+    }
+
+    pub fn translate(&self, gpa: M::VirtAddr) -> Option<(HostPhysAddr, MappingFlags, PageSize)> {
+        self.ept_addrspace.translate(gpa)
+    }
+
+    pub fn guest_map_alloc(
+        &mut self,
+        start: GuestVirtAddr,
+        size: usize,
+        flags: MappingFlags,
+        populate: bool,
+    ) -> AxResult {
+        let mapped_gva_range = AddrRange::from_start_size(start, size);
+
+        debug!(
+            "guest_map_alloc [{:?}],({:#x} {:?}, {})",
+            mapped_gva_range, size, flags, populate
+        );
+
+        if !self.gva_range.contains_range(mapped_gva_range) {
+            return ax_err!(
+                InvalidInput,
+                alloc::format!("GVA [{:?}~{:?}] out of range", start, start.add(size)).as_str()
+            );
+        }
+        if !start.is_aligned_4k() || !is_aligned_4k(size) {
+            return ax_err!(InvalidInput, "GVA not aligned");
+        }
+
+        if mapped_gva_range.is_empty() {
+            return ax_err!(InvalidInput, "GVA range is empty");
+        }
+
+        if self.gva_overlaps(mapped_gva_range) {
+            // TODO: unmap overlapping area
+            return ax_err!(AlreadyExists, "GVA range overlaps with existing area");
+        }
+
+        let mut start_addr = start;
+        let end_addr = start_addr.add(size);
+
+        if populate {
+            for addr in PageIter4K::new(start_addr, end_addr).unwrap() {
+                self.alloc_memory_frame().and_then(|gpa_frame| {
+                    self.map(addr, gpa_frame, PageSize::Size4K, flags)
+                        .map_err(paging_err_to_ax_err)
+                })?;
+            }
+        } else {
+            // Map to a empty entry for on-demand paging.
+            self.map_region(
+                start,
+                |_gva| GuestPhysAddr::from(0),
+                size,
+                MappingFlags::empty(),
+                false,
+                false,
+            )
+            .map_err(paging_err_to_ax_err)?;
+        }
+
+        assert!(
+            self.gva_areas
+                .insert(start_addr, (mapped_gva_range, flags))
+                .is_none(),
+            "GVA range already exists, something is wrong!!!"
+        );
+
+        Ok(())
+    }
+
+    pub fn guest_memcpy(&mut self, src: HostVirtAddr, dst: GuestVirtAddr, size: usize) -> AxResult {
+        debug!(
+            "guest_memcpy src: {:?} to dst: {:?} size: {:#x}",
+            src, dst, size
+        );
+
+        let mut start_addr = dst;
+        let end_addr = start_addr.add(size);
+
+        if !self.gva_range.contains(start_addr) || !self.gva_range.contains(end_addr) {
+            return ax_err!(
+                InvalidInput,
+                alloc::format!("GVA [{:?}~{:?}] out of range", start_addr, end_addr).as_str()
+            );
+        }
+
+        if size == 0 {
+            return ax_err!(InvalidInput, "GVA range is empty");
+        }
+
+        let start_addr_aligned = start_addr.align_down(PAGE_SIZE_4K);
+        let end_addr_aligned = end_addr.align_up(PAGE_SIZE_4K);
+
+        let mut remained_size = size;
+        let mut src_hva = src;
+
+        for gva in PageIter4K::new(start_addr_aligned, end_addr_aligned).unwrap() {
+            let (gpa, gflags, gpgsize) = self.query(gva).map_err(paging_err_to_ax_err)?;
+
+            warn!(
+                "Copying gva {:?} gpa {:?} gflags {:?} gpgsize {:?}",
+                gva, gpa, gflags, gpgsize
+            );
+
+            let (hpa, hflags, hpgsize) = self
+                .ept_addrspace
+                .translate(gpa)
+                .ok_or_else(|| ax_err_type!(BadAddress, "GPA not mapped"))?;
+
+            let hva = H::phys_to_virt(hpa);
+
+            warn!(
+                "Copying hpa {:?} hflags {:?} hpgsize {:?}",
+                hpa, hflags, hpgsize
+            );
+
+            warn!("Copying gva {:?} gpa {:?} hva {:?}", gva, gpa, hva);
+
+            let dst_hva = if gva == start_addr_aligned {
+                hva.add(dst.align_offset_4k())
+            } else {
+                hva
+            };
+
+            let copied_size = if gva == start_addr_aligned {
+                (PAGE_SIZE_4K - dst.align_offset_4k()).min(remained_size)
+            } else if remained_size >= PAGE_SIZE_4K {
+                PAGE_SIZE_4K
+            } else {
+                remained_size
+            };
+
+            unsafe {
+                core::ptr::copy_nonoverlapping(src_hva.as_ptr(), dst_hva.as_mut_ptr(), copied_size);
+            }
+
+            remained_size -= copied_size;
+            src_hva = src_hva.add(copied_size);
+        }
+
+        Ok(())
+    }
+}
+
+impl<
+    M: PagingMetaData<VirtAddr = GuestPhysAddr>,
+    EPTE: GenericPTE,
+    GPTE: MoreGenericPTE<PhysAddr = GuestPhysAddr>,
+    H: PagingHandler,
+> GuestAddrSpace<M, EPTE, GPTE, H>
+{
+    fn alloc_memory_frame(&mut self) -> AxResult<GuestPhysAddr> {
+        let allocated_frame_base = self.current_region_base.add(self.mem_pos * PAGE_SIZE_4K);
+        self.mem_pos += 1;
+
+        self.check_memory_region()?;
+
+        Ok(allocated_frame_base)
+    }
+
+    fn alloc_page_frame(&mut self) -> AxResult<GuestPhysAddr> {
+        let allocated_frame_base = self.current_region_base.add(self.page_pos * PAGE_SIZE_4K);
+        self.page_pos -= 1;
+
+        self.check_memory_region()?;
+
+        Ok(allocated_frame_base)
+    }
+
+    fn check_memory_region(&mut self) -> AxResult {
+        if self.mem_pos == self.page_pos {
+            self.current_region_base = self.current_region_base.add(PAGE_SIZE_2M);
+            self.huge_page_num += 1;
+            self.ept_addrspace.map_alloc(
+                self.current_region_base,
+                PAGE_SIZE_2M,
+                MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
+                true,
+            )?;
+            self.mem_pos = 0;
+            self.page_pos = 0x200 - 1;
+        }
+        Ok(())
+    }
+}
+
+impl<
+    M: PagingMetaData<VirtAddr = GuestPhysAddr>,
+    EPTE: GenericPTE,
+    GPTE: MoreGenericPTE<PhysAddr = GuestPhysAddr>,
+    H: PagingHandler,
+> GuestAddrSpace<M, EPTE, GPTE, H>
+{
+    /// Returns whether the given address range overlaps with any existing area.
+    pub fn gva_overlaps(&self, range: AddrRange<GuestVirtAddr>) -> bool {
+        if let Some((_, (before, _flags))) = self.gva_areas.range(..range.start).last() {
+            if before.overlaps(range) {
+                return true;
+            }
+        }
+        if let Some((_, (after, _flags))) = self.gva_areas.range(range.start..).next() {
+            if after.overlaps(range) {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+impl<
+    M: PagingMetaData<VirtAddr = GuestPhysAddr>,
+    EPTE: GenericPTE,
+    GPTE: MoreGenericPTE<PhysAddr = GuestPhysAddr>,
+    H: PagingHandler,
+> GuestAddrSpace<M, EPTE, GPTE, H>
+{
+    /// Get the root page table physical address.
+    pub fn guest_page_table_root_gpa(&self) -> GuestPhysAddr {
+        self.guest_root_gpa
+    }
+
+    /// Maps a virtual page to a physical frame with the given `page_size`
+    /// and mapping `flags`.
+    ///
+    /// The virtual page starts with `vaddr`, amd the physical frame starts with
+    /// `target`. If the addresses is not aligned to the page size, they will be
+    /// aligned down automatically.
+    ///
+    /// Returns [`Err(PagingError::AlreadyMapped)`](PagingError::AlreadyMapped)
+    /// if the mapping is already present.
+    pub fn map(
+        &mut self,
+        vaddr: GuestVirtAddr,
+        target: GuestPhysAddr,
+        page_size: PageSize,
+        flags: MappingFlags,
+    ) -> PagingResult {
+        debug!(
+            "GPT @[{:?}] mapping: {:?} -> {:?}, {:?}",
+            self.guest_page_table_root_gpa(),
+            vaddr,
+            target,
+            flags,
+        );
+
+        let entry = self.get_entry_mut_or_create(vaddr, page_size)?;
+        if !entry.is_unused() {
+            return Err(PagingError::AlreadyMapped);
+        }
+        *entry = MoreGenericPTE::new_page(target.align_down(page_size), flags, page_size.is_huge());
+        Ok(())
+    }
+
+    /// Unmaps the mapping starts with `vaddr`.
+    ///
+    /// Returns [`Err(PagingError::NotMapped)`](PagingError::NotMapped) if the
+    /// mapping is not present.
+    pub fn unmap(&mut self, vaddr: GuestVirtAddr) -> PagingResult<(GuestPhysAddr, PageSize)> {
+        let (entry, size) = self.get_entry_mut(vaddr)?;
+        if !entry.is_present() {
+            entry.clear();
+            return Err(PagingError::NotMapped);
+        }
+        let paddr = entry.paddr();
+        entry.clear();
+        Ok((paddr, size))
+    }
+
+    ///
+    /// Returns the physical address of the target frame, mapping flags, and
+    /// the page size.
+    ///
+    /// Returns [`Err(PagingError::NotMapped)`](PagingError::NotMapped) if the
+    /// mapping is not present.
+    pub fn query(
+        &self,
+        vaddr: GuestVirtAddr,
+    ) -> PagingResult<(GuestPhysAddr, MappingFlags, PageSize)> {
+        let (entry, size) = self.get_entry(vaddr)?;
+        if entry.is_unused() {
+            return Err(PagingError::NotMapped);
+        }
+        let off = size.align_offset(vaddr.into());
+        Ok((entry.paddr().add(off).into(), entry.flags(), size))
+    }
+
+    /// Maps a contiguous virtual memory region to a contiguous physical memory
+    /// region with the given mapping `flags`.
+    ///
+    /// The virtual and physical memory regions start with `vaddr` and `paddr`
+    /// respectively. The region size is `size`. The addresses and `size` must
+    /// be aligned to 4K, otherwise it will return [`Err(PagingError::NotAligned)`].
+    ///
+    /// When `allow_huge` is true, it will try to map the region with huge pages
+    /// if possible. Otherwise, it will map the region with 4K pages.
+    ///
+    /// When `flush_tlb_by_page` is true, it will flush the TLB immediately after
+    /// mapping each page. Otherwise, the TLB flush should by handled by the caller.
+    ///
+    /// [`Err(PagingError::NotAligned)`]: PagingError::NotAligned
+    pub fn map_region(
+        &mut self,
+        vaddr: GuestVirtAddr,
+        get_paddr: impl Fn(GuestVirtAddr) -> GuestPhysAddr,
+        size: usize,
+        flags: MappingFlags,
+        allow_huge: bool,
+        flush_tlb_by_page: bool,
+    ) -> PagingResult {
+        let mut vaddr_usize: usize = vaddr.into();
+        let mut size = size;
+        if !PageSize::Size4K.is_aligned(vaddr_usize) || !PageSize::Size4K.is_aligned(size) {
+            return Err(PagingError::NotAligned);
+        }
+        debug!(
+            "map_region({:#x}): [{:#x}, {:#x}) {:?}",
+            self.guest_page_table_root_gpa(),
+            vaddr_usize,
+            vaddr_usize + size,
+            flags,
+        );
+        while size > 0 {
+            let vaddr = vaddr_usize.into();
+            let paddr = get_paddr(vaddr);
+            let page_size = if allow_huge {
+                if PageSize::Size1G.is_aligned(vaddr_usize)
+                    && paddr.is_aligned(PageSize::Size1G)
+                    && size >= PageSize::Size1G as usize
+                {
+                    PageSize::Size1G
+                } else if PageSize::Size2M.is_aligned(vaddr_usize)
+                    && paddr.is_aligned(PageSize::Size2M)
+                    && size >= PageSize::Size2M as usize
+                {
+                    PageSize::Size2M
+                } else {
+                    PageSize::Size4K
+                }
+            } else {
+                PageSize::Size4K
+            };
+            let _tlb = self.map(vaddr, paddr, page_size, flags).inspect_err(|e| {
+                error!(
+                    "failed to map page: {:#x?}({:?}) -> {:#x?}, {:?}",
+                    vaddr_usize, page_size, paddr, e
+                )
+            })?;
+            if flush_tlb_by_page {
+                unimplemented!("flush_tlb_by_page");
+            }
+
+            vaddr_usize += page_size as usize;
+            size -= page_size as usize;
+        }
+        Ok(())
+    }
+
+    /// Walk the page table recursively.
+    ///
+    /// When reaching a page table entry, call `pre_func` and `post_func` on the
+    /// entry if they are provided. The max number of enumerations in one table
+    /// is limited by `limit`. `pre_func` and `post_func` are called before and
+    /// after recursively walking the page table.
+    ///
+    /// The arguments of `*_func` are:
+    /// - Current level (starts with `0`): `usize`
+    /// - The index of the entry in the current-level table: `usize`
+    /// - The virtual address that is mapped to the entry: `M::VirtAddr`
+    /// - The reference of the entry: [`&GPTE`](GenericPTE)
+    pub fn walk<F>(&self, limit: usize, pre_func: Option<&F>, post_func: Option<&F>) -> PagingResult
+    where
+        F: Fn(usize, usize, GuestVirtAddr, &GPTE),
+    {
+        self.walk_recursive(
+            self.table_of(self.guest_page_table_root_gpa())?,
+            0,
+            0.into(),
+            limit,
+            pre_func,
+            post_func,
+        )
+    }
+}
+
+impl<
+    M: PagingMetaData<VirtAddr = GuestPhysAddr>,
+    EPTE: GenericPTE,
+    GPTE: MoreGenericPTE<PhysAddr = GuestPhysAddr>,
+    H: PagingHandler,
+> GuestAddrSpace<M, EPTE, GPTE, H>
+{
+    fn alloc_table(&mut self) -> PagingResult<GPTE::PhysAddr> {
+        if let Ok(gpa) = self.alloc_page_frame() {
+            let (hpa, _flags, _pgsize) = self.ept_addrspace.translate(gpa).ok_or_else(|| {
+                warn!("Failed to translate GPA {:?}", gpa);
+                PagingError::NotMapped
+            })?;
+
+            let ptr = H::phys_to_virt(hpa).as_mut_ptr();
+            unsafe { core::ptr::write_bytes(ptr, 0, PAGE_SIZE_4K) };
+            Ok(gpa)
+        } else {
+            Err(PagingError::NoMemory)
+        }
+    }
+}
+
+impl<
+    M: PagingMetaData<VirtAddr = GuestPhysAddr>,
+    EPTE: GenericPTE,
+    GPTE: MoreGenericPTE<PhysAddr = GuestPhysAddr>,
+    H: PagingHandler,
+> GuestAddrSpace<M, EPTE, GPTE, H>
+{
+    fn table_of<'a>(&self, gpa: GuestPhysAddr) -> PagingResult<&'a [GPTE]> {
+        let (hpa, _flags, _pgsize) = self.ept_addrspace.translate(gpa).ok_or_else(|| {
+            warn!("Failed to translate GPA {:?}", gpa);
+            PagingError::NotMapped
+        })?;
+
+        let ptr = H::phys_to_virt(hpa).as_ptr() as _;
+
+        // debug!(
+        //     "GuestPageTable64::table_of gpa: {:?} hpa: {:?} ptr: {:p}",
+        //     gpa, hpa, ptr
+        // );
+
+        Ok(unsafe { core::slice::from_raw_parts(ptr, ENTRY_COUNT) })
+    }
+
+    fn table_of_mut<'a>(&mut self, gpa: GPTE::PhysAddr) -> PagingResult<&'a mut [GPTE]> {
+        let (hpa, _flags, _pgsize) = self.ept_addrspace.translate(gpa).ok_or_else(|| {
+            warn!("Failed to translate GPA {:?}", gpa);
+            PagingError::NotMapped
+        })?;
+
+        let ptr = H::phys_to_virt(hpa).as_mut_ptr() as _;
+        Ok(unsafe { core::slice::from_raw_parts_mut(ptr, ENTRY_COUNT) })
+    }
+
+    fn next_table<'a>(&self, entry: &GPTE) -> PagingResult<&'a [GPTE]> {
+        if !entry.is_present() {
+            Err(PagingError::NotMapped)
+        } else if entry.is_huge() {
+            Err(PagingError::MappedToHugePage)
+        } else {
+            self.table_of(entry.paddr())
+        }
+    }
+
+    fn next_table_mut<'a>(&mut self, entry: &GPTE) -> PagingResult<&'a mut [GPTE]> {
+        if entry.paddr().as_usize() == 0 {
+            Err(PagingError::NotMapped)
+        } else if entry.is_huge() {
+            Err(PagingError::MappedToHugePage)
+        } else {
+            Ok(self.table_of_mut(entry.paddr())?)
+        }
+    }
+
+    fn next_table_mut_or_create<'a>(&mut self, entry: &mut GPTE) -> PagingResult<&'a mut [GPTE]> {
+        if entry.is_unused() {
+            let paddr = self.alloc_table()?;
+            *entry = MoreGenericPTE::new_table(paddr);
+            self.table_of_mut(paddr)
+        } else {
+            self.next_table_mut(entry)
+        }
+    }
+
+    fn get_entry(&self, gva: GuestVirtAddr) -> PagingResult<(&GPTE, PageSize)> {
+        let vaddr: usize = gva.into();
+
+        let p3 = if self.levels == 3 {
+            self.table_of(self.guest_page_table_root_gpa())?
+        } else if self.levels == 4 {
+            let p4 = self.table_of(self.guest_page_table_root_gpa())?;
+            let p4e = &p4[p4_index(vaddr)];
+            self.next_table(p4e)?
+        } else {
+            // 5-level paging
+            let p5 = self.table_of(self.guest_page_table_root_gpa())?;
+            let p5e = &p5[p5_index(vaddr)];
+            if p5e.is_huge() {
+                return Err(PagingError::MappedToHugePage);
+            }
+            let p4 = self.next_table(p5e)?;
+            let p4e = &p4[p4_index(vaddr)];
+
+            if p4e.is_huge() {
+                return Err(PagingError::MappedToHugePage);
+            }
+
+            self.next_table(p4e)?
+        };
+
+        let p3e = &p3[p3_index(vaddr)];
+        if p3e.is_huge() {
+            return Ok((p3e, PageSize::Size1G));
+        }
+
+        let p2 = self.next_table(p3e)?;
+        let p2e = &p2[p2_index(vaddr)];
+        if p2e.is_huge() {
+            return Ok((p2e, PageSize::Size2M));
+        }
+
+        let p1 = self.next_table(p2e)?;
+        let p1e = &p1[p1_index(vaddr)];
+        Ok((p1e, PageSize::Size4K))
+    }
+
+    fn get_entry_mut(&mut self, vaddr: GuestVirtAddr) -> PagingResult<(&mut GPTE, PageSize)> {
+        let vaddr: usize = vaddr.into();
+        let p3 = if self.levels == 3 {
+            self.table_of_mut(self.guest_page_table_root_gpa())?
+        } else if self.levels == 4 {
+            let p4 = self.table_of_mut(self.guest_page_table_root_gpa())?;
+            let p4e = &mut p4[p4_index(vaddr)];
+            self.next_table_mut(p4e)?
+        } else {
+            unreachable!()
+        };
+        let p3e = &mut p3[p3_index(vaddr)];
+        if p3e.is_huge() {
+            return Ok((p3e, PageSize::Size1G));
+        }
+
+        let p2 = self.next_table_mut(p3e)?;
+        let p2e = &mut p2[p2_index(vaddr)];
+        if p2e.is_huge() {
+            return Ok((p2e, PageSize::Size2M));
+        }
+
+        let p1 = self.next_table_mut(p2e)?;
+        let p1e = &mut p1[p1_index(vaddr)];
+        Ok((p1e, PageSize::Size4K))
+    }
+
+    fn get_entry_mut_or_create(
+        &mut self,
+        vaddr: GuestVirtAddr,
+        page_size: PageSize,
+    ) -> PagingResult<&mut GPTE> {
+        let vaddr: usize = vaddr.into();
+        let p3 = if M::LEVELS == 3 {
+            self.table_of_mut(self.guest_page_table_root_gpa())?
+        } else if M::LEVELS == 4 {
+            let p4 = self.table_of_mut(self.guest_page_table_root_gpa())?;
+            let p4e = &mut p4[p4_index(vaddr)];
+            self.next_table_mut_or_create(p4e)?
+        } else {
+            unreachable!()
+        };
+        let p3e = &mut p3[p3_index(vaddr)];
+        if page_size == PageSize::Size1G {
+            return Ok(p3e);
+        }
+
+        let p2 = self.next_table_mut_or_create(p3e)?;
+        let p2e = &mut p2[p2_index(vaddr)];
+        if page_size == PageSize::Size2M {
+            return Ok(p2e);
+        }
+
+        let p1 = self.next_table_mut_or_create(p2e)?;
+        let p1e = &mut p1[p1_index(vaddr)];
+        Ok(p1e)
+    }
+
+    fn walk_recursive<F>(
+        &self,
+        table: &[GPTE],
+        level: usize,
+        start_vaddr: GuestVirtAddr,
+        limit: usize,
+        pre_func: Option<&F>,
+        post_func: Option<&F>,
+    ) -> PagingResult
+    where
+        F: Fn(usize, usize, GuestVirtAddr, &GPTE),
+    {
+        let start_vaddr_usize: usize = start_vaddr.into();
+        let mut n = 0;
+        for (i, entry) in table.iter().enumerate() {
+            let vaddr_usize = start_vaddr_usize + (i << (12 + (self.levels - 1 - level) * 9));
+            let vaddr = vaddr_usize.into();
+
+            if entry.is_present() {
+                if let Some(func) = pre_func {
+                    func(level, i, vaddr, entry);
+                }
+                if level < self.levels - 1 && !entry.is_huge() {
+                    let table_entry = self.next_table(entry)?;
+                    self.walk_recursive(table_entry, level + 1, vaddr, limit, pre_func, post_func)?;
+                }
+                if let Some(func) = post_func {
+                    func(level, i, vaddr, entry);
+                }
+                n += 1;
+                if n >= limit {
+                    break;
+                }
+            }
+        }
+        Ok(())
+    }
+}

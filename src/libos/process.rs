@@ -7,7 +7,8 @@ use axaddrspace::npt::{EPTEntry, EPTMetadata};
 
 use crate::libos::def::ShadowPageTableMetadata;
 
-use super::eaddrspace::{GuestAddrSpace, GuestEntry};
+use super::gaddrspace::GuestAddrSpace;
+use super::gpt::GuestEntry;
 
 pub const INIT_PROCESS_ID: usize = 0;
 
