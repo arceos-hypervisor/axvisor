@@ -1,17 +1,12 @@
-use alloc::vec::Vec;
-use core::fmt::{self, Write};
 use core::ops::AddAssign;
 use std::collections::btree_map::BTreeMap;
-use std::os::arceos::modules::axhal::trap::PAGE_FAULT;
 
 use axerrno::{AxError, AxResult, ax_err, ax_err_type};
 use memory_addr::{
-    AddrRange, MemoryAddr, PAGE_SIZE_1G, PAGE_SIZE_2M, PAGE_SIZE_4K, PageIter4K, PhysAddr,
-    is_aligned_4k,
+    AddrRange, MemoryAddr, PAGE_SIZE_1G, PAGE_SIZE_2M, PAGE_SIZE_4K, PageIter4K, is_aligned_4k,
 };
 use page_table_multiarch::{
-    GenericPTE, MappingFlags, PageSize, PageTable64, PagingError, PagingHandler, PagingMetaData,
-    PagingResult,
+    GenericPTE, MappingFlags, PageSize, PagingError, PagingHandler, PagingMetaData, PagingResult,
 };
 
 use axaddrspace::npt::EPTMetadata;
@@ -223,7 +218,7 @@ impl<
             return ax_err!(AlreadyExists, "GVA range overlaps with existing area");
         }
         match self.guest_mapping {
-            GuestMapping::One2OneMapping { page_pos } => {
+            GuestMapping::One2OneMapping { page_pos: _ } => {
                 self.ept_addrspace.map_alloc(
                     GuestPhysAddr::from_usize(start.as_usize()),
                     size,
@@ -232,13 +227,13 @@ impl<
                 )?;
             }
             GuestMapping::CoarseGrainedSegmentation {
-                mem_pos,
-                page_pos,
-                current_region_base,
-                huge_page_num,
+                mem_pos: _,
+                page_pos: _,
+                current_region_base: _,
+                huge_page_num: _,
             } => {
                 if populate {
-                    let mut start_addr = start;
+                    let start_addr = start;
                     let end_addr = start_addr.add(size);
 
                     for addr in PageIter4K::new(start_addr, end_addr).unwrap() {
@@ -278,7 +273,7 @@ impl<
             src, dst, size
         );
 
-        let mut start_addr = dst;
+        let start_addr = dst;
         let end_addr = start_addr.add(size);
 
         if !self.gva_range.contains(start_addr) || !self.gva_range.contains(end_addr) {
@@ -299,8 +294,8 @@ impl<
         let mut src_hva = src;
 
         for gva in PageIter4K::new(start_addr_aligned, end_addr_aligned).unwrap() {
-            let (gpa, gflags, gpgsize) = self.query(gva).map_err(paging_err_to_ax_err)?;
-            let (hpa, hflags, hpgsize) = self
+            let (gpa, _gflags, _gpgsize) = self.query(gva).map_err(paging_err_to_ax_err)?;
+            let (hpa, _hflags, _hpgsize) = self
                 .ept_addrspace
                 .translate(gpa)
                 .ok_or_else(|| ax_err_type!(BadAddress, "GPA not mapped"))?;
@@ -341,7 +336,7 @@ impl<
 {
     fn alloc_memory_frame(&mut self) -> AxResult<GuestPhysAddr> {
         match &mut self.guest_mapping {
-            GuestMapping::One2OneMapping { page_pos } => {
+            GuestMapping::One2OneMapping { page_pos: _ } => {
                 warn!("Do not need to check memory region for one-to-one mapping");
                 ax_err!(
                     BadState,
@@ -350,9 +345,9 @@ impl<
             }
             &mut GuestMapping::CoarseGrainedSegmentation {
                 ref mut mem_pos,
-                page_pos,
+                page_pos: _,
                 current_region_base,
-                huge_page_num,
+                huge_page_num: _,
             } => {
                 let allocated_frame_base = current_region_base.add(*mem_pos * PAGE_SIZE_4K);
                 *mem_pos += 1;
@@ -381,10 +376,10 @@ impl<
                 allocated_frame_base
             }
             &mut GuestMapping::CoarseGrainedSegmentation {
-                mem_pos,
+                mem_pos: _,
                 ref mut page_pos,
                 current_region_base,
-                huge_page_num,
+                huge_page_num: _,
             } => {
                 let allocated_frame_base = current_region_base.add(*page_pos * PAGE_SIZE_4K);
                 *page_pos -= 1;
@@ -398,7 +393,7 @@ impl<
 
     fn check_memory_region(&mut self) -> AxResult {
         match &mut self.guest_mapping {
-            &mut GuestMapping::One2OneMapping { page_pos } => {
+            &mut GuestMapping::One2OneMapping { page_pos: _ } => {
                 error!("Do not need to check memory region for one-to-one mapping");
             }
             &mut GuestMapping::CoarseGrainedSegmentation {
@@ -505,6 +500,7 @@ impl<
     ///
     /// Returns [`Err(PagingError::NotMapped)`](PagingError::NotMapped) if the
     /// mapping is not present.
+    #[allow(unused)]
     pub fn unmap(&mut self, vaddr: GuestVirtAddr) -> PagingResult<(GuestPhysAddr, PageSize)> {
         let (entry, size) = self.get_entry_mut(vaddr)?;
         if !entry.is_present() {
@@ -622,6 +618,7 @@ impl<
     /// - The index of the entry in the current-level table: `usize`
     /// - The virtual address that is mapped to the entry: `M::VirtAddr`
     /// - The reference of the entry: [`&GPTE`](GenericPTE)
+    #[allow(unused)]
     pub fn walk<F>(&self, limit: usize, pre_func: Option<&F>, post_func: Option<&F>) -> PagingResult
     where
         F: Fn(usize, usize, GuestVirtAddr, &GPTE),

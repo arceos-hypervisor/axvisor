@@ -10,21 +10,6 @@ use axaddrspace::{GuestPhysAddr, GuestVirtAddr, HostPhysAddr, MappingFlags};
 
 use crate::vmm::{VCpuRef, VMRef};
 
-/// Metadata of VMX shadow page tables.
-pub struct ShadowPageTableMetadata;
-
-impl page_table_multiarch::PagingMetaData for ShadowPageTableMetadata {
-    const LEVELS: usize = 4;
-    const PA_MAX_BITS: usize = 52;
-    const VA_MAX_BITS: usize = 48;
-
-    type VirtAddr = axaddrspace::GuestVirtAddr;
-
-    fn flush_tlb(_vaddr: Option<GuestVirtAddr>) {
-        todo!()
-    }
-}
-
 /// The structure of the memory region.
 #[repr(C, packed)]
 #[derive(Debug, Clone, Copy)]

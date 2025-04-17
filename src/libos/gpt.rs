@@ -28,9 +28,10 @@ pub(crate) const fn p1_index(vaddr: usize) -> usize {
     (vaddr >> 12) & (ENTRY_COUNT - 1)
 }
 
-/// A more generic page table entry.、
+/// A more generic page table entry with an associated type `PhysAddr`.
 ///
 /// All architecture-specific page table entry types implement this trait.
+#[allow(unused)]
 pub trait MoreGenericPTE: Debug + Clone + Copy + Sync + Send + Sized {
     /// The physical address type of this entry.
     type PhysAddr: MemoryAddr;
@@ -83,20 +84,24 @@ impl MoreGenericPTE for GuestEntry {
         }
         Self(flags.bits() | (paddr.as_usize() as u64 & Self::PHYS_ADDR_MASK))
     }
+
     fn new_table(paddr: Self::PhysAddr) -> Self {
-        // TODO: check why USER_ACCESSIBLE is forbidden here.
-        let flags = PTF::PRESENT | PTF::WRITABLE;
+        let flags = PTF::PRESENT | PTF::WRITABLE | PTF::USER_ACCESSIBLE;
         Self(flags.bits() | (paddr.as_usize() as u64 & Self::PHYS_ADDR_MASK))
     }
+
     fn paddr(&self) -> Self::PhysAddr {
         Self::PhysAddr::from((self.0 & Self::PHYS_ADDR_MASK) as usize)
     }
+
     fn flags(&self) -> MappingFlags {
         PTF::from_bits_truncate(self.0).into()
     }
+
     fn set_paddr(&mut self, paddr: Self::PhysAddr) {
         self.0 = (self.0 & !Self::PHYS_ADDR_MASK) | (paddr.as_usize() as u64 & Self::PHYS_ADDR_MASK)
     }
+
     fn set_flags(&mut self, flags: MappingFlags, is_huge: bool) {
         let mut flags = PTF::from(flags);
         if is_huge {
@@ -108,15 +113,19 @@ impl MoreGenericPTE for GuestEntry {
     fn bits(self) -> usize {
         self.0 as usize
     }
+
     fn is_unused(&self) -> bool {
         self.0 == 0
     }
+
     fn is_present(&self) -> bool {
         PTF::from_bits_truncate(self.0).contains(PTF::PRESENT)
     }
+
     fn is_huge(&self) -> bool {
         PTF::from_bits_truncate(self.0).contains(PTF::HUGE_PAGE)
     }
+
     fn clear(&mut self) {
         self.0 = 0
     }

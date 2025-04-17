@@ -4,18 +4,15 @@ use alloc::vec::Vec;
 use std::os::arceos::modules::axhal;
 
 use memory_addr::{MemoryAddr, PAGE_SIZE_4K, PhysAddr, is_aligned_4k};
-use page_table_entry::x86_64::X64PTE;
-use page_table_multiarch::{PagingHandler, PagingMetaData};
+use page_table_multiarch::PagingHandler;
 
-use axaddrspace::npt::EPTEntry;
-use axaddrspace::{AddrSpace, GuestPhysAddr, GuestVirtAddr, MappingFlags};
+use axaddrspace::{GuestPhysAddr, GuestVirtAddr, MappingFlags};
 use axerrno::{AxResult, ax_err_type};
 use axhal::paging::PagingHandlerImpl;
 use axstd::sync::Mutex;
 use axvm::HostContext;
 
-use crate::hal::KERNEL_STACK_SIZE;
-use crate::libos::def::{ProcessMemoryRegion, ShadowPageTableMetadata};
+use crate::libos::def::ProcessMemoryRegion;
 use crate::libos::process::{INIT_PROCESS_ID, Process, ProcessRef};
 use crate::vmm::VCpu;
 use crate::vmm::config::{get_instance_cpus, get_instance_cpus_mask};
@@ -35,8 +32,13 @@ static INSTANCES: Mutex<BTreeMap<usize, InstanceRef>> = Mutex::new(BTreeMap::new
 pub type InstanceRef = Arc<Instance<PagingHandlerImpl>>;
 
 pub struct Instance<H: PagingHandler> {
+    /// The ID of the instance.
     id: usize,
+    /// The list of processes in the instance.
     pub processes: Mutex<Vec<ProcessRef<H>>>,
+    /// The initialized context of the instance's first process.
+    /// It is used to initialize the vCPU context for the first process.
+    /// See `init_gate_processes` for details.
     ctx: HostContext,
 }
 
@@ -53,6 +55,7 @@ impl<H: PagingHandler> Instance<H> {
         let mut init_addrspace = GuestAddrSpace::new(GuestMappingType::CoarseGrainedSegmentation)?;
 
         // Parse and copy ELF segments to guest process's address space.
+        // Todo: distinguish shared regions.
         for p_region in &elf_regions {
             if !p_region.gva.is_aligned_4k() || !is_aligned_4k(p_region.size) {
                 warn!(
@@ -118,6 +121,9 @@ impl<H: PagingHandler> Instance<H> {
             true,
         )?;
 
+        // Manipulate guest process's context.
+        // `ctx.rip` has been set in `create_instance` in hypercall execution.
+        // Todo: manipulate IDT and syscall entry point.
         ctx.cr3 = init_addrspace.guest_page_table_root_gpa().as_usize() as u64;
         ctx.rsp = (USER_STACK_BASE + USER_STACK_SIZE) as u64;
 
@@ -153,7 +159,7 @@ impl<H: PagingHandler> Instance<H> {
         for i in 0..get_instance_cpus() {
             let cpu_id = cpu_ids[i];
 
-            let vcpu = VCpu::new(cpu_id, 0, Some(1 << cpu_id), ())?;
+            let vcpu = VCpu::new(cpu_id, 0, Some(1 << cpu_id), cpu_id)?;
             vcpu.setup_from_context(processes[i].addrspace().ept_root_hpa(), self.ctx.clone())?;
 
             crate::libos::percpu::init_instance_percore_task(cpu_id, Arc::new(vcpu));
@@ -179,7 +185,7 @@ impl<H: PagingHandler> Instance<H> {
 pub fn create_instance(
     id: usize,
     process_regions: Vec<ProcessMemoryRegion>,
-    mut ctx: HostContext,
+    ctx: HostContext,
 ) -> AxResult<InstanceRef> {
     if INSTANCES.lock().contains_key(&id) {
         return Err(ax_err_type!(InvalidInput, "Instance ID already exists"));

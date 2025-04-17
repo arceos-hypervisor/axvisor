@@ -144,10 +144,12 @@ impl HyperCall {
             &self.vm,
         )?;
 
+        // Currently we just construct user process context from current vcpu context.
+        // It can be regarded as a duplicate of the context of current Linux process which trigger the `HCreateInstance` hypercall.
         let mut ctx = axhal::get_linux_context_list()[axhal::cpu::this_cpu_id() as usize].clone();
-
         self.vcpu.get_arch_vcpu().load_context(&mut ctx)?;
 
+        // Set the entry point (`rip`) of the new process as entry parsed from the ELF file.
         ctx.rip = entry as u64;
 
         crate::libos::instance::create_instance(id as usize, process_regions, ctx)?;

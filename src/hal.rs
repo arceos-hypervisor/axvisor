@@ -70,6 +70,7 @@ impl axaddrspace::EPTTranslator for EPTTranslatorImpl {
 
         match &axtask::current().task_ext().ext {
             TaskExtType::VM(vm) => vm.guest_phys_to_host_phys(gpa),
+            // Todo: get current instance ID.
             TaskExtType::LibOS => get_instances_by_id(0).unwrap().guest_phys_to_host_phys(gpa),
         }
     }

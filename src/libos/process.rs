@@ -2,10 +2,7 @@ use alloc::sync::Arc;
 
 use page_table_multiarch::PagingHandler;
 
-use axaddrspace::AddrSpace;
 use axaddrspace::npt::{EPTEntry, EPTMetadata};
-
-use crate::libos::def::ShadowPageTableMetadata;
 
 use super::gaddrspace::GuestAddrSpace;
 use super::gpt::GuestEntry;
@@ -13,10 +10,9 @@ use super::gpt::GuestEntry;
 pub const INIT_PROCESS_ID: usize = 0;
 
 pub struct Process<H: PagingHandler> {
+    /// The process ID in the instance.
     pid: usize,
-    /// For Stage-2 address translation, which translates guest physical address to host physical address,
-    /// here we use a shadow page table, translating guest physical address to host physical address.
-    // ept_addrspace: AddrSpace<ShadowPageTableMetadata, EPTEntry, H>,
+    /// The guest address space of the process.
     guest_as: GuestAddrSpace<EPTMetadata, EPTEntry, GuestEntry, H>,
 }
 

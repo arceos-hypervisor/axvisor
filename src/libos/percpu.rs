@@ -1,14 +1,11 @@
 use std::os::arceos::modules::axhal::cpu::this_cpu_id;
-use std::os::arceos::modules::{axconfig, axhal, axtask};
+use std::os::arceos::modules::{axconfig, axtask};
 
-use axaddrspace::GuestVirtAddr;
 use lazyinit::LazyInit;
-use page_table_multiarch::PagingHandler;
 
 use axconfig::SMP;
 use axtask::{AxCpuMask, TaskInner};
 
-use crate::libos::instance::get_instances_by_id;
 use crate::task_ext::{TaskExt, TaskExtType};
 use crate::vmm::VCpuRef;
 use crate::vmm::config::get_instance_cpus_mask;
