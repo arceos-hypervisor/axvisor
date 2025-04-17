@@ -144,8 +144,7 @@ impl HyperCall {
             &self.vm,
         )?;
 
-        let mut ctx =
-            axhal::get_linux_context_list()[axhal::cpu::this_cpu_id() as usize].clone();
+        let mut ctx = axhal::get_linux_context_list()[axhal::cpu::this_cpu_id() as usize].clone();
 
         self.vcpu.get_arch_vcpu().load_context(&mut ctx)?;
 

@@ -20,7 +20,7 @@ use crate::libos::process::{INIT_PROCESS_ID, Process, ProcessRef};
 use crate::vmm::VCpu;
 use crate::vmm::config::{get_instance_cpus, get_instance_cpus_mask};
 
-use super::gaddrspace::GuestAddrSpace;
+use super::gaddrspace::{GuestAddrSpace, GuestMappingType};
 
 // How to init gate instance
 // First, init addrspace on one core.
@@ -52,7 +52,7 @@ impl<H: PagingHandler> Instance<H> {
         debug!("Generate instance {}", id);
 
         // Process second-level PT.
-        let mut init_addrspace = GuestAddrSpace::new()?;
+        let mut init_addrspace = GuestAddrSpace::new(GuestMappingType::CoarseGrainedSegmentation)?;
 
         for p_region in &elf_regions {
             if !p_region.gva.is_aligned_4k() || !is_aligned_4k(p_region.size) {

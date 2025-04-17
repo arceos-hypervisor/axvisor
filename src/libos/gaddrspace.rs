@@ -1,11 +1,13 @@
 use alloc::vec::Vec;
-use core::fmt;
+use core::fmt::{self, Write};
+use core::ops::AddAssign;
 use std::collections::btree_map::BTreeMap;
 use std::os::arceos::modules::axhal::trap::PAGE_FAULT;
 
 use axerrno::{AxError, AxResult, ax_err, ax_err_type};
 use memory_addr::{
-    AddrRange, MemoryAddr, PAGE_SIZE_2M, PAGE_SIZE_4K, PageIter4K, PhysAddr, is_aligned_4k,
+    AddrRange, MemoryAddr, PAGE_SIZE_1G, PAGE_SIZE_2M, PAGE_SIZE_4K, PageIter4K, PhysAddr,
+    is_aligned_4k,
 };
 use page_table_multiarch::{
     GenericPTE, MappingFlags, PageSize, PageTable64, PagingError, PagingHandler, PagingMetaData,
@@ -31,6 +33,28 @@ fn paging_err_to_ax_err(err: PagingError) -> AxError {
     }
 }
 
+#[derive(PartialEq)]
+pub enum GuestMappingType {
+    One2OneMapping,
+    CoarseGrainedSegmentation,
+}
+
+enum GuestMapping {
+    /// One-to-one mapping.
+    One2OneMapping {
+        page_pos: usize, // Incremented from 0.
+    },
+    /// Coarse-grained segmentation.
+    CoarseGrainedSegmentation {
+        // These two indexed should be synchronized with guest LibOS somehow.
+        mem_pos: usize,  // Incremented from 0.
+        page_pos: usize, // Decremented from 0x1FF.
+        /// Manage LibOS's memory addrspace at 2MB granularity.
+        current_region_base: GuestPhysAddr,
+        huge_page_num: usize,
+    },
+}
+
 /// The virtual memory address space.
 pub struct GuestAddrSpace<
     M: PagingMetaData,
@@ -39,19 +63,21 @@ pub struct GuestAddrSpace<
     H: PagingHandler,
 > {
     ept_addrspace: AddrSpace<M, EPTE, H>,
-    /// Manage LibOS's memory addrspace at 2MB granularity.
-    current_region_base: GuestPhysAddr,
-    huge_page_num: usize,
+    // /// Manage LibOS's memory addrspace at 2MB granularity.
+    // current_region_base: GuestPhysAddr,
+    // huge_page_num: usize,
 
-    // These two indexed should be synchronized with guest LibOS somehow.
-    mem_pos: usize,  // Incremented from 0.
-    page_pos: usize, // Decremented from 0x1FF.
+    // // These two indexed should be synchronized with guest LibOS somehow.
+    // mem_pos: usize,  // Incremented from 0.
+    // page_pos: usize, // Decremented from 0x1FF.
+    guest_mapping: GuestMapping,
 
     // Below are used for guest addrspace.
     gva_range: AddrRange<GuestVirtAddr>,
     gva_areas: BTreeMap<GuestVirtAddr, (AddrRange<GuestVirtAddr>, MappingFlags)>,
+
     /// Guest Page Table
-    guest_root_gpa: GuestPhysAddr,
+    gpt_root_gpa: GuestPhysAddr,
     levels: usize,
 
     phontom: core::marker::PhantomData<GPTE>,
@@ -65,9 +91,10 @@ impl<
 > GuestAddrSpace<M, EPTE, GPTE, H>
 {
     pub fn clone(&self) -> AxResult<Self> {
-        let cloned_aspace = Self::new()?;
+        // let cloned_aspace = Self::new(GuestMappingType::One2OneMapping)?;
 
-        Ok(cloned_aspace)
+        // Ok(cloned_aspace)
+        unimplemented!()
     }
 }
 
@@ -79,40 +106,78 @@ impl<
 > GuestAddrSpace<M, EPTE, GPTE, H>
 {
     /// Creates a new guest address space.
-    pub fn new() -> AxResult<Self> {
+    pub fn new(gmt: GuestMappingType) -> AxResult<Self> {
         let mut ept_addrspace = AddrSpace::new_empty(
             GuestPhysAddr::from_usize(0),
             1 << <EPTMetadata as PagingMetaData>::VA_MAX_BITS,
         )?;
 
-        ept_addrspace.map_alloc(
-            GUEST_MEM_REGION_BASE,
-            PAGE_SIZE_2M,
-            MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
-            true,
-        )?;
+        let (guest_mapping, gpt_root_gpa) = match gmt {
+            GuestMappingType::One2OneMapping => {
+                const GPT_ROOT_GPA: GuestPhysAddr = GuestPhysAddr::from_usize(0xc000_0000);
 
-        let mem_pos = 0;
+                // If one to one mapping, map guest page table root to hpa.
+                ept_addrspace.map_alloc(
+                    GPT_ROOT_GPA,
+                    PAGE_SIZE_4K,
+                    MappingFlags::READ | MappingFlags::WRITE,
+                    true,
+                )?;
+                (GuestMapping::One2OneMapping { page_pos: 1 }, GPT_ROOT_GPA)
+            }
+            GuestMappingType::CoarseGrainedSegmentation => {
+                // Use last page in first 2MB region for guest page table root.
+                let page_pos = 0x200 - 1;
 
-        // Use last page in first 2MB region for guest page table root.
-        let page_pos = 0x200 - 2;
-        let guest_root_gpa = GUEST_MEM_REGION_BASE + PAGE_SIZE_4K * (page_pos + 1);
+                ept_addrspace.map_alloc(
+                    GUEST_MEM_REGION_BASE,
+                    PAGE_SIZE_2M,
+                    MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
+                    true,
+                )?;
+
+                let gpt_root_gpa = GUEST_MEM_REGION_BASE + page_pos * PAGE_SIZE_4K;
+
+                (
+                    GuestMapping::CoarseGrainedSegmentation {
+                        mem_pos: 0,
+                        page_pos: 0x200 - 2,
+                        current_region_base: GUEST_MEM_REGION_BASE,
+                        huge_page_num: 1,
+                    },
+                    gpt_root_gpa,
+                )
+            }
+        };
 
         let mut guest_addrspace = Self {
             ept_addrspace,
-            current_region_base: GUEST_MEM_REGION_BASE,
-            huge_page_num: 1,
-            mem_pos,
-            page_pos,
+            guest_mapping,
             gva_range: AddrRange::from_start_size(
                 GuestVirtAddr::from_usize(0),
                 1 << <EPTMetadata as PagingMetaData>::VA_MAX_BITS,
             ),
             gva_areas: BTreeMap::new(),
-            guest_root_gpa,
+            gpt_root_gpa,
             levels: M::LEVELS,
             phontom: core::marker::PhantomData,
         };
+
+        // If one-to-one mapping, map 512GB memory with 1GB huge page.
+        if gmt == GuestMappingType::One2OneMapping {
+            for gva in (0..PAGE_SIZE_1G * 512).step_by(PAGE_SIZE_1G) {
+                guest_addrspace
+                    .guest_map_region(
+                        GuestVirtAddr::from_usize(gva),
+                        |_| GuestPhysAddr::from_usize(gva),
+                        PAGE_SIZE_1G,
+                        MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
+                        true,
+                        false,
+                    )
+                    .map_err(paging_err_to_ax_err)?;
+            }
+        }
 
         Ok(guest_addrspace)
     }
@@ -157,33 +222,49 @@ impl<
             // TODO: unmap overlapping area
             return ax_err!(AlreadyExists, "GVA range overlaps with existing area");
         }
-
-        let mut start_addr = start;
-        let end_addr = start_addr.add(size);
-
-        if populate {
-            for addr in PageIter4K::new(start_addr, end_addr).unwrap() {
-                self.alloc_memory_frame().and_then(|gpa_frame| {
-                    self.map(addr, gpa_frame, PageSize::Size4K, flags)
-                        .map_err(paging_err_to_ax_err)
-                })?;
+        match self.guest_mapping {
+            GuestMapping::One2OneMapping { page_pos } => {
+                self.ept_addrspace.map_alloc(
+                    GuestPhysAddr::from_usize(start.as_usize()),
+                    size,
+                    flags,
+                    populate,
+                )?;
             }
-        } else {
-            // Map to a empty entry for on-demand paging.
-            self.map_region(
-                start,
-                |_gva| GuestPhysAddr::from(0),
-                size,
-                MappingFlags::empty(),
-                false,
-                false,
-            )
-            .map_err(paging_err_to_ax_err)?;
+            GuestMapping::CoarseGrainedSegmentation {
+                mem_pos,
+                page_pos,
+                current_region_base,
+                huge_page_num,
+            } => {
+                if populate {
+                    let mut start_addr = start;
+                    let end_addr = start_addr.add(size);
+
+                    for addr in PageIter4K::new(start_addr, end_addr).unwrap() {
+                        self.alloc_memory_frame().and_then(|gpa_frame| {
+                            self.map(addr, gpa_frame, PageSize::Size4K, flags)
+                                .map_err(paging_err_to_ax_err)
+                        })?;
+                    }
+                } else {
+                    // Map to a empty entry for on-demand paging.
+                    self.guest_map_region(
+                        start,
+                        |_gva| GuestPhysAddr::from(0),
+                        size,
+                        MappingFlags::empty(),
+                        false,
+                        false,
+                    )
+                    .map_err(paging_err_to_ax_err)?;
+                }
+            }
         }
 
         assert!(
             self.gva_areas
-                .insert(start_addr, (mapped_gva_range, flags))
+                .insert(start, (mapped_gva_range, flags))
                 .is_none(),
             "GVA range already exists, something is wrong!!!"
         );
@@ -273,36 +354,94 @@ impl<
 > GuestAddrSpace<M, EPTE, GPTE, H>
 {
     fn alloc_memory_frame(&mut self) -> AxResult<GuestPhysAddr> {
-        let allocated_frame_base = self.current_region_base.add(self.mem_pos * PAGE_SIZE_4K);
-        self.mem_pos += 1;
+        match &mut self.guest_mapping {
+            GuestMapping::One2OneMapping { page_pos } => {
+                warn!("Do not need to check memory region for one-to-one mapping");
+                ax_err!(
+                    BadState,
+                    "Do not need to check memory region for one-to-one mapping"
+                )
+            }
+            &mut GuestMapping::CoarseGrainedSegmentation {
+                ref mut mem_pos,
+                page_pos,
+                current_region_base,
+                huge_page_num,
+            } => {
+                let allocated_frame_base = current_region_base.add(*mem_pos * PAGE_SIZE_4K);
+                *mem_pos += 1;
 
-        self.check_memory_region()?;
-
-        Ok(allocated_frame_base)
+                self.check_memory_region()?;
+                Ok(allocated_frame_base)
+            }
+        }
     }
 
     fn alloc_page_frame(&mut self) -> AxResult<GuestPhysAddr> {
-        let allocated_frame_base = self.current_region_base.add(self.page_pos * PAGE_SIZE_4K);
-        self.page_pos -= 1;
+        let current_gpt_gpa = self.guest_page_table_root_gpa();
 
-        self.check_memory_region()?;
+        let allocated_frame_base = match &mut self.guest_mapping {
+            &mut GuestMapping::One2OneMapping { ref mut page_pos } => {
+                let allocated_frame_base = current_gpt_gpa.add(*page_pos * PAGE_SIZE_4K);
+                // page_pos += 1;
+                *page_pos += 1;
+
+                self.ept_addrspace.map_alloc(
+                    allocated_frame_base,
+                    PAGE_SIZE_4K,
+                    MappingFlags::READ | MappingFlags::WRITE,
+                    true,
+                )?;
+                allocated_frame_base
+            }
+            &mut GuestMapping::CoarseGrainedSegmentation {
+                mem_pos,
+                ref mut page_pos,
+                current_region_base,
+                huge_page_num,
+            } => {
+                let allocated_frame_base = current_region_base.add(*page_pos * PAGE_SIZE_4K);
+                *page_pos -= 1;
+                self.check_memory_region()?;
+                allocated_frame_base
+            }
+        };
 
         Ok(allocated_frame_base)
     }
 
     fn check_memory_region(&mut self) -> AxResult {
-        if self.mem_pos == self.page_pos {
-            self.current_region_base = self.current_region_base.add(PAGE_SIZE_2M);
-            self.huge_page_num += 1;
-            self.ept_addrspace.map_alloc(
-                self.current_region_base,
-                PAGE_SIZE_2M,
-                MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
-                true,
-            )?;
-            self.mem_pos = 0;
-            self.page_pos = 0x200 - 1;
+        match &mut self.guest_mapping {
+            &mut GuestMapping::One2OneMapping { page_pos } => {
+                error!("Do not need to check memory region for one-to-one mapping");
+            }
+            &mut GuestMapping::CoarseGrainedSegmentation {
+                ref mut mem_pos,
+                ref mut page_pos,
+                ref mut current_region_base,
+                ref mut huge_page_num,
+            } => {
+                if mem_pos == page_pos {
+                    current_region_base.add_assign(PAGE_SIZE_2M);
+
+                    warn!(
+                        "Memory region exhausted, allocating new region at {:?}",
+                        current_region_base
+                    );
+
+                    *huge_page_num += 1;
+                    self.ept_addrspace.map_alloc(
+                        *current_region_base,
+                        PAGE_SIZE_2M,
+                        MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
+                        true,
+                    )?;
+                    *mem_pos = 0;
+                    *page_pos = 0x200 - 1;
+                }
+            }
         }
+
         Ok(())
     }
 }
@@ -339,7 +478,7 @@ impl<
 {
     /// Get the root page table physical address.
     pub fn guest_page_table_root_gpa(&self) -> GuestPhysAddr {
-        self.guest_root_gpa
+        self.gpt_root_gpa
     }
 
     /// Maps a virtual page to a physical frame with the given `page_size`
@@ -359,15 +498,17 @@ impl<
         flags: MappingFlags,
     ) -> PagingResult {
         debug!(
-            "GPT @[{:?}] mapping: {:?} -> {:?}, {:?}",
+            "GPT @[{:?}] mapping: {:?} -> {:?}, size {:?} {:?}",
             self.guest_page_table_root_gpa(),
             vaddr,
             target,
+            page_size,
             flags,
         );
 
         let entry = self.get_entry_mut_or_create(vaddr, page_size)?;
         if !entry.is_unused() {
+            warn!("Entry used, {:#x?}", entry);
             return Err(PagingError::AlreadyMapped);
         }
         *entry = MoreGenericPTE::new_page(target.align_down(page_size), flags, page_size.is_huge());
@@ -399,6 +540,12 @@ impl<
         &self,
         vaddr: GuestVirtAddr,
     ) -> PagingResult<(GuestPhysAddr, MappingFlags, PageSize)> {
+        debug!(
+            "GPT @{:?} query({:?})",
+            self.guest_page_table_root_gpa(),
+            vaddr
+        );
+
         let (entry, size) = self.get_entry(vaddr)?;
         if entry.is_unused() {
             return Err(PagingError::NotMapped);
@@ -421,7 +568,7 @@ impl<
     /// mapping each page. Otherwise, the TLB flush should by handled by the caller.
     ///
     /// [`Err(PagingError::NotAligned)`]: PagingError::NotAligned
-    pub fn map_region(
+    pub fn guest_map_region(
         &mut self,
         vaddr: GuestVirtAddr,
         get_paddr: impl Fn(GuestVirtAddr) -> GuestPhysAddr,
@@ -436,7 +583,7 @@ impl<
             return Err(PagingError::NotAligned);
         }
         debug!(
-            "map_region({:#x}): [{:#x}, {:#x}) {:?}",
+            "guest_map_region({:#x}): [{:#x}, {:#x}) {:?}",
             self.guest_page_table_root_gpa(),
             vaddr_usize,
             vaddr_usize + size,
@@ -599,6 +746,14 @@ impl<
         } else if self.levels == 4 {
             let p4 = self.table_of(self.guest_page_table_root_gpa())?;
             let p4e = &p4[p4_index(vaddr)];
+
+            debug!(
+                "GPT @{:?} get_entry({:?}) p4e: {:#x?}",
+                self.guest_page_table_root_gpa(),
+                gva,
+                p4e
+            );
+
             self.next_table(p4e)?
         } else {
             // 5-level paging
@@ -618,6 +773,14 @@ impl<
         };
 
         let p3e = &p3[p3_index(vaddr)];
+
+        debug!(
+            "GPT @{:?} get_entry({:?}) p3e: {:#x?}",
+            self.guest_page_table_root_gpa(),
+            gva,
+            p3e
+        );
+
         if p3e.is_huge() {
             return Ok((p3e, PageSize::Size1G));
         }

@@ -305,7 +305,7 @@ pub fn vm_vcpu_run(vm: VMRef, vcpu: VCpuRef) {
                             let ret_val = match hypercall.execute() {
                                 Ok(ret_val) => ret_val as isize,
                                 Err(err) => {
-                                    warn!("Hypercall [{}] failed: {:?}", nr, err);
+                                    warn!("Hypercall [{:#x}] failed: {:?}", nr, err);
                                     -1
                                 }
                             };
@@ -314,7 +314,7 @@ pub fn vm_vcpu_run(vm: VMRef, vcpu: VCpuRef) {
                             vcpu.unbind().unwrap();
                         }
                         Err(err) => {
-                            warn!("Hypercall [{}] failed: {:?}", nr, err);
+                            warn!("Hypercall [{:#x}] failed: {:?}", nr, err);
                         }
                     }
                 }

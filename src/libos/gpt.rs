@@ -1,8 +1,8 @@
 use core::fmt::{self, Debug};
 
-use page_table_entry::x86_64::PTF;
-use page_table_entry::MappingFlags;
 use memory_addr::MemoryAddr;
+use page_table_entry::MappingFlags;
+use page_table_entry::x86_64::PTF;
 
 use axaddrspace::GuestPhysAddr;
 
