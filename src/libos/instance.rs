@@ -46,13 +46,17 @@ const USER_STACK_SIZE: usize = 4096 * 4; // 16K
 const USER_STACK_BASE: usize = 0x400_000 - USER_STACK_SIZE;
 
 impl<H: PagingHandler> Instance<H> {
+    /// Create a new instance alone with its first process.
+    /// The first process is initialized by the ELF segments in `elf_regions`
+    /// with a newly constructed `GuestAddrSpace`.
+    /// The `ctx` is used to initialize the vCPU context for the first process.
     pub fn new(
         id: usize,
         elf_regions: Vec<ProcessMemoryRegion>,
         mut ctx: HostContext,
     ) -> AxResult<Arc<Self>> {
         debug!("Generate instance {}", id);
-        let mut init_addrspace = GuestAddrSpace::new(GuestMappingType::CoarseGrainedSegmentation)?;
+        let mut init_addrspace = GuestAddrSpace::new(GuestMappingType::One2OneMapping)?;
 
         // Parse and copy ELF segments to guest process's address space.
         // Todo: distinguish shared regions.

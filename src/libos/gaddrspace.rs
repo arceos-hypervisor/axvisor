@@ -28,6 +28,7 @@ fn paging_err_to_ax_err(err: PagingError) -> AxError {
     }
 }
 
+#[allow(unused)]
 #[derive(PartialEq)]
 pub enum GuestMappingType {
     One2OneMapping,
@@ -166,7 +167,10 @@ impl<
                         GuestVirtAddr::from_usize(gva),
                         |_| GuestPhysAddr::from_usize(gva),
                         PAGE_SIZE_1G,
-                        MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
+                        MappingFlags::READ
+                            | MappingFlags::WRITE
+                            | MappingFlags::EXECUTE
+                            | MappingFlags::USER,
                         true,
                         false,
                     )
