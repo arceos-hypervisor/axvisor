@@ -84,7 +84,8 @@ impl MoreGenericPTE for GuestEntry {
         Self(flags.bits() | (paddr.as_usize() as u64 & Self::PHYS_ADDR_MASK))
     }
     fn new_table(paddr: Self::PhysAddr) -> Self {
-        let flags = PTF::PRESENT | PTF::WRITABLE | PTF::USER_ACCESSIBLE;
+        // TODO: check why USER_ACCESSIBLE is forbidden here.
+        let flags = PTF::PRESENT | PTF::WRITABLE;
         Self(flags.bits() | (paddr.as_usize() as u64 & Self::PHYS_ADDR_MASK))
     }
     fn paddr(&self) -> Self::PhysAddr {

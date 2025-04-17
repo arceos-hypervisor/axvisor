@@ -150,14 +150,6 @@ pub fn process_elf_memory_regions(
                             );
                         }
 
-                        warn!(
-                            "Process memory gva {:?} is mapped to gpa {:?} with flags {:?} hpa {:?}",
-                            start,
-                            gpa,
-                            flags,
-                            vm.guest_phys_to_host_phys(gpa)
-                        );
-
                         mappings.push((
                             start,
                             Some(ProcessMemoryRegionMapping {

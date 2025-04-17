@@ -300,26 +300,12 @@ impl<
 
         for gva in PageIter4K::new(start_addr_aligned, end_addr_aligned).unwrap() {
             let (gpa, gflags, gpgsize) = self.query(gva).map_err(paging_err_to_ax_err)?;
-
-            warn!(
-                "Copying gva {:?} gpa {:?} gflags {:?} gpgsize {:?}",
-                gva, gpa, gflags, gpgsize
-            );
-
             let (hpa, hflags, hpgsize) = self
                 .ept_addrspace
                 .translate(gpa)
                 .ok_or_else(|| ax_err_type!(BadAddress, "GPA not mapped"))?;
 
             let hva = H::phys_to_virt(hpa);
-
-            warn!(
-                "Copying hpa {:?} hflags {:?} hpgsize {:?}",
-                hpa, hflags, hpgsize
-            );
-
-            warn!("Copying gva {:?} gpa {:?} hva {:?}", gva, gpa, hva);
-
             let dst_hva = if gva == start_addr_aligned {
                 hva.add(dst.align_offset_4k())
             } else {
@@ -497,7 +483,7 @@ impl<
         page_size: PageSize,
         flags: MappingFlags,
     ) -> PagingResult {
-        debug!(
+        trace!(
             "GPT @[{:?}] mapping: {:?} -> {:?}, size {:?} {:?}",
             self.guest_page_table_root_gpa(),
             vaddr,
@@ -540,12 +526,11 @@ impl<
         &self,
         vaddr: GuestVirtAddr,
     ) -> PagingResult<(GuestPhysAddr, MappingFlags, PageSize)> {
-        debug!(
-            "GPT @{:?} query({:?})",
-            self.guest_page_table_root_gpa(),
-            vaddr
-        );
-
+        // debug!(
+        //     "GPT @{:?} query({:?})",
+        //     self.guest_page_table_root_gpa(),
+        //     vaddr
+        // );
         let (entry, size) = self.get_entry(vaddr)?;
         if entry.is_unused() {
             return Err(PagingError::NotMapped);
@@ -746,14 +731,6 @@ impl<
         } else if self.levels == 4 {
             let p4 = self.table_of(self.guest_page_table_root_gpa())?;
             let p4e = &p4[p4_index(vaddr)];
-
-            debug!(
-                "GPT @{:?} get_entry({:?}) p4e: {:#x?}",
-                self.guest_page_table_root_gpa(),
-                gva,
-                p4e
-            );
-
             self.next_table(p4e)?
         } else {
             // 5-level paging
@@ -764,23 +741,13 @@ impl<
             }
             let p4 = self.next_table(p5e)?;
             let p4e = &p4[p4_index(vaddr)];
-
             if p4e.is_huge() {
                 return Err(PagingError::MappedToHugePage);
             }
-
             self.next_table(p4e)?
         };
 
         let p3e = &p3[p3_index(vaddr)];
-
-        debug!(
-            "GPT @{:?} get_entry({:?}) p3e: {:#x?}",
-            self.guest_page_table_root_gpa(),
-            gva,
-            p3e
-        );
-
         if p3e.is_huge() {
             return Ok((p3e, PageSize::Size1G));
         }

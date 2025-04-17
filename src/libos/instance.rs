@@ -50,10 +50,9 @@ impl<H: PagingHandler> Instance<H> {
         mut ctx: HostContext,
     ) -> AxResult<Arc<Self>> {
         debug!("Generate instance {}", id);
-
-        // Process second-level PT.
         let mut init_addrspace = GuestAddrSpace::new(GuestMappingType::CoarseGrainedSegmentation)?;
 
+        // Parse and copy ELF segments to guest process's address space.
         for p_region in &elf_regions {
             if !p_region.gva.is_aligned_4k() || !is_aligned_4k(p_region.size) {
                 warn!(
@@ -66,7 +65,7 @@ impl<H: PagingHandler> Instance<H> {
             }
 
             for (p_gva, mapping) in &p_region.mappings {
-                debug!(
+                trace!(
                     "Processing instance memory region GVA [{:?} - {:?}] {:?}",
                     p_region.gva,
                     p_region.gva + p_region.size,
@@ -111,6 +110,7 @@ impl<H: PagingHandler> Instance<H> {
             }
         }
 
+        // Setup guest process's stack region.
         init_addrspace.guest_map_alloc(
             GuestVirtAddr::from_usize(USER_STACK_BASE),
             USER_STACK_SIZE,
