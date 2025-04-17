@@ -56,7 +56,7 @@ impl<H: PagingHandler> Instance<H> {
         mut ctx: HostContext,
     ) -> AxResult<Arc<Self>> {
         debug!("Generate instance {}", id);
-        let mut init_addrspace = GuestAddrSpace::new(GuestMappingType::One2OneMapping)?;
+        let mut init_addrspace = GuestAddrSpace::new(GuestMappingType::CoarseGrainedSegmentation)?;
 
         // Parse and copy ELF segments to guest process's address space.
         // Todo: distinguish shared regions.

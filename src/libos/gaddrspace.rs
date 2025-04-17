@@ -339,7 +339,7 @@ impl<
 > GuestAddrSpace<M, EPTE, GPTE, H>
 {
     fn alloc_memory_frame(&mut self) -> AxResult<GuestPhysAddr> {
-        match &mut self.guest_mapping {
+        match self.guest_mapping {
             GuestMapping::One2OneMapping { page_pos: _ } => {
                 warn!("Do not need to check memory region for one-to-one mapping");
                 ax_err!(
@@ -347,7 +347,7 @@ impl<
                     "Do not need to check memory region for one-to-one mapping"
                 )
             }
-            &mut GuestMapping::CoarseGrainedSegmentation {
+            GuestMapping::CoarseGrainedSegmentation {
                 ref mut mem_pos,
                 page_pos: _,
                 current_region_base,
@@ -365,8 +365,8 @@ impl<
     fn alloc_page_frame(&mut self) -> AxResult<GuestPhysAddr> {
         let current_gpt_gpa = self.guest_page_table_root_gpa();
 
-        let allocated_frame_base = match &mut self.guest_mapping {
-            &mut GuestMapping::One2OneMapping { ref mut page_pos } => {
+        let allocated_frame_base = match self.guest_mapping {
+            GuestMapping::One2OneMapping { ref mut page_pos } => {
                 let allocated_frame_base = current_gpt_gpa.add(*page_pos * PAGE_SIZE_4K);
                 // page_pos += 1;
                 *page_pos += 1;
@@ -379,7 +379,7 @@ impl<
                 )?;
                 allocated_frame_base
             }
-            &mut GuestMapping::CoarseGrainedSegmentation {
+            GuestMapping::CoarseGrainedSegmentation {
                 mem_pos: _,
                 ref mut page_pos,
                 current_region_base,
@@ -396,11 +396,11 @@ impl<
     }
 
     fn check_memory_region(&mut self) -> AxResult {
-        match &mut self.guest_mapping {
-            &mut GuestMapping::One2OneMapping { page_pos: _ } => {
+        match self.guest_mapping {
+            GuestMapping::One2OneMapping { page_pos: _ } => {
                 error!("Do not need to check memory region for one-to-one mapping");
             }
-            &mut GuestMapping::CoarseGrainedSegmentation {
+            GuestMapping::CoarseGrainedSegmentation {
                 ref mut mem_pos,
                 ref mut page_pos,
                 ref mut current_region_base,
