@@ -78,10 +78,6 @@ impl HyperCall {
                 self.args[3],
                 self.args[4],
             ),
-            HyperCallCode::HClone => self.clone(),
-            HyperCallCode::HMMAP => {
-                self.mmap(self.args[0], self.args[1], self.args[2], self.args[3])
-            }
             _ => {
                 unimplemented!();
             }
@@ -154,19 +150,6 @@ impl HyperCall {
 
         crate::libos::instance::create_instance(id as usize, process_regions, ctx)?;
 
-        Ok(0)
-    }
-
-    fn clone(&self) -> HyperCallResult {
-        info!("HClone");
-        Ok(0)
-    }
-
-    fn mmap(&self, addr: u64, len: u64, prot: u64, flags: u64) -> HyperCallResult {
-        info!(
-            "HMMAP addr:{:#x} len:{} prot:{} flags:{}",
-            addr, len, prot, flags
-        );
         Ok(0)
     }
 }

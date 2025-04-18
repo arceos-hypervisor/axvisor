@@ -88,10 +88,7 @@ impl<
     H: PagingHandler,
 > GuestAddrSpace<M, EPTE, GPTE, H>
 {
-    pub fn clone(&self) -> AxResult<Self> {
-        // let cloned_aspace = Self::new(GuestMappingType::One2OneMapping)?;
-
-        // Ok(cloned_aspace)
+    pub fn fork(&mut self) -> AxResult<Self> {
         unimplemented!()
     }
 }
@@ -204,6 +201,20 @@ impl<
         self.ept_addrspace.translate(gpa)
     }
 
+    /// Add a new linear mapping in EPT.
+    ///
+    /// The `flags` parameter indicates the mapping permissions and attributes.
+    pub fn ept_map_linear(
+        &mut self,
+        start_vaddr: M::VirtAddr,
+        start_paddr: HostPhysAddr,
+        size: usize,
+        flags: MappingFlags,
+    ) -> AxResult {
+        self.ept_addrspace
+            .map_linear(start_vaddr, start_paddr, size, flags)
+    }
+
     pub fn guest_map_alloc(
         &mut self,
         start: GuestVirtAddr,
@@ -287,9 +298,78 @@ impl<
         Ok(())
     }
 
-    pub fn guest_memcpy(&mut self, src: HostVirtAddr, dst: GuestVirtAddr, size: usize) -> AxResult {
+    pub fn copy_from_guest(
+        &self,
+        src: GuestVirtAddr,
+        dst: HostVirtAddr,
+        size: usize,
+    ) -> AxResult {
         debug!(
-            "guest_memcpy src: {:?} to dst: {:?} size: {:#x}",
+            "copy_from_guest src: {:?} to dst: {:?} size: {:#x}",
+            src, dst, size
+        );
+
+        let start_addr = src;
+        let end_addr = start_addr.add(size);
+
+        if !self.gva_range.contains(start_addr) || !self.gva_range.contains(end_addr) {
+            return ax_err!(
+                InvalidInput,
+                alloc::format!("GVA [{:?}~{:?}] out of range", start_addr, end_addr).as_str()
+            );
+        }
+
+        if size == 0 {
+            return ax_err!(InvalidInput, "GVA range is empty");
+        }
+
+        let start_addr_aligned = start_addr.align_down(PAGE_SIZE_4K);
+        let end_addr_aligned = end_addr.align_up(PAGE_SIZE_4K);
+
+        let mut remained_size = size;
+        let mut dst_hva = dst;
+
+        for gva in PageIter4K::new(start_addr_aligned, end_addr_aligned).unwrap() {
+            let (gpa, _gflags, _gpgsize) = self.query(gva).map_err(paging_err_to_ax_err)?;
+            let (hpa, _hflags, _hpgsize) = self
+                .ept_addrspace
+                .translate(gpa)
+                .ok_or_else(|| ax_err_type!(BadAddress, "GPA not mapped"))?;
+
+            let hva = H::phys_to_virt(hpa);
+            let src_hva = if gva == start_addr_aligned {
+                hva.add(src.align_offset_4k())
+            } else {
+                hva
+            };
+
+            let copied_size = if gva == start_addr_aligned {
+                (PAGE_SIZE_4K - src.align_offset_4k()).min(remained_size)
+            } else if remained_size >= PAGE_SIZE_4K {
+                PAGE_SIZE_4K
+            } else {
+                remained_size
+            };
+
+            unsafe {
+                core::ptr::copy_nonoverlapping(src_hva.as_ptr(), dst_hva.as_mut_ptr(), copied_size);
+            }
+
+            remained_size -= copied_size;
+            dst_hva = dst_hva.add(copied_size);
+        }
+
+        Ok(())
+    }
+
+    pub fn copy_into_guest(
+        &mut self,
+        src: HostVirtAddr,
+        dst: GuestVirtAddr,
+        size: usize,
+    ) -> AxResult {
+        debug!(
+            "copy_into_guest src: {:?} to dst: {:?} size: {:#x}",
             src, dst, size
         );
 
@@ -502,7 +582,7 @@ impl<
     ///
     /// Returns [`Err(PagingError::AlreadyMapped)`](PagingError::AlreadyMapped)
     /// if the mapping is already present.
-    pub fn map(
+    fn map(
         &mut self,
         vaddr: GuestVirtAddr,
         target: GuestPhysAddr,
@@ -532,7 +612,7 @@ impl<
     /// Returns [`Err(PagingError::NotMapped)`](PagingError::NotMapped) if the
     /// mapping is not present.
     #[allow(unused)]
-    pub fn unmap(&mut self, vaddr: GuestVirtAddr) -> PagingResult<(GuestPhysAddr, PageSize)> {
+    fn unmap(&mut self, vaddr: GuestVirtAddr) -> PagingResult<(GuestPhysAddr, PageSize)> {
         let (entry, size) = self.get_entry_mut(vaddr)?;
         if !entry.is_present() {
             entry.clear();
@@ -549,10 +629,7 @@ impl<
     ///
     /// Returns [`Err(PagingError::NotMapped)`](PagingError::NotMapped) if the
     /// mapping is not present.
-    pub fn query(
-        &self,
-        vaddr: GuestVirtAddr,
-    ) -> PagingResult<(GuestPhysAddr, MappingFlags, PageSize)> {
+    fn query(&self, vaddr: GuestVirtAddr) -> PagingResult<(GuestPhysAddr, MappingFlags, PageSize)> {
         // debug!(
         //     "GPT @{:?} query({:?})",
         //     self.guest_page_table_root_gpa(),

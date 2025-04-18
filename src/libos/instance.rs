@@ -5,16 +5,19 @@ use std::os::arceos::modules::axhal::paging::PagingHandlerImpl;
 use std::sync::Mutex;
 
 use axerrno::{AxResult, ax_err_type};
-use memory_addr::{MemoryAddr, PAGE_SIZE_4K, PhysAddr, is_aligned_4k};
+use memory_addr::{MemoryAddr, PAGE_SIZE_4K, is_aligned_4k};
 use page_table_multiarch::PagingHandler;
 
-use axaddrspace::{GuestPhysAddr, GuestVirtAddr, MappingFlags};
+use axaddrspace::{GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr, MappingFlags};
 use axvcpu::AxVcpuAccessGuestState;
 use axvm::HostContext;
 
-use crate::libos::def::{ProcessMemoryRegion, USER_STACK_BASE, USER_STACK_SIZE};
+use crate::libos::def::{
+    GP_EPTP_LIST_REGION_BASE, INSTANCE_SHARED_REGION_BASE, ProcessMemoryRegion, USER_STACK_BASE,
+    USER_STACK_SIZE,
+};
 use crate::libos::gaddrspace::{GuestAddrSpace, GuestMappingType};
-use crate::libos::process::{INIT_PROCESS_ID, Process, ProcessRef};
+use crate::libos::process::Process;
 use crate::vmm::VCpu;
 use crate::vmm::config::{get_instance_cpus, get_instance_cpus_mask};
 
@@ -34,7 +37,7 @@ pub struct Instance<H: PagingHandler> {
     /// The ID of the instance.
     id: usize,
     /// The list of processes in the instance.
-    pub processes: Mutex<Vec<ProcessRef<H>>>,
+    pub processes: Mutex<BTreeMap<HostPhysAddr, Process<H>>>,
     /// The initialized context of the instance's first process.
     /// It is used to initialize the vCPU context for the first process.
     /// See `init_gate_processes` for details.
@@ -98,7 +101,7 @@ impl<H: PagingHandler> Instance<H> {
 
                     let host_region_hpa = mapping.hpa.unwrap();
 
-                    init_addrspace.guest_memcpy(
+                    init_addrspace.copy_into_guest(
                         H::phys_to_virt(host_region_hpa),
                         *p_gva,
                         mapping.page_size.into(),
@@ -128,9 +131,13 @@ impl<H: PagingHandler> Instance<H> {
         ctx.cr3 = init_addrspace.guest_page_table_root_gpa().as_usize() as u64;
         ctx.rsp = USER_STACK_BASE.add(USER_STACK_SIZE).as_usize() as u64;
 
-        let mut processes = Vec::new();
-        let init_process = Process::new(INIT_PROCESS_ID, init_addrspace);
-        processes.push(init_process);
+        let init_ept_root_hpa = init_addrspace.ept_root_hpa();
+
+        info!("Instance {}: init eptp at: {:?}", id, init_ept_root_hpa);
+
+        let mut processes = BTreeMap::new();
+        let init_process = Process::new(0, init_addrspace);
+        processes.insert(init_ept_root_hpa, init_process);
         Ok(Arc::new(Self {
             id,
             processes: Mutex::new(processes),
@@ -138,7 +145,50 @@ impl<H: PagingHandler> Instance<H> {
         }))
     }
 
-    pub fn init_gate_processes(&self) -> AxResult {
+    pub fn id(&self) -> usize {
+        self.id
+    }
+
+    pub fn guest_phys_to_host_phys(
+        &self,
+        eptp: HostPhysAddr,
+        gpa: GuestPhysAddr,
+    ) -> Option<HostPhysAddr> {
+        self.processes.lock().get(&eptp).and_then(|process| {
+            process
+                .addrspace()
+                .translate(gpa)
+                .map(|(hpa, _flags, _page_size)| hpa)
+        })
+    }
+
+    pub fn read_from_guest(
+        &self,
+        eptp: HostPhysAddr,
+        gva: GuestVirtAddr,
+        size: usize,
+    ) -> AxResult<Vec<u8>> {
+        let processes = self.processes.lock();
+
+        let process = processes.get(&eptp).ok_or_else(|| {
+            warn!("EPTP {:?} not found in processes", eptp);
+            ax_err_type!(InvalidInput, "Invalid EPTP")
+        })?;
+
+        let mut contents = vec![0; size];
+
+        process.addrspace().copy_from_guest(
+            gva,
+            HostVirtAddr::from_mut_ptr_of(contents.as_mut_ptr()),
+            size,
+        )?;
+
+        Ok(contents)
+    }
+}
+
+impl<H: PagingHandler> Instance<H> {
+    fn init_gate_processes(&self) -> AxResult {
         info!("Instance {}: init gate processes", self.id());
 
         let instance_cpu_mask = get_instance_cpus_mask();
@@ -150,34 +200,72 @@ impl<H: PagingHandler> Instance<H> {
 
         let mut processes = self.processes.lock();
 
-        let first_process = processes[0].clone();
+        assert_eq!(
+            processes.len(),
+            1,
+            "Instance {}: init_gate_processes: processes should be 1",
+            self.id()
+        );
 
+        let mut init_process_entry = processes.first_entry().unwrap();
+        let init_process = init_process_entry.get_mut();
+
+        init_process.set_pid(cpu_ids[0]);
+
+        let mut secondary_gate_processes = Vec::new();
+        // Fork gate process on each core from init process.
         for i in 1..get_instance_cpus() {
-            let process = Process::new(i, first_process.addrspace().clone()?);
-            processes.push(process);
+            let cpu_id = cpu_ids[i];
+            secondary_gate_processes.push(init_process.fork(cpu_id)?);
         }
 
-        for i in 0..get_instance_cpus() {
-            let cpu_id = cpu_ids[i];
+        for sgp in secondary_gate_processes {
+            let sgp_hpa = sgp.addrspace_root();
+            processes.insert(sgp_hpa, sgp);
+        }
 
+        // Set up gate process on each core.
+        for (_as_root, p) in processes.iter_mut() {
+            let cpu_id = p.pid();
+
+            let gp_as = p.addrspace_mut();
+
+            // Init vCPU for each core.
             let vcpu = VCpu::new(cpu_id, 0, Some(1 << cpu_id), cpu_id)?;
-            vcpu.setup_from_context(processes[i].addrspace().ept_root_hpa(), self.ctx.clone())?;
+            vcpu.setup_from_context(gp_as.ept_root_hpa(), self.ctx.clone())?;
 
-            crate::libos::percpu::init_instance_percore_task(cpu_id, Arc::new(vcpu));
+            // Alloc and map percpu instance shared region.
+            let shared_region_base_hpa = H::alloc_frame().ok_or_else(|| ax_err_type!(NoMemory))?;
+            gp_as.ept_map_linear(
+                INSTANCE_SHARED_REGION_BASE,
+                shared_region_base_hpa,
+                PAGE_SIZE_4K,
+                MappingFlags::READ | MappingFlags::WRITE,
+            )?;
+
+            // Map the EPTP list region for gate process.
+            let gp_eptp_list_base_hpa = vcpu.get_arch_vcpu().eptp_list_region();
+            gp_as.ept_map_linear(
+                GP_EPTP_LIST_REGION_BASE,
+                gp_eptp_list_base_hpa,
+                PAGE_SIZE_4K,
+                MappingFlags::READ | MappingFlags::WRITE,
+            )?;
+
+            crate::libos::percpu::init_instance_percore_task(
+                cpu_id,
+                Arc::new(vcpu),
+                shared_region_base_hpa,
+            );
         }
 
         Ok(())
     }
+}
 
-    pub fn id(&self) -> usize {
-        self.id
-    }
-
-    pub fn guest_phys_to_host_phys(&self, gpa: GuestPhysAddr) -> Option<PhysAddr> {
-        self.processes.lock()[0]
-            .addrspace()
-            .translate(gpa)
-            .map(|(hpa, _, _)| hpa)
+impl<H: PagingHandler> Drop for Instance<H> {
+    fn drop(&mut self) {
+        info!("Destroy instance {}", self.id);
     }
 }
 

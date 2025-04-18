@@ -17,7 +17,7 @@ use axerrno::{AxResult, ax_err_type};
 use axvcpu::{AxArchVCpu, AxVCpuHal};
 use axvm::{AxVMHal, AxVMPerCpu};
 
-use crate::libos::instance::get_instances_by_id;
+use crate::libos;
 use crate::vmm::VCpuRef;
 use crate::vmm::config::descrease_instance_cpus;
 use crate::vmm::config::{get_instance_cpus, get_reserved_cpus};
@@ -71,7 +71,7 @@ impl axaddrspace::EPTTranslator for EPTTranslatorImpl {
         match &axtask::current().task_ext().ext {
             TaskExtType::VM(vm) => vm.guest_phys_to_host_phys(gpa),
             // Todo: get current instance ID.
-            TaskExtType::LibOS => get_instances_by_id(0).unwrap().guest_phys_to_host_phys(gpa),
+            TaskExtType::LibOS => libos::gpa_to_hpa(gpa),
         }
     }
 }
