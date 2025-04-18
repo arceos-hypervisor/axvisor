@@ -11,6 +11,8 @@ license = "GPL-3.0-or-later OR Apache-2.0 OR MulanPubL-2.0 OR MulanPSL2"
 
 [features]
 fs = ["axstd/fs"]
+hv = []
+irq = []
 
 [dependencies]
 log = "=0.4.21"
@@ -21,32 +23,71 @@ lazyinit = "0.2"
 timer_list = "0.1.0"
 
 # System dependent modules provided by ArceOS.
-axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm", features = [
+axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "debin/timer_api", features = [
     "alloc",
     "paging",
     # "fs",
+    "ipi",
     "irq",
     "hv",
     "multitask",
+    "smp",
     # "sched_rr"
-]}
+] }
 
 # System dependent modules provided by ArceOS-Hypervisor.
-axvm = { git = "https://github.com/arceos-hypervisor/axvm.git" }
-axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git" }
+axvm = { git = "https://github.com/arceos-hypervisor/axvm.git", branch = "inject_interrupt" }
+axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "inject_interrupt" }
 axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git" }
 
 # System independent crates provided by ArceOS, these crates could be imported by remote url. 
 crate_interface = "0.1"
 axerrno = "0.1.0"
+cpumask = "0.1.0"
+kernel_guard = "0.1"
 memory_addr = "0.3"
 page_table_entry = { version = "0.5", features = ["arm-el2"] }
 page_table_multiarch = "0.5"
-percpu = { version = "0.2.0", features = ["arm-el2"] }
+percpu = { version = "0.2", features = ["arm-el2"] }
+
+axdevice = { git = "https://github.com/arceos-hypervisor/axdevice.git", branch = "inject_interrupt" }
+axdevice_base = { git = "https://github.com/arceos-hypervisor/axdevice_crates.git", branch = "inject_interrupt" }
+axvisor_api = { git = "https://github.com/arceos-hypervisor/axvisor_api.git", branch = "inject_interrupt" }
 
 [build-dependencies]
 toml = { git = "https://github.com/arceos-hypervisor/toml.git", branch = "no_std" }
-axconfig = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm" }
+axconfig = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "debin/timer_api" }
 prettyplease = "0.2"
 quote = "1.0"
 syn = "2.0"
+
+# [patch."https://github.com/arceos-hypervisor/axvcpu.git"]
+# axvcpu = { path = "../axvcpu" }
+
+# [patch."https://github.com/arceos-hypervisor/axvisor_api.git"]
+# axvisor_api = { path = "../axvisor_api" }
+
+# [patch."https://github.com/arceos-hypervisor/x86_vcpu.git"]
+# x86_vcpu = { path = "../x86_vcpu" }
+
+# [patch."https://github.com/arceos-hypervisor/x86_vlapic.git"]
+# x86_vlapic = { path = "../x86_vlapic" }
+
+# [patch."https://github.com/arceos-hypervisor/axvm.git"]
+# axvm = { path = "../axvm" }
+
+# [patch."https://github.com/arceos-hypervisor/axdevice.git"]
+# axdevice = { path = "../axdevice" }
+
+# [patch."https://github.com/arceos-hypervisor/axdevice_crates.git"]
+# axdevice_base = { path = "../axdevice_crates/axdevice_base" }
+
+# [patch."https://github.com/arceos-hypervisor/arceos.git"]
+# axstd = { path = "../arceos-new/ulib/axstd", features = [
+#     "alloc",
+#     "paging",
+#     "ipi",
+#     "smp",
+#     "irq"
+# ]}
+# axconfig = { path = "../arceos-new/modules/axconfig" }
