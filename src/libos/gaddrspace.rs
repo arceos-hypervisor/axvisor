@@ -12,9 +12,8 @@ use page_table_multiarch::{
 use axaddrspace::npt::EPTMetadata;
 use axaddrspace::{AddrSpace, GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr};
 
+use super::def::{GPT_ROOT_GPA, GUEST_MEM_REGION_BASE};
 use super::gpt::{ENTRY_COUNT, MoreGenericPTE, p1_index, p2_index, p3_index, p4_index, p5_index};
-
-const GUEST_MEM_REGION_BASE: GuestPhysAddr = GuestPhysAddr::from_usize(0);
 
 // Copy from `axmm`.
 fn paging_err_to_ax_err(err: PagingError) -> AxError {
@@ -29,10 +28,14 @@ fn paging_err_to_ax_err(err: PagingError) -> AxError {
 }
 
 #[allow(unused)]
-#[derive(PartialEq)]
+#[repr(usize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum GuestMappingType {
     One2OneMapping,
-    CoarseGrainedSegmentation,
+    /// Size of 2 megabytes (2<sup>21</sup> bytes).
+    CoarseGrainedSegmentation2M = 0x20_0000,
+    /// Size of 1 gigabytes (2<sup>30</sup> bytes).
+    CoarseGrainedSegmentation1G = 0x4000_0000,
 }
 
 enum GuestMapping {
@@ -40,13 +43,18 @@ enum GuestMapping {
     One2OneMapping {
         page_pos: usize, // Incremented from 0.
     },
-    /// Coarse-grained segmentation.
+    /// Coarse-grained segmentation (2M/1G).
     CoarseGrainedSegmentation {
         // These two indexed should be synchronized with guest LibOS somehow.
-        mem_pos: usize,  // Incremented from 0.
-        page_pos: usize, // Decremented from 0x1FF.
-        /// Manage LibOS's memory addrspace at 2MB granularity.
+        /// Memory page index incremented from 0.
+        mem_pos: usize,
+        /// Page table page index decremented from (region_granularity/PAGE_SIZE_4k) - 1 (0x1FF for 2M, 0x1FFFFF for 1G).
+        page_pos: usize,
+        /// Manage LibOS's memory addrspace at 2MB/1GB granularity.
+        region_granularity: usize,
+        /// Current region base address.
         current_region_base: GuestPhysAddr,
+        /// Number of coarse-grained segmentation regions.
         huge_page_num: usize,
     },
 }
@@ -59,13 +67,7 @@ pub struct GuestAddrSpace<
     H: PagingHandler,
 > {
     ept_addrspace: AddrSpace<M, EPTE, H>,
-    // /// Manage LibOS's memory addrspace at 2MB granularity.
-    // current_region_base: GuestPhysAddr,
-    // huge_page_num: usize,
 
-    // // These two indexed should be synchronized with guest LibOS somehow.
-    // mem_pos: usize,  // Incremented from 0.
-    // page_pos: usize, // Decremented from 0x1FF.
     guest_mapping: GuestMapping,
 
     // Below are used for guest addrspace.
@@ -103,6 +105,8 @@ impl<
 {
     /// Creates a new guest address space.
     pub fn new(gmt: GuestMappingType) -> AxResult<Self> {
+        info!("Generate GuestAddrSpace with {:?}", gmt);
+
         let mut ept_addrspace = AddrSpace::new_empty(
             GuestPhysAddr::from_usize(0),
             1 << <EPTMetadata as PagingMetaData>::VA_MAX_BITS,
@@ -110,8 +114,6 @@ impl<
 
         let (guest_mapping, gpt_root_gpa) = match gmt {
             GuestMappingType::One2OneMapping => {
-                const GPT_ROOT_GPA: GuestPhysAddr = GuestPhysAddr::from_usize(0xc000_0000);
-
                 // If one to one mapping, map guest page table root to hpa.
                 ept_addrspace.map_alloc(
                     GPT_ROOT_GPA,
@@ -121,13 +123,21 @@ impl<
                 )?;
                 (GuestMapping::One2OneMapping { page_pos: 1 }, GPT_ROOT_GPA)
             }
-            GuestMappingType::CoarseGrainedSegmentation => {
-                // Use last page in first 2MB region for guest page table root.
-                let page_pos = 0x200 - 1;
+            GuestMappingType::CoarseGrainedSegmentation2M
+            | GuestMappingType::CoarseGrainedSegmentation1G => {
+                let region_granularity = match gmt {
+                    GuestMappingType::CoarseGrainedSegmentation2M => PAGE_SIZE_2M,
+                    GuestMappingType::CoarseGrainedSegmentation1G => PAGE_SIZE_1G,
+                    _ => unreachable!(),
+                };
+                let page_num = region_granularity / PAGE_SIZE_4K;
+                // Use last page in first region for guest page table root.
+                let page_pos = page_num - 1;
 
+                // Map the first memory region.
                 ept_addrspace.map_alloc(
                     GUEST_MEM_REGION_BASE,
-                    PAGE_SIZE_2M,
+                    region_granularity,
                     MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
                     true,
                 )?;
@@ -136,8 +146,13 @@ impl<
 
                 (
                     GuestMapping::CoarseGrainedSegmentation {
+                        // Mempry page index start from 0.
                         mem_pos: 0,
-                        page_pos: 0x200 - 2,
+                        // Page table page index decrements from page_num - 1 (0x1FF for 2M, 0x1FFFFF for 1G).,
+                        // but the last page has been used for guest page table root,
+                        // so it should be page_num - 2.
+                        page_pos: page_num - 2,
+                        region_granularity,
                         current_region_base: GUEST_MEM_REGION_BASE,
                         huge_page_num: 1,
                     },
@@ -233,6 +248,7 @@ impl<
             GuestMapping::CoarseGrainedSegmentation {
                 mem_pos: _,
                 page_pos: _,
+                region_granularity: _,
                 current_region_base: _,
                 huge_page_num: _,
             } => {
@@ -350,6 +366,7 @@ impl<
             GuestMapping::CoarseGrainedSegmentation {
                 ref mut mem_pos,
                 page_pos: _,
+                region_granularity: _,
                 current_region_base,
                 huge_page_num: _,
             } => {
@@ -367,6 +384,11 @@ impl<
 
         let allocated_frame_base = match self.guest_mapping {
             GuestMapping::One2OneMapping { ref mut page_pos } => {
+                if *page_pos == 2 {
+                    warn!("When use one-to-one mapping, page_pos should be 0 or 1");
+                    return ax_err!(BadState, "page_pos should be 0 or 1, 0 for pgd, 1 for pud");
+                }
+
                 let allocated_frame_base = current_gpt_gpa.add(*page_pos * PAGE_SIZE_4K);
                 // page_pos += 1;
                 *page_pos += 1;
@@ -382,6 +404,7 @@ impl<
             GuestMapping::CoarseGrainedSegmentation {
                 mem_pos: _,
                 ref mut page_pos,
+                region_granularity: _,
                 current_region_base,
                 huge_page_num: _,
             } => {
@@ -404,10 +427,14 @@ impl<
                 ref mut mem_pos,
                 ref mut page_pos,
                 ref mut current_region_base,
+                region_granularity,
                 ref mut huge_page_num,
             } => {
                 if mem_pos == page_pos {
-                    current_region_base.add_assign(PAGE_SIZE_2M);
+                    assert!(
+                        (region_granularity == PAGE_SIZE_2M) | (region_granularity == PAGE_SIZE_1G)
+                    );
+                    current_region_base.add_assign(region_granularity);
 
                     warn!(
                         "Memory region exhausted, allocating new region at {:?}",
@@ -417,12 +444,12 @@ impl<
                     *huge_page_num += 1;
                     self.ept_addrspace.map_alloc(
                         *current_region_base,
-                        PAGE_SIZE_2M,
+                        region_granularity,
                         MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
                         true,
                     )?;
                     *mem_pos = 0;
-                    *page_pos = 0x200 - 1;
+                    *page_pos = region_granularity / PAGE_SIZE_4K - 1;
                 }
             }
         }

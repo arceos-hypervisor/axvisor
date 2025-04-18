@@ -1,23 +1,22 @@
 use alloc::collections::btree_map::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use std::os::arceos::modules::axhal;
+use std::os::arceos::modules::axhal::paging::PagingHandlerImpl;
+use std::sync::Mutex;
 
+use axerrno::{AxResult, ax_err_type};
 use memory_addr::{MemoryAddr, PAGE_SIZE_4K, PhysAddr, is_aligned_4k};
 use page_table_multiarch::PagingHandler;
 
 use axaddrspace::{GuestPhysAddr, GuestVirtAddr, MappingFlags};
-use axerrno::{AxResult, ax_err_type};
-use axhal::paging::PagingHandlerImpl;
-use axstd::sync::Mutex;
+use axvcpu::AxVcpuAccessGuestState;
 use axvm::HostContext;
 
-use crate::libos::def::ProcessMemoryRegion;
+use crate::libos::def::{ProcessMemoryRegion, USER_STACK_BASE, USER_STACK_SIZE};
+use crate::libos::gaddrspace::{GuestAddrSpace, GuestMappingType};
 use crate::libos::process::{INIT_PROCESS_ID, Process, ProcessRef};
 use crate::vmm::VCpu;
 use crate::vmm::config::{get_instance_cpus, get_instance_cpus_mask};
-
-use super::gaddrspace::{GuestAddrSpace, GuestMappingType};
 
 // How to init gate instance
 // First, init addrspace on one core.
@@ -42,9 +41,6 @@ pub struct Instance<H: PagingHandler> {
     ctx: HostContext,
 }
 
-const USER_STACK_SIZE: usize = 4096 * 4; // 16K
-const USER_STACK_BASE: usize = 0x400_000 - USER_STACK_SIZE;
-
 impl<H: PagingHandler> Instance<H> {
     /// Create a new instance alone with its first process.
     /// The first process is initialized by the ELF segments in `elf_regions`
@@ -56,7 +52,8 @@ impl<H: PagingHandler> Instance<H> {
         mut ctx: HostContext,
     ) -> AxResult<Arc<Self>> {
         debug!("Generate instance {}", id);
-        let mut init_addrspace = GuestAddrSpace::new(GuestMappingType::CoarseGrainedSegmentation)?;
+        let mut init_addrspace =
+            GuestAddrSpace::new(GuestMappingType::CoarseGrainedSegmentation2M)?;
 
         // Parse and copy ELF segments to guest process's address space.
         // Todo: distinguish shared regions.
@@ -119,7 +116,7 @@ impl<H: PagingHandler> Instance<H> {
 
         // Setup guest process's stack region.
         init_addrspace.guest_map_alloc(
-            GuestVirtAddr::from_usize(USER_STACK_BASE),
+            USER_STACK_BASE,
             USER_STACK_SIZE,
             MappingFlags::READ | MappingFlags::WRITE | MappingFlags::USER,
             true,
@@ -129,7 +126,7 @@ impl<H: PagingHandler> Instance<H> {
         // `ctx.rip` has been set in `create_instance` in hypercall execution.
         // Todo: manipulate IDT and syscall entry point.
         ctx.cr3 = init_addrspace.guest_page_table_root_gpa().as_usize() as u64;
-        ctx.rsp = (USER_STACK_BASE + USER_STACK_SIZE) as u64;
+        ctx.rsp = USER_STACK_BASE.add(USER_STACK_SIZE).as_usize() as u64;
 
         let mut processes = Vec::new();
         let init_process = Process::new(INIT_PROCESS_ID, init_addrspace);

@@ -10,6 +10,17 @@ use axaddrspace::{GuestPhysAddr, GuestVirtAddr, HostPhysAddr, MappingFlags};
 
 use crate::vmm::{VCpuRef, VMRef};
 
+pub const USER_STACK_SIZE: usize = 4096 * 4; // 16K
+pub const USER_STACK_BASE: GuestVirtAddr = GuestVirtAddr::from_usize(0x400_000 - USER_STACK_SIZE);
+
+pub const GUEST_MEM_REGION_BASE: GuestPhysAddr = GuestPhysAddr::from_usize(0x0);
+pub const INSTANCE_SHARED_REGION_BASE: GuestPhysAddr = GuestPhysAddr::from_usize(0x0);
+pub const EPTP_LIST_REGION_BASE: GuestPhysAddr = GuestPhysAddr::from_usize(0x0);
+
+/// The base guest physical address for the guest page table, only used for one2one mapping.
+/// GPT_ROOT will be set to the last page in the first region in coarse-grained segmentation mapping.
+pub const GPT_ROOT_GPA: GuestPhysAddr = GuestPhysAddr::from_usize(0xc000_0000);
+
 /// The structure of the memory region.
 #[repr(C, packed)]
 #[derive(Debug, Clone, Copy)]
