@@ -115,16 +115,16 @@ jobs:
     - name: Copy files to current directory
       run: |
         cp ~/source.tar.gz .
-        - name: Copy x86_64 files to remote runner
-        uses: appleboy/scp-action@v0.1.7
-        if: matrix.arch == 'x86_64'
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }}
-          password: ${{ secrets.PASSWORD }}
-          port: ${{ secrets.PORT }}
-          source: './disk-x86_64.img,./source.tar.gz'
-          target: '~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}'
+    - name: Copy x86_64 files to remote runner
+      uses: appleboy/scp-action@v0.1.7
+      if: matrix.arch == 'x86_64'
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        password: ${{ secrets.PASSWORD }}
+        port: ${{ secrets.PORT }}
+        source: './disk-x86_64.img,./source.tar.gz'
+        target: '~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}'
     - name: Running on remote runner
       uses: appleboy/ssh-action@v1.2.2
       if: matrix.arch == 'x86_64'
