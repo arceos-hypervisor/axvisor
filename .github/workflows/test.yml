@@ -76,6 +76,9 @@ jobs:
         port: ${{ secrets.PORT }}
         script: |
           set -e
+          echo "$SHELL"
+          . ~/.profile
+          cargo version
           cd ~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && tar -xzf source.tar.gz
           cd ~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && make ARCH=x86_64 defconfig
           cd ~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && make ARCH=x86_64 DISK_IMG=$(pwd)/disk-x86_64.img LOG=info BLK=y ACCEL=y VM_CONFIGS=$(pwd)/configs/vms/nimbos-x86_64.toml APP_FEATURES=fs run
@@ -145,9 +148,9 @@ jobs:
         port: ${{ secrets.PORT2 }}
         script: |
           set -e
-          # which cargo
-          cargo version
           echo "$SHELL"
+          . ~/.profile
+          cargo version
           cd ~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && tar -xzf source.tar.gz
           cd ~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && make ARCH=x86_64 defconfig
           cd ~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && make ARCH=x86_64 DISK_IMG=$(pwd)/disk-x86_64.img LOG=info BLK=y ACCEL=y VM_CONFIGS=$(pwd)/configs/vms/nimbos-x86_64.toml APP_FEATURES=fs MEM=1G run
