@@ -102,6 +102,7 @@ jobs:
           port: ${{ secrets[matrix.port_key] }}
           script: |
             set -e                        # Exit quickly on error
+            set -o pipefail               # Exit if any command in a pipeline fails
             . ~/.profile                  # Load ~/.profile manually, as it turns out that sometimes it is not loaded automatically
 
             # Set the working directory
