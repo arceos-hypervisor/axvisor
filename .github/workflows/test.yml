@@ -187,8 +187,8 @@ jobs:
             . ~/.profile
             alias cargo='cargo +${{ matrix.rust-toolchain }}'
             cargo version
-            whoami
             ls -lha ~
+            ls -lha ~/runner
             WORKDIR="~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}"
             echo "WORKDIR: $WORKDIR"
             echo "WORKDIR content:"
