@@ -190,7 +190,7 @@ jobs:
             ls -lha ~
             ls -lha ~/runner
             ls -lha ~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}
-            WORKDIR="~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}"
+            WORKDIR=~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}
             echo "WORKDIR: $WORKDIR"
             echo "WORKDIR content:"
             ls -lha $WORKDIR
