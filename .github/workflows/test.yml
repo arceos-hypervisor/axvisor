@@ -17,8 +17,6 @@ jobs:
         rust-toolchain: [nightly-2024-12-25, nightly]
     steps:
     - uses: actions/checkout@v4
-    - name: Compress source code
-      run: tar -czf ~/source.tar.gz -C ${{ github.workspace }} .
     - uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: ${{ matrix.rust-toolchain }}
@@ -51,92 +49,6 @@ jobs:
         make ARCH=${{ matrix.arch }} defconfig
         make ARCH=${{ matrix.arch }} DISK_IMG=${DISK_IMG} LOG=info BLK=y ACCEL=n VM_CONFIGS=${VM_CONFIGS} APP_FEATURES=fs run
 
-  # test_remote:
-  #   runs-on: ubuntu-latest
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       arch: [x86_64]
-  #       rust-toolchain: [nightly-2024-12-25, nightly]
-  #   steps:
-  #   - uses: actions/checkout@v4
-  #   - name: Compress source code
-  #     run: tar -czf ~/source.tar.gz -C ${{ github.workspace }} .
-  #   - uses: ./.github/workflows/actions/setup-nimbos-guest-image
-  #     with:
-  #       nimbos-version: 'tags/v0.7'
-  #       arch: ${{ matrix.arch }}
-  #       disk-path: ${{ github.workspace }}/disk-${{ matrix.arch }}.img
-  #   - name: Copy files to current directory
-  #     run: |
-  #       cp ~/source.tar.gz .
-  #   - name: Copy x86_64 files to remote runner
-  #     uses: appleboy/scp-action@v0.1.7
-  #     with:
-  #       host: ${{ secrets.HOST }}
-  #       username: ${{ secrets.USERNAME }}
-  #       password: ${{ secrets.PASSWORD }}
-  #       port: ${{ secrets.PORT }}
-  #       source: './disk-x86_64.img,./source.tar.gz'
-  #       target: '~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}'
-  #   - name: Running on remote runner
-  #     uses: appleboy/ssh-action@v1.2.2
-  #     continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
-  #     with:
-  #       host: ${{ secrets.HOST }}
-  #       username: ${{ secrets.USERNAME }}
-  #       password: ${{ secrets.PASSWORD }}
-  #       port: ${{ secrets.PORT }}
-  #       script: |
-  #         set -e
-  #         echo "$SHELL"
-  #         . ~/.profile
-  #         alias cargo='cargo +${{ matrix.rust-toolchain }}'
-  #         cargo version
-  #         cd ~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && tar -xzf source.tar.gz
-  #         cd ~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && make ARCH=x86_64 defconfig
-  #         cd ~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && make ARCH=x86_64 DISK_IMG=$(pwd)/disk-x86_64.img LOG=info BLK=y ACCEL=y VM_CONFIGS=$(pwd)/configs/vms/nimbos-x86_64.toml APP_FEATURES=fs run | tee make_output.log
-  #         cd ~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && if grep -q "panic" make_output.log; then
-  #           echo "Test failed: 'panic' found in output msg"
-  #           cat make_output.log
-  #           exit 1
-  #         fi
-  #         cat make_output.log
-  #         cd ~ && rm -rf ~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}
-  #   - name: Copy files to remote runner 2
-  #     uses: appleboy/scp-action@v0.1.7
-  #     with:
-  #       host: ${{ secrets.HOST2 }}
-  #       username: ${{ secrets.USERNAME2 }}
-  #       password: ${{ secrets.PASSWORD2 }}
-  #       port: ${{ secrets.PORT2 }}
-  #       source: './disk-x86_64.img,./source.tar.gz'
-  #       target: '~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}'
-  #   - name: Running on remote runner 2
-  #     uses: appleboy/ssh-action@v1.2.2
-  #     continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
-  #     with:
-  #       host: ${{ secrets.HOST2 }}
-  #       username: ${{ secrets.USERNAME2 }}
-  #       password: ${{ secrets.PASSWORD2 }}
-  #       port: ${{ secrets.PORT2 }}
-  #       script: |
-  #         set -e
-  #         echo "$SHELL"
-  #         . ~/.profile
-  #         alias cargo='cargo +${{ matrix.rust-toolchain }}'
-  #         cargo version
-  #         cd ~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && tar -xzf source.tar.gz
-  #         cd ~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && make ARCH=x86_64 defconfig
-  #         cd ~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && make ARCH=x86_64 DISK_IMG=$(pwd)/disk-x86_64.img LOG=info BLK=y ACCEL=y VM_CONFIGS=$(pwd)/configs/vms/nimbos-x86_64.toml APP_FEATURES=fs run | tee make_output.log
-  #         cd ~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && if grep -q "panic" make_output.log; then
-  #           echo "Test failed: 'panic' found in output msg"
-  #           cat make_output.log
-  #           exit 1
-  #         fi
-  #         cat make_output.log
-  #         cd ~ && rm -rf ~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}
-  
   test_remote:
     runs-on: ubuntu-latest
     strategy:
@@ -163,14 +75,14 @@ jobs:
           sed -i "s/^channel = .*/channel = \"${{ matrix.rust-toolchain }}\"/" rust-toolchain.toml
       - name: Compress source code
         run: tar -czf ~/source.tar.gz -C ${{ github.workspace }} .
+      - name: Copy files to current directory
+        run: |
+          cp ~/source.tar.gz .
       - uses: ./.github/workflows/actions/setup-nimbos-guest-image
         with:
           nimbos-version: 'tags/v0.7'
           arch: ${{ matrix.arch }}
           disk-path: ${{ github.workspace }}/disk-${{ matrix.arch }}.img
-      - name: Copy files to current directory
-        run: |
-          cp ~/source.tar.gz .
       - name: Copy x86_64 files to remote runner
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -204,10 +116,13 @@ jobs:
 
             # Echo the environment info
             function echo_env_info() {
+              PREVIOUS_DIR=$(pwd)
+              cd $WORKDIR
               echo "shell               : ${COLOR_BOLD}${SHELL}${COLOR_CLEAR}"
               echo "rust-toolchain      : ${COLOR_BOLD}${{ matrix.rust-toolchain }}${COLOR_CLEAR}"
               echo "cargo version       : ${COLOR_BOLD}$(cargo --version)${COLOR_CLEAR}"
               echo "workdir             : ${COLOR_BOLD}${WORKDIR}${COLOR_CLEAR}"
+              cd $PREVIOUS_DIR
             }
             
             # Print the environment info
@@ -219,7 +134,7 @@ jobs:
             
             # Re-echo the environment info
             echo_env_info
-            echo "panic" >> $WORKDIR/make_output.log # Simulate a panic for testing purposes
+  
             if grep -q "panic" $WORKDIR/make_output.log; then
               echo "test result         : ${COLOR_RED}FAIL${COLOR_CLEAR}"
               echo "                      ${COLOR_RED}'panic' found in output msg${COLOR_CLEAR}"
