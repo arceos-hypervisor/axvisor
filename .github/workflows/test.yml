@@ -182,25 +182,48 @@ jobs:
           password: ${{ secrets[matrix.password_key] }}
           port: ${{ secrets[matrix.port_key] }}
           script: |
-            set -e
-            echo "$SHELL"
-            . ~/.profile
+            set -e                        # Exit quickly on error
+            . ~/.profile                  # Load ~/.profile manually, as it turns out that sometimes it is not loaded automatically
+            
+            # Use the specified Rust toolchain
             alias cargo='cargo +${{ matrix.rust-toolchain }}'
-            cargo version
-            ls -lha ~
-            ls -lha ~/runner
-            ls -lha ~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}
+
+            # Set the working directory
             WORKDIR=~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}
-            echo "WORKDIR: $WORKDIR"
-            echo "WORKDIR content:"
-            ls -lha $WORKDIR
+
+            # Set up colors for output
+            COLOR_BOLD=\033[1m
+            COLOR_RED=\033[91;1m
+            COLOR_GREEN=\033[92;1m
+            COLOR_YELLOW=\033[93;1m
+            COLOR_CLEAR=\033[0m
+
+            # Echo the environment info
+            function echo_env_info() {
+              echo "shell               : ${COLOR_BOLD}${SHELL}${COLOR_CLEAR}"
+              echo "rust-toolchain      : ${COLOR_BOLD}${{ matrix.rust-toolchain }}${COLOR_CLEAR}"
+              echo "cargo version       : ${COLOR_BOLD}$(cargo --version)${COLOR_CLEAR}"
+              echo "workdir             : ${COLOR_BOLD}${WORKDIR}${COLOR_CLEAR}"
+            }
+            
+            # Print the environment info
+            echo_env_info
+
             tar -xzf $WORKDIR/source.tar.gz -C $WORKDIR
             make -C $WORKDIR ARCH=x86_64 defconfig
             make -C $WORKDIR ARCH=x86_64 DISK_IMG=$WORKDIR/disk-x86_64.img LOG=info BLK=y ACCEL=y VM_CONFIGS=$WORKDIR/configs/vms/nimbos-x86_64.toml APP_FEATURES=fs run | tee $WORKDIR/make_output.log
+            
+            # Re-echo the environment info
+            echo_env_info
+            echo "panic" >> $WORKDIR/make_output.log # Simulate a panic for testing purposes
             if grep -q "panic" $WORKDIR/make_output.log; then
-              echo "Test failed: 'panic' found in output msg"
-              cat $WORKDIR/make_output.log
+              echo "test result        : ${COLOR_RED}FAIL${COLOR_CLEAR}"
+              echo "                     ${COLOR_RED}'panic' found in output msg${COLOR_CLEAR}"
+              echo "                     ${COLOR_YELLOW}Check the log file: $WORKDIR/make_output.log${COLOR_CLEAR}"
               exit 1
+            else
+              echo "test result        : ${COLOR_GREEN}PASS${COLOR_CLEAR}"
             fi
-            cat $WORKDIR/make_output.log
+
+            # Clean up
             cd ~ && rm -rf $WORKDIR
