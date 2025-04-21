@@ -192,11 +192,11 @@ jobs:
             WORKDIR=~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}
 
             # Set up colors for output
-            COLOR_BOLD=\033[1m
-            COLOR_RED=\033[91;1m
-            COLOR_GREEN=\033[92;1m
-            COLOR_YELLOW=\033[93;1m
-            COLOR_CLEAR=\033[0m
+            COLOR_BOLD=$'\033[1m'
+            COLOR_RED=$'\033[91;1m'
+            COLOR_GREEN=$'\033[92;1m'
+            COLOR_YELLOW=$'\033[93;1m'
+            COLOR_CLEAR=$'\033[0m'
 
             # Echo the environment info
             function echo_env_info() {
