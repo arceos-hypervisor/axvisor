@@ -97,11 +97,14 @@ pub fn process_elf_memory_regions(
         })?
         .0;
 
-    let pages_base_hva =
-        phys_to_virt(vm.guest_phys_to_host_phys(pages_base_gpa).ok_or_else(|| {
-            error!("GPA {:#x} is not mapped to HPA", pages_base_gpa);
-            ax_err_type!(BadAddress, "GPA Not mapped to HPA")
-        })?);
+    let pages_base_hva = phys_to_virt(
+        vm.guest_phys_to_host_phys(pages_base_gpa)
+            .map(|(hpa, _flags, _pgsize)| hpa)
+            .ok_or_else(|| {
+                error!("GPA {:#x} is not mapped to HPA", pages_base_gpa);
+                ax_err_type!(BadAddress, "GPA Not mapped to HPA")
+            })?,
+    );
     let pages_ptr = pages_base_hva.as_ptr() as *const usize;
     let pages_slice: &[usize] = unsafe { core::slice::from_raw_parts(pages_ptr, pages_count) };
 
@@ -120,11 +123,14 @@ pub fn process_elf_memory_regions(
                 ax_err_type!(BadAddress, "GVA Not mapped to GPA")
             })?;
 
-        let page_base_hva =
-            phys_to_virt(vm.guest_phys_to_host_phys(page_base_gpa).ok_or_else(|| {
-                error!("GPA {:#x} is not mapped to HPA", page_base_gpa);
-                ax_err_type!(BadAddress, "GPA Not mapped to HPA")
-            })?);
+        let page_base_hva = phys_to_virt(
+            vm.guest_phys_to_host_phys(page_base_gpa)
+                .map(|(hpa, _flags, _pgsize)| hpa)
+                .ok_or_else(|| {
+                    error!("GPA {:#x} is not mapped to HPA", page_base_gpa);
+                    ax_err_type!(BadAddress, "GPA Not mapped to HPA")
+                })?,
+        );
         let region_ptr = page_base_hva.as_ptr() as *const ELFMemoryRegion;
 
         let max_memory_region_in_page =
@@ -175,7 +181,9 @@ pub fn process_elf_memory_regions(
                             Some(ProcessMemoryRegionMapping {
                                 gpa,
                                 page_size,
-                                hpa: vm.guest_phys_to_host_phys(gpa),
+                                hpa: vm
+                                    .guest_phys_to_host_phys(gpa)
+                                    .map(|(hpa, _flags, _pgsize)| hpa),
                             }),
                         ));
                         start = start.add(page_size as usize);

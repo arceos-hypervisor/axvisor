@@ -77,6 +77,7 @@ impl HyperCall {
                 self.args[2],
                 self.args[3],
                 self.args[4],
+                self.args[5],
             ),
             _ => {
                 unimplemented!();
@@ -126,6 +127,7 @@ impl HyperCall {
         memory_cfg_pages_base_gva: u64,
         memory_cfg_pages_count: u64,
         entry: u64,
+        mapping_type: u64,
     ) -> HyperCallResult {
         info!(
             "HCreateInstance iid:{} mm_cnt:{} base_gva:{:#x} pages_cnt: {} entry {:#x}",
@@ -148,7 +150,12 @@ impl HyperCall {
         // Set the entry point (`rip`) of the new process as entry parsed from the ELF file.
         ctx.rip = entry as u64;
 
-        crate::libos::instance::create_instance(id as usize, process_regions, ctx)?;
+        crate::libos::instance::create_instance(
+            id as usize,
+            process_regions,
+            ctx,
+            mapping_type.into(),
+        )?;
 
         Ok(0)
     }

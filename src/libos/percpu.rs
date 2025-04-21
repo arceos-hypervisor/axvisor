@@ -1,4 +1,5 @@
 use core::marker::PhantomData;
+use core::sync::atomic::{AtomicUsize, Ordering};
 use std::os::arceos::modules::axhal::cpu::this_cpu_id;
 use std::os::arceos::modules::axhal::paging::PagingHandlerImpl;
 use std::os::arceos::modules::{axconfig, axtask};
@@ -10,7 +11,7 @@ use lazyinit::LazyInit;
 use axconfig::SMP;
 use axtask::{AxCpuMask, TaskInner};
 use axvcpu::{AxVCpuExitReason, AxVcpuAccessGuestState, VCpuState};
-use page_table_multiarch::PagingHandler;
+use page_table_multiarch::{MappingFlags, PageSize, PagingHandler};
 
 use crate::libos::def::InstanceSharedRegion;
 use crate::libos::hvc::InstanceCall;
@@ -21,9 +22,34 @@ use crate::vmm::config::get_instance_cpus_mask;
 
 const KERNEL_STACK_SIZE: usize = 0x40000; // 256 KiB
 
+#[derive(Debug, Clone, Copy)]
+enum LibOSPerCpuStatus {
+    Ready = 0,
+    Running = 1,
+    Idle = 2,
+}
+
+impl Into<usize> for LibOSPerCpuStatus {
+    fn into(self) -> usize {
+        self as usize
+    }
+}
+
+impl From<usize> for LibOSPerCpuStatus {
+    fn from(value: usize) -> Self {
+        match value {
+            0 => LibOSPerCpuStatus::Ready,
+            1 => LibOSPerCpuStatus::Running,
+            2 => LibOSPerCpuStatus::Idle,
+            _ => panic!("Invalid LibOSPerCpuStatus value: {}", value),
+        }
+    }
+}
+
 struct LibOSPerCpu<H: PagingHandler> {
     vcpu: VCpuRef,
     shared_region_base: HostPhysAddr,
+    status: AtomicUsize,
     _phantom: PhantomData<H>,
     // running: AtomicBool,
 }
@@ -79,8 +105,15 @@ pub fn current_eptp() -> HostPhysAddr {
     HostPhysAddr::from_usize(eptp.as_usize() & PHYS_ADDR_MASK)
 }
 
-pub fn gpa_to_hpa(gpa: GuestPhysAddr) -> Option<HostPhysAddr> {
+pub fn gpa_to_hpa(gpa: GuestPhysAddr) -> Option<(HostPhysAddr, MappingFlags, PageSize)> {
     current_instance().guest_phys_to_host_phys(current_eptp(), gpa)
+}
+
+pub fn mark_idle() {
+    let curcpu = unsafe { LIBOS_PERCPU.current_ref_raw() };
+    curcpu
+        .status
+        .store(LibOSPerCpuStatus::Idle.into(), Ordering::SeqCst);
 }
 
 #[percpu::def_percpu]
@@ -102,16 +135,27 @@ pub fn init_instance_percore_task(cpu_id: usize, vcpu: VCpuRef, shared_region_ba
     // It is safe to get the remote percpu reference here.
     let remote_percpu = unsafe { LIBOS_PERCPU.remote_ref_mut_raw(cpu_id) };
 
-    if remote_percpu.is_inited() {
-        warn!("PerCPU data for CPU {} is already initialized", cpu_id);
-        return;
+    if !remote_percpu.is_inited() {
+        remote_percpu.init_once(LibOSPerCpu {
+            vcpu: vcpu.clone(),
+            shared_region_base,
+            status: AtomicUsize::new(LibOSPerCpuStatus::Ready.into()),
+            _phantom: PhantomData,
+        });
+    } else if remote_percpu.status.load(Ordering::SeqCst) == LibOSPerCpuStatus::Idle.into() {
+        info!("Re-initializing LibOSPerCpu for CPU {}", cpu_id);
+        remote_percpu.vcpu = vcpu.clone();
+        remote_percpu.shared_region_base = shared_region_base;
+        remote_percpu
+            .status
+            .store(LibOSPerCpuStatus::Ready.into(), Ordering::SeqCst);
+    } else {
+        warn!(
+            "PerCPU data for CPU {} bad status {:?}",
+            cpu_id,
+            Into::<LibOSPerCpuStatus>::into(remote_percpu.status.load(Ordering::SeqCst))
+        );
     }
-
-    remote_percpu.init_once(LibOSPerCpu {
-        vcpu: vcpu.clone(),
-        shared_region_base,
-        _phantom: PhantomData,
-    });
 
     remote_percpu.shared_region_mut().instance_id = 0;
     remote_percpu.shared_region_mut().process_id = cpu_id as _;
@@ -152,6 +196,10 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
         })
         .unwrap();
     loop {
+        if curcpu.status.load(Ordering::SeqCst) == LibOSPerCpuStatus::Idle.into() {
+            thread::exit(0);
+        }
+
         match vcpu.run() {
             Ok(exit_reason) => {
                 let instance_id = curcpu.shared_region().instance_id;
@@ -199,6 +247,15 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
                             "Instance[{}] run on Vcpu [{}] failed with exit code {}",
                             instance_id, vcpu_id, hardware_entry_failure_reason
                         );
+                        match crate::libos::instance::remove_instance(instance_id as usize) {
+                            Ok(_) => {
+                                info!("Instance[{}] removed successfully", instance_id);
+                            }
+                            Err(err) => {
+                                error!("Failed to remove instance[{}]: {:?}", instance_id, err);
+                            }
+                        };
+
                         thread::exit(hardware_entry_failure_reason as i32);
                     }
                     _ => {

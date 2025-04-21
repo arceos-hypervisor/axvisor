@@ -6,7 +6,7 @@ use std::sync::Mutex;
 
 use axerrno::{AxResult, ax_err_type};
 use memory_addr::{MemoryAddr, PAGE_SIZE_4K, is_aligned_4k};
-use page_table_multiarch::PagingHandler;
+use page_table_multiarch::{PageSize, PagingHandler};
 
 use axaddrspace::{GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr, MappingFlags};
 use axvcpu::AxVcpuAccessGuestState;
@@ -53,10 +53,10 @@ impl<H: PagingHandler> Instance<H> {
         id: usize,
         elf_regions: Vec<ProcessMemoryRegion>,
         mut ctx: HostContext,
+        mapping_type: GuestMappingType,
     ) -> AxResult<Arc<Self>> {
         debug!("Generate instance {}", id);
-        let mut init_addrspace =
-            GuestAddrSpace::new(GuestMappingType::CoarseGrainedSegmentation2M)?;
+        let mut init_addrspace = GuestAddrSpace::new(mapping_type)?;
 
         // Parse and copy ELF segments to guest process's address space.
         // Todo: distinguish shared regions.
@@ -153,13 +153,11 @@ impl<H: PagingHandler> Instance<H> {
         &self,
         eptp: HostPhysAddr,
         gpa: GuestPhysAddr,
-    ) -> Option<HostPhysAddr> {
-        self.processes.lock().get(&eptp).and_then(|process| {
-            process
-                .addrspace()
-                .translate(gpa)
-                .map(|(hpa, _flags, _page_size)| hpa)
-        })
+    ) -> Option<(HostPhysAddr, MappingFlags, PageSize)> {
+        self.processes
+            .lock()
+            .get(&eptp)
+            .and_then(|process| process.addrspace().translate(gpa))
     }
 
     pub fn read_from_guest(
@@ -266,6 +264,9 @@ impl<H: PagingHandler> Instance<H> {
 impl<H: PagingHandler> Drop for Instance<H> {
     fn drop(&mut self) {
         info!("Destroy instance {}", self.id);
+        if self.id == 0 {
+            warn!("You are dropping gate instance, you'd better know what you are doing!");
+        }
     }
 }
 
@@ -275,12 +276,13 @@ pub fn create_instance(
     id: usize,
     process_regions: Vec<ProcessMemoryRegion>,
     ctx: HostContext,
-) -> AxResult<InstanceRef> {
+    mapping_type: GuestMappingType,
+) -> AxResult {
     if INSTANCES.lock().contains_key(&id) {
         return Err(ax_err_type!(InvalidInput, "Instance ID already exists"));
     }
 
-    let instance_ref = Instance::<PagingHandlerImpl>::new(id, process_regions, ctx)?;
+    let instance_ref = Instance::<PagingHandlerImpl>::new(id, process_regions, ctx, mapping_type)?;
 
     INSTANCES.lock().insert(id, instance_ref.clone());
 
@@ -288,7 +290,19 @@ pub fn create_instance(
         instance_ref.init_gate_processes()?;
     }
 
-    Ok(instance_ref)
+    Ok(())
+}
+
+pub fn remove_instance(id: usize) -> AxResult {
+    info!("Removing instance {}", id);
+
+    let mut instances = INSTANCES.lock();
+    if let Some(instance) = instances.remove(&id) {
+        drop(instance);
+        Ok(())
+    } else {
+        Err(ax_err_type!(InvalidInput, "Instance ID not found"))
+    }
 }
 
 pub fn get_instances_by_id(id: usize) -> Option<InstanceRef> {

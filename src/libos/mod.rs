@@ -8,5 +8,5 @@ mod gaddrspace;
 mod gpt;
 mod hvc;
 
-pub use percpu::libos_vcpu_run;
 pub use percpu::gpa_to_hpa;
+pub use percpu::libos_vcpu_run;

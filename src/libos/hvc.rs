@@ -1,7 +1,4 @@
-use std::os::arceos;
-use std::thread;
-
-use arceos::modules::axhal;
+use std::os::arceos::modules::axhal;
 
 use axaddrspace::GuestVirtAddr;
 use axerrno::{AxResult, ax_err, ax_err_type};
@@ -105,7 +102,14 @@ impl InstanceCall {
     /// TODO: we may need to care about more context states.
     fn exit_instance(&self, exit_code: u64) -> HyperCallResult {
         info!("HExitInstance code {exit_code:#x}");
-        thread::exit(exit_code as i32)
+
+        crate::libos::instance::remove_instance(self.instance.id())?;
+        // DO NOT exit thread here, just mark the percpu as idle.
+        // The thread will be exited in the next loop in `libos_vcpu_run`,
+        // to let current `InstanceCall` to be dropped peacefully.
+        crate::libos::percpu::mark_idle();
+
+        Ok(0)
     }
 
     fn clone(&self) -> HyperCallResult {

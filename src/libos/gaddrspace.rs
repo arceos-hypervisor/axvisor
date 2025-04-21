@@ -38,6 +38,23 @@ pub enum GuestMappingType {
     CoarseGrainedSegmentation1G = 0x4000_0000,
 }
 
+impl From<u64> for GuestMappingType {
+    fn from(value: u64) -> Self {
+        match value {
+            0 => GuestMappingType::One2OneMapping,
+            1 => GuestMappingType::CoarseGrainedSegmentation2M,
+            2 => GuestMappingType::CoarseGrainedSegmentation1G,
+            _ => {
+                error!(
+                    "Invalid guest mapping type: {}, downgrading to One2OneMapping",
+                    value
+                );
+                GuestMappingType::One2OneMapping
+            }
+        }
+    }
+}
+
 enum GuestMapping {
     /// One-to-one mapping.
     One2OneMapping {
@@ -298,12 +315,7 @@ impl<
         Ok(())
     }
 
-    pub fn copy_from_guest(
-        &self,
-        src: GuestVirtAddr,
-        dst: HostVirtAddr,
-        size: usize,
-    ) -> AxResult {
+    pub fn copy_from_guest(&self, src: GuestVirtAddr, dst: HostVirtAddr, size: usize) -> AxResult {
         debug!(
             "copy_from_guest src: {:?} to dst: {:?} size: {:#x}",
             src, dst, size
@@ -672,7 +684,7 @@ impl<
             return Err(PagingError::NotAligned);
         }
         debug!(
-            "guest_map_region({:#x}): [{:#x}, {:#x}) {:?}",
+            "(GPT@{:#x})guest_map_region: [{:#x}, {:#x}) {:?}",
             self.guest_page_table_root_gpa(),
             vaddr_usize,
             vaddr_usize + size,

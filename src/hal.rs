@@ -11,6 +11,7 @@ use arceos::modules::axhal::cpu::{this_cpu_id, this_cpu_is_reserved};
 use arceos::modules::{axalloc, axhal, axtask};
 
 use memory_addr::{PAGE_SIZE_4K, align_up_4k};
+use page_table_multiarch::{MappingFlags, PageSize};
 
 use axaddrspace::{HostPhysAddr, HostVirtAddr};
 use axerrno::{AxResult, ax_err_type};
@@ -64,7 +65,9 @@ impl AxVMHal for AxVMHalImpl {
 pub struct EPTTranslatorImpl;
 
 impl axaddrspace::EPTTranslator for EPTTranslatorImpl {
-    fn guest_phys_to_host_phys(gpa: axaddrspace::GuestPhysAddr) -> Option<HostPhysAddr> {
+    fn guest_phys_to_host_phys(
+        gpa: axaddrspace::GuestPhysAddr,
+    ) -> Option<(HostPhysAddr, MappingFlags, PageSize)> {
         use crate::task_ext::TaskExtType;
         use std::os::arceos::modules::axtask::{self, TaskExtRef};
 
