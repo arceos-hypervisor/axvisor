@@ -143,16 +143,16 @@ jobs:
         remote: [remote1, remote2]
         include:
         - remote: remote1
-          host: host1
-          username: username1
-          password: password1
-          port: port1
+          host: "${{ secrets.HOST }}"
+          username: "${{ secrets.USERNAME }}"
+          password: "${{ secrets.PASSWORD }}"
+          port: "${{ secrets.PORT }}"
         - remote: remote2
-          host: host2
-          username: username2
-          password: password2
-          port: port2
+          host: "${{ secrets.HOST2 }}"
+          username: "${{ secrets.USERNAME2 }}"
+          password: "${{ secrets.PASSWORD2 }}"
+          port: "${{ secrets.PORT2 }}"
     steps:
     - name: "Print matrix"
       run: |
-        echo "Matrix: ${{ toJson(matrix) }}"
+        echo "Matrix: ${{ matrix.remote }} ${{ matrix.host }}"
