@@ -132,3 +132,26 @@ jobs:
           fi
           cat make_output.log
           cd ~ && rm -rf ~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}
+  
+  test_matrix_output:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64]
+        rust-toolchain: [nightly-2024-12-25, nightly]
+        include:
+        - remote: host1
+          host: host1
+          username: username1
+          password: password1
+          port: port1
+        - remote: host2
+          host: host2
+          username: username2
+          password: password2
+          port: port2
+    steps:
+    - name: "Print matrix"
+      run: |
+        echo "Matrix: ${{ toJson(matrix) }}"
