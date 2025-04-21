@@ -7,13 +7,13 @@ env:
   arceos-apps: '68054e8'
 
 jobs:
-  test:
+  test_local:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        arch: [x86_64, riscv64, aarch64]
+        arch: [riscv64, aarch64]
         rust-toolchain: [nightly-2024-12-25, nightly]
     steps:
     - uses: actions/checkout@v4
@@ -25,10 +25,10 @@ jobs:
         components: rust-src
     - uses: Swatinem/rust-cache@v2
     - run: cargo install cargo-binutils
-    - uses: ./.github/workflows/actions/setup-qemu
-      if: matrix.arch != 'x86_64'
+    - uses: arceos-org/setup-qemu@v0.1
       with:
-        qemu-version: ${{ env.qemu-version }}
+        version: ${{ env.qemu-version }}
+        arch_list: ${{ matrix.arch }}
     - uses: ./.github/workflows/actions/setup-nimbos-guest-image
       with:
         nimbos-version: 'tags/v0.7'
@@ -40,59 +40,14 @@ jobs:
         sudo udevadm control --reload-rules
         sudo udevadm trigger --name-match=kvm
     - name: Run guests
-      if: matrix.arch != 'x86_64'
       continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
       run: |
-        cat /proc/cpuinfo
-        if [ "${{ matrix.arch }}" = "x86_64" ]; then
-          export ACCEL=y
-        else
-          export ACCEL=n
-        fi
         export DISK_IMG="${{ github.workspace }}/disk-${{ matrix.arch }}.img"
         export VM_CONFIGS="$(pwd)/configs/vms/nimbos-${{ matrix.arch }}.toml"
         make ARCH=${{ matrix.arch }} defconfig
-        make ARCH=${{ matrix.arch }} DISK_IMG=${DISK_IMG} LOG=info BLK=y ACCEL=${ACCEL} VM_CONFIGS=${VM_CONFIGS} APP_FEATURES=fs run
-    - name: Copy files to current directory
-      if: matrix.arch == 'x86_64'
-      run: |
-        cp ~/source.tar.gz .
-    - name: Copy x86_64 files to remote runner
-      uses: appleboy/scp-action@v0.1.7
-      if: matrix.arch == 'x86_64'
-      with:
-        host: ${{ secrets.HOST }}
-        username: ${{ secrets.USERNAME }}
-        password: ${{ secrets.PASSWORD }}
-        port: ${{ secrets.PORT }}
-        source: './disk-x86_64.img,./source.tar.gz'
-        target: '~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}'
-    - name: Running on remote runner
-      uses: appleboy/ssh-action@v1.2.2
-      if: matrix.arch == 'x86_64'
-      continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
-      with:
-        host: ${{ secrets.HOST }}
-        username: ${{ secrets.USERNAME }}
-        password: ${{ secrets.PASSWORD }}
-        port: ${{ secrets.PORT }}
-        script: |
-          set -e
-          echo "$SHELL"
-          . ~/.profile
-          cargo version
-          cd ~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && tar -xzf source.tar.gz
-          cd ~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && make ARCH=x86_64 defconfig
-          cd ~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && make ARCH=x86_64 DISK_IMG=$(pwd)/disk-x86_64.img LOG=info BLK=y ACCEL=y VM_CONFIGS=$(pwd)/configs/vms/nimbos-x86_64.toml APP_FEATURES=fs run | tee make_output.log
-          cd ~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && if grep -q "panic" make_output.log; then
-            echo "Test failed: 'panic' found in output msg"
-            cat make_output.log
-            exit 1
-          fi
-          cat make_output.log
-          cd ~ && rm -rf ~/runner/${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}
+        make ARCH=${{ matrix.arch }} DISK_IMG=${DISK_IMG} LOG=info BLK=y ACCEL=n VM_CONFIGS=${VM_CONFIGS} APP_FEATURES=fs run
 
-  remote_test:
+  test_remote:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -103,12 +58,6 @@ jobs:
     - uses: actions/checkout@v4
     - name: Compress source code
       run: tar -czf ~/source.tar.gz -C ${{ github.workspace }} .
-    - uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: ${{ matrix.rust-toolchain }}
-        components: rust-src
-    - uses: Swatinem/rust-cache@v2
-    - run: cargo install cargo-binutils
     - uses: ./.github/workflows/actions/setup-nimbos-guest-image
       with:
         nimbos-version: 'tags/v0.7'
@@ -119,7 +68,6 @@ jobs:
         cp ~/source.tar.gz .
     - name: Copy x86_64 files to remote runner
       uses: appleboy/scp-action@v0.1.7
-      if: matrix.arch == 'x86_64'
       with:
         host: ${{ secrets.HOST }}
         username: ${{ secrets.USERNAME }}
@@ -129,7 +77,6 @@ jobs:
         target: '~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}'
     - name: Running on remote runner
       uses: appleboy/ssh-action@v1.2.2
-      if: matrix.arch == 'x86_64'
       continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
       with:
         host: ${{ secrets.HOST }}
@@ -140,6 +87,7 @@ jobs:
           set -e
           echo "$SHELL"
           . ~/.profile
+          alias cargo='cargo +${{ matrix.rust-toolchain }}'
           cargo version
           cd ~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && tar -xzf source.tar.gz
           cd ~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && make ARCH=x86_64 defconfig
@@ -172,6 +120,7 @@ jobs:
           set -e
           echo "$SHELL"
           . ~/.profile
+          alias cargo='cargo +${{ matrix.rust-toolchain }}'
           cargo version
           cd ~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && tar -xzf source.tar.gz
           cd ~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && make ARCH=x86_64 defconfig
