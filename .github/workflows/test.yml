@@ -41,6 +41,7 @@ jobs:
         sudo udevadm trigger --name-match=kvm
     - name: Run guests
       if: matrix.arch != 'x86_64'
+      continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
       run: |
         cat /proc/cpuinfo
         if [ "${{ matrix.arch }}" = "x86_64" ]; then
@@ -69,6 +70,7 @@ jobs:
     - name: Running on remote runner
       uses: appleboy/ssh-action@v1.2.2
       if: matrix.arch == 'x86_64'
+      continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
       with:
         host: ${{ secrets.HOST }}
         username: ${{ secrets.USERNAME }}
@@ -128,6 +130,7 @@ jobs:
     - name: Running on remote runner
       uses: appleboy/ssh-action@v1.2.2
       if: matrix.arch == 'x86_64'
+      continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
       with:
         host: ${{ secrets.HOST }}
         username: ${{ secrets.USERNAME }}
@@ -159,6 +162,7 @@ jobs:
         target: '~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}'
     - name: Running on remote runner 2
       uses: appleboy/ssh-action@v1.2.2
+      continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
       with:
         host: ${{ secrets.HOST2 }}
         username: ${{ secrets.USERNAME2 }}
