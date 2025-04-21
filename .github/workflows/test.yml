@@ -187,13 +187,14 @@ jobs:
             . ~/.profile
             alias cargo='cargo +${{ matrix.rust-toolchain }}'
             cargo version
-            cd ~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && tar -xzf source.tar.gz
-            cd ~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && make ARCH=x86_64 defconfig
-            cd ~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && make ARCH=x86_64 DISK_IMG=$(pwd)/disk-x86_64.img LOG=info BLK=y ACCEL=y VM_CONFIGS=$(pwd)/configs/vms/nimbos-x86_64.toml APP_FEATURES=fs run | tee make_output.log
-            cd ~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }} && if grep -q "panic" make_output.log; then
+            WORKDIR="~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}"
+            tar -xzf $WORKDIR/source.tar.gz -C $WORKDIR
+            make -C $WORKDIR ARCH=x86_64 defconfig
+            make -C $WORKDIR ARCH=x86_64 DISK_IMG=$WORKDIR/disk-x86_64.img LOG=info BLK=y ACCEL=y VM_CONFIGS=$WORKDIR/configs/vms/nimbos-x86_64.toml APP_FEATURES=fs run | tee $WORKDIR/make_output.log
+            if grep -q "panic" $WORKDIR/make_output.log; then
               echo "Test failed: 'panic' found in output msg"
-              cat make_output.log
+              cat $WORKDIR/make_output.log
               exit 1
             fi
-            cat make_output.log
-            cd ~ && rm -rf ~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}
+            cat $WORKDIR/make_output.log
+            cd ~ && rm -rf $WORKDIR
