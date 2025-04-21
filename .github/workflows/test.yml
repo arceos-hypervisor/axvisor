@@ -187,7 +187,12 @@ jobs:
             . ~/.profile
             alias cargo='cargo +${{ matrix.rust-toolchain }}'
             cargo version
+            whoami
+            ls -lha ~
             WORKDIR="~/runner/remote_test-${{ github.run_id }}-${{ matrix.arch }}-${{ matrix.rust-toolchain }}"
+            echo "WORKDIR: $WORKDIR"
+            echo "WORKDIR content:"
+            ls -lha $WORKDIR
             tar -xzf $WORKDIR/source.tar.gz -C $WORKDIR
             make -C $WORKDIR ARCH=x86_64 defconfig
             make -C $WORKDIR ARCH=x86_64 DISK_IMG=$WORKDIR/disk-x86_64.img LOG=info BLK=y ACCEL=y VM_CONFIGS=$WORKDIR/configs/vms/nimbos-x86_64.toml APP_FEATURES=fs run | tee $WORKDIR/make_output.log
