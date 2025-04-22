@@ -220,7 +220,7 @@ pub fn setup_vm_primary_vcpu(vm: VMRef) {
 }
 
 /// Allocates arceos task for vcpu, set the task's entry function to [`vcpu_run()`],
-/// alse initializes the CPU mask if the VCpu has a dedicated physical CPU set.
+/// also initializes the CPU mask if the VCpu has a dedicated physical CPU set.
 ///
 /// # Arguments
 ///
