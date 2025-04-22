@@ -25,7 +25,7 @@ static VMM: AxWaitQueueHandle = AxWaitQueueHandle::new();
 static RUNNING_VM_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 /// Initialize the VMM.
-/// 
+///
 /// This function creates the VM structures and sets up the primary VCpu for each VM.
 pub fn init() {
     // Initialize guest VM according to config file.
@@ -53,9 +53,13 @@ pub fn start() {
     }
 
     // Do not exit until all VMs are stopped.
-    task::ax_wait_queue_wait_until(&VMM, || {
-        let vm_count = RUNNING_VM_COUNT.load(Ordering::Acquire);
-        info!("a VM exited, current running VM count: {}", vm_count);
-        vm_count == 0
-    }, None);
+    task::ax_wait_queue_wait_until(
+        &VMM,
+        || {
+            let vm_count = RUNNING_VM_COUNT.load(Ordering::Acquire);
+            info!("a VM exited, current running VM count: {}", vm_count);
+            vm_count == 0
+        },
+        None,
+    );
 }

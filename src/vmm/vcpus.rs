@@ -1,7 +1,10 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
 use core::sync::atomic::{AtomicUsize, Ordering};
-use std::os::arceos::{api::task::{ax_wait_queue_wake, AxCpuMask}, modules::axtask};
+use std::os::arceos::{
+    api::task::{AxCpuMask, ax_wait_queue_wake},
+    modules::axtask,
+};
 
 use axaddrspace::GuestPhysAddr;
 use axtask::{AxTaskRef, TaskExtRef, TaskInner, WaitQueue};
@@ -86,13 +89,16 @@ impl VMVCpus {
 
     /// Increments the count of running or halting VCpus by one.
     fn mark_vcpu_running(&self) {
-        self.running_halting_vcpu_count.fetch_add(1, Ordering::Relaxed);
+        self.running_halting_vcpu_count
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     /// Decrements the count of running or halting VCpus by one. Returns true if this was the last
     /// VCpu to exit.
     fn mark_vcpu_exiting(&self) -> bool {
-        self.running_halting_vcpu_count.fetch_sub(1, Ordering::Relaxed) == 1
+        self.running_halting_vcpu_count
+            .fetch_sub(1, Ordering::Relaxed)
+            == 1
     }
 }
 
@@ -333,11 +339,17 @@ fn vcpu_run() {
 
         // Check if the VM is shutting down.
         if vm.shutting_down() {
-            warn!("VM[{}] VCpu[{}] shutting down because of VM shutdown", vm_id, vcpu_id);
+            warn!(
+                "VM[{}] VCpu[{}] shutting down because of VM shutdown",
+                vm_id, vcpu_id
+            );
 
             if mark_vcpu_exiting(vm_id) {
-                info!("VM[{}] VCpu[{}] last VCpu exiting, decreasing running VM count", vm_id, vcpu_id);
-                
+                info!(
+                    "VM[{}] VCpu[{}] last VCpu exiting, decreasing running VM count",
+                    vm_id, vcpu_id
+                );
+
                 super::RUNNING_VM_COUNT.fetch_sub(1, Ordering::Release);
                 ax_wait_queue_wake(&super::VMM, 1);
             }
