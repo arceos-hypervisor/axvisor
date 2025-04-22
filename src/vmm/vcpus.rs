@@ -92,8 +92,8 @@ impl VMVCpus {
     fn mark_vcpu_running(&self) {
         self.running_halting_vcpu_count
             .fetch_add(1, Ordering::Relaxed);
-        // Relaxed is enough here, as we only need to ensure that the count is incremented
-        // correctly, and there is no other data synchronization needed.
+        // Relaxed is enough here, as we only need to ensure that the count is incremented and
+        // decremented correctly, and there is no other data synchronization needed.
     }
 
     /// Decrements the count of running or halting VCpus by one. Returns true if this was the last
@@ -102,8 +102,8 @@ impl VMVCpus {
         self.running_halting_vcpu_count
             .fetch_sub(1, Ordering::Relaxed)
             == 1
-        // Relaxed is enough here, as we only need to ensure that the count is incremented
-        // correctly, and there is no other data synchronization needed.
+        // Relaxed is enough here, as we only need to ensure that the count is incremented and
+        // decremented correctly, and there is no other data synchronization needed.
     }
 }
 
