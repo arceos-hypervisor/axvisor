@@ -32,7 +32,7 @@ axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm
 ]}
 
 # System dependent modules provided by ArceOS-Hypervisor.
-axvm = { git = "https://github.com/arceos-hypervisor/axvm.git" }
+axvm = { git = "https://github.com/arceos-hypervisor/axvm.git", branch = "grace_vm_shutdown" }
 axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git" }
 axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git" }
 
@@ -50,3 +50,6 @@ axconfig = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "
 prettyplease = "0.2"
 quote = "1.0"
 syn = "2.0"
+
+[patch."https://github.com/arceos-hypervisor/x86_vcpu.git"]
+x86_vcpu = { path = "../x86_vcpu" }

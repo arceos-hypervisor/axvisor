@@ -573,7 +573,7 @@ dependencies = [
 [[package]]
 name = "axvm"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/axvm.git#1610b9b7da4d763b5ef0e8a86e573f74d0a05cbe"
+source = "git+https://github.com/arceos-hypervisor/axvm.git?branch=grace_vm_shutdown#02604775a3403b314e3d171f00eb98e4cd7c665a"
 dependencies = [
  "arm_vcpu",
  "axaddrspace",
@@ -1720,7 +1720,6 @@ dependencies = [
 [[package]]
 name = "x86_vcpu"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/x86_vcpu.git#ab5d194a28df7b7bf229c863e61157ee2d10068d"
 dependencies = [
  "axaddrspace",
  "axerrno",
