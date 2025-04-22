@@ -18,7 +18,8 @@ const KERNEL_STACK_SIZE: usize = 0x40000; // 256 KiB
 /// A global static BTreeMap that holds the wait queues for VCpus
 /// associated with their respective VMs, identified by their VM IDs.
 ///
-/// TODO: find a better data structure to replace the `static mut`, something like a contional variable.
+/// TODO: find a better data structure to replace the `static mut`, something like a conditional
+/// variable.
 static mut VM_VCPU_TASK_WAIT_QUEUE: BTreeMap<usize, VMVCpus> = BTreeMap::new();
 
 /// A structure representing the VCpus of a specific VM, including a wait queue
@@ -91,6 +92,8 @@ impl VMVCpus {
     fn mark_vcpu_running(&self) {
         self.running_halting_vcpu_count
             .fetch_add(1, Ordering::Relaxed);
+        // Relaxed is enough here, as we only need to ensure that the count is incremented
+        // correctly, and there is no other data synchronization needed.
     }
 
     /// Decrements the count of running or halting VCpus by one. Returns true if this was the last
@@ -99,6 +102,8 @@ impl VMVCpus {
         self.running_halting_vcpu_count
             .fetch_sub(1, Ordering::Relaxed)
             == 1
+        // Relaxed is enough here, as we only need to ensure that the count is incremented
+        // correctly, and there is no other data synchronization needed.
     }
 }
 
