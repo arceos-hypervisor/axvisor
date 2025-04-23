@@ -137,6 +137,11 @@ impl<H: PagingHandler> HostPhysicalRegion<H> {
 
 impl<H: PagingHandler> Drop for HostPhysicalRegion<H> {
     fn drop(&mut self) {
+        debug!(
+            "Dropping HostPhysicalRegion [{:?}-{:?}]",
+            self.base,
+            self.base.add(self.size)
+        );
         H::dealloc_frames(self.base, self.size / PAGE_SIZE_4K);
     }
 }
@@ -194,12 +199,26 @@ impl<
                 let mut new_pt_regions = Vec::new();
 
                 for ori_region in mm_regions {
+                    warn!(
+                        "Cloning mm [{:?}-{:?}], mapped to [{:?}-{:?}]",
+                        new_mm_region_base,
+                        new_mm_region_base.add(mm_region_granularity),
+                        ori_region.base(),
+                        ori_region.base().add(mm_region_granularity)
+                    );
+
                     forked_addrspace.map_linear(
                         new_mm_region_base,
                         ori_region.base(), // Map to the original region without copying.
                         mm_region_granularity,
                         MappingFlags::READ | MappingFlags::EXECUTE, // erase WRITE permission
                         true,
+                    )?;
+
+                    self.ept_addrspace.protect(
+                        new_mm_region_base,
+                        mm_region_granularity,
+                        MappingFlags::READ | MappingFlags::EXECUTE, // erase WRITE permission
                     )?;
 
                     new_mm_regions.push(ori_region.clone());

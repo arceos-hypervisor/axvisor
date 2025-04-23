@@ -299,8 +299,8 @@ pub fn remove_instance(id: usize) -> AxResult {
     info!("Removing instance {}", id);
 
     let mut instances = INSTANCES.lock();
-    if let Some(instance) = instances.remove(&id) {
-        drop(instance);
+    if let Some(_instance) = instances.remove(&id) {
+        // Drop the instance reference.
         Ok(())
     } else {
         Err(ax_err_type!(InvalidInput, "Instance ID not found"))

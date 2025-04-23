@@ -147,7 +147,19 @@ impl InstanceCall {
             len as usize,
         )?;
 
+        info!(
+            "==== Instance {} Process {} writing begin ====",
+            self.instance.id(),
+            self.process_id
+        );
+
         axhal::console::write_bytes(buffer.as_slice());
+
+        info!(
+            "xxxx Instance {} Process {} writing end xxxx",
+            self.instance.id(),
+            self.process_id
+        );
 
         Ok(len as usize)
     }
