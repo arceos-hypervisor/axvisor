@@ -179,9 +179,11 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
     let vcpu_id = vcpu.id();
     let cpu_id = this_cpu_id();
 
+    let process_id = current_process_id();
+
     info!(
-        "Instance task on Core[{}] running, VCPU id {}",
-        cpu_id, vcpu_id
+        "Instance task on Core[{}] running, VCPU id {}, process id {}",
+        cpu_id, vcpu_id, process_id
     );
 
     let curcpu = unsafe { LIBOS_PERCPU.current_ref_raw() };

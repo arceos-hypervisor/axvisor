@@ -23,19 +23,16 @@ pub const GP_EPT_LIST_REGION_GVA: GuestVirtAddr = GuestVirtAddr::from_usize(0xff
 /*  Guest Process Physical Address Space Layout (in GPA).*/
 
 /// Guest Process shared region base address (first page) in first segmentation mapping region.
-pub const INSTANCE_SHARED_REGION_BASE: GuestPhysAddr = GuestPhysAddr::from_usize(0xf000_0000);
+pub const INSTANCE_SHARED_REGION_BASE: GuestPhysAddr = GuestPhysAddr::from_usize(0xff00_0000_0000);
 /// Guest Process's GPA view of the EPTP list region on current CPU, only mapped in gate processes.
-pub const GP_EPTP_LIST_REGION_BASE: GuestPhysAddr = GuestPhysAddr::from_usize(0xf000_1000);
+pub const GP_EPTP_LIST_REGION_BASE: GuestPhysAddr = GuestPhysAddr::from_usize(0xff00_0000_1000);
+/// Guest Process's GPA view of the guest page table, which will be set as the process's CR3.
+pub const GUEST_PT_ROOT_GPA: GuestPhysAddr = GuestPhysAddr::from_usize(0xff80_0000_0000);
 
 /// (Only used for coarse-grained segmentation mapping)
 ///
 /// Guest Process first region base address.
 pub const GUEST_MEM_REGION_BASE: GuestPhysAddr = GuestPhysAddr::from_usize(0);
-/// (Only used for one2one mapping)
-///
-/// The base guest physical address for the guest page table.
-/// GPT_ROOT will be set to the last page in the first region in coarse-grained segmentation mapping.
-pub const GPT_ROOT_GPA: GuestPhysAddr = GuestPhysAddr::from_usize(0xc000_0000);
 
 /// The structure of the memory region.
 #[repr(C, packed)]

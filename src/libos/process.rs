@@ -41,6 +41,11 @@ impl<H: PagingHandler> Process<H> {
     }
 
     pub fn fork(&mut self, pid: usize) -> AxResult<Self> {
+        info!(
+            "Fork process: pid = {} from parent process {}",
+            pid, self.pid
+        );
+
         let new_as = self.guest_as.fork()?;
         let new_process = Process::new(pid, new_as);
         Ok(new_process)

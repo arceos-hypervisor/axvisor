@@ -19,7 +19,7 @@ qemu_image := ubuntu-$(UV)-server-cloudimg-amd64.img
 qemu_args := \
   -smp $(SMP) -m 16G -accel kvm -nographic \
   -machine q35,kernel_irqchip=split \
-  -cpu host,-la57,-kvm-asyncpf,-kvm-pv-eoi,-kvm-pv-ipi,-kvm-pv-sched-yield,-kvm-pv-unhalt,-kvm-steal-time,-kvmclock \
+  -cpu host,-la57,-waitpkg,-kvm-asyncpf,-kvm-pv-eoi,-kvm-pv-ipi,-kvm-pv-sched-yield,-kvm-pv-unhalt,-kvm-steal-time,-kvmclock \
   -drive file=$(qemu_image) \
   -net user,id=net,hostfwd=tcp::$(PORT)-:22 -net nic,model=e1000e \
   -serial mon:stdio \

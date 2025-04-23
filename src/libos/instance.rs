@@ -239,6 +239,7 @@ impl<H: PagingHandler> Instance<H> {
                 shared_region_base_hpa,
                 PAGE_SIZE_4K,
                 MappingFlags::READ | MappingFlags::WRITE,
+                false,
             )?;
 
             // Map the EPTP list region for gate process.
@@ -248,6 +249,7 @@ impl<H: PagingHandler> Instance<H> {
                 gp_eptp_list_base_hpa,
                 PAGE_SIZE_4K,
                 MappingFlags::READ | MappingFlags::WRITE,
+                false,
             )?;
 
             crate::libos::percpu::init_instance_percore_task(

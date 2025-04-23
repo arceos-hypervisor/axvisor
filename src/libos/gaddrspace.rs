@@ -1,5 +1,7 @@
+use alloc::sync::Arc;
 use core::ops::AddAssign;
 use std::collections::btree_map::BTreeMap;
+use std::vec::Vec;
 
 use axerrno::{AxError, AxResult, ax_err, ax_err_type};
 use memory_addr::{
@@ -12,7 +14,7 @@ use page_table_multiarch::{
 use axaddrspace::npt::EPTMetadata;
 use axaddrspace::{AddrSpace, GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr};
 
-use super::def::{GPT_ROOT_GPA, GUEST_MEM_REGION_BASE};
+use super::def::{GUEST_MEM_REGION_BASE, GUEST_PT_ROOT_GPA};
 use super::gpt::{ENTRY_COUNT, MoreGenericPTE, p1_index, p2_index, p3_index, p4_index, p5_index};
 
 // Copy from `axmm`.
@@ -55,25 +57,88 @@ impl From<u64> for GuestMappingType {
     }
 }
 
-enum GuestMapping {
+enum GuestMapping<H: PagingHandler> {
     /// One-to-one mapping.
     One2OneMapping {
         page_pos: usize, // Incremented from 0.
     },
     /// Coarse-grained segmentation (2M/1G).
     CoarseGrainedSegmentation {
-        // These two indexed should be synchronized with guest LibOS somehow.
-        /// Memory page index incremented from 0.
-        mem_pos: usize,
-        /// Page table page index decremented from (region_granularity/PAGE_SIZE_4k) - 1 (0x1FF for 2M, 0x1FFFFF for 1G).
-        page_pos: usize,
         /// Manage LibOS's memory addrspace at 2MB/1GB granularity.
-        region_granularity: usize,
-        /// Current region base address.
-        current_region_base: GuestPhysAddr,
-        /// Number of coarse-grained segmentation regions.
-        huge_page_num: usize,
+        mm_region_granularity: usize,
+        /// Current normal memory region base address in GPA.
+        mm_region_base: GuestPhysAddr,
+        /// Memory page index incremented from 0.
+        mm_page_idx: usize,
+        /// Stores the host physical address of allocated regions for normal memory.
+        mm_regions: Vec<HostPhysicalRegionRef<H>>,
+        /// Current page table region base address in GPA.
+        pt_region_base: GuestPhysAddr,
+        /// Page table page index incremented from 1 (the first is used for page table root).
+        pt_page_idx: usize,
+        /// Stores the host physical address of allocated regions for page table memory.
+        pt_regions: Vec<HostPhysicalRegion<H>>,
     },
+}
+
+struct HostPhysicalRegion<H: PagingHandler> {
+    base: HostPhysAddr,
+    size: usize,
+    phontom: core::marker::PhantomData<H>,
+}
+
+type HostPhysicalRegionRef<H> = Arc<HostPhysicalRegion<H>>;
+
+impl<H: PagingHandler> HostPhysicalRegion<H> {
+    fn allocate(granularity: usize) -> AxResult<Self> {
+        let hpa = H::alloc_frames(granularity / PAGE_SIZE_4K, granularity).ok_or_else(|| {
+            ax_err_type!(NoMemory, "Failed to allocate memory for HostPhysicalRegion")
+        })?;
+
+        // Clear the memory region.
+        unsafe {
+            core::ptr::write_bytes(H::phys_to_virt(hpa).as_mut_ptr(), 0, granularity);
+        }
+
+        Ok(Self {
+            base: hpa,
+            size: granularity,
+            phontom: core::marker::PhantomData,
+        })
+    }
+
+    fn allocate_ref(granularity: usize) -> AxResult<HostPhysicalRegionRef<H>> {
+        Ok(Arc::new(Self::allocate(granularity)?))
+    }
+
+    fn base(&self) -> HostPhysAddr {
+        self.base
+    }
+
+    fn copy_from(&self, src: &Self) {
+        if self.size != src.size {
+            warn!(
+                "{:?} copying memory regions from {:?} with different sizes: {} vs {}",
+                self.base,
+                src.base(),
+                self.size,
+                src.size
+            );
+        }
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                H::phys_to_virt(src.base()).as_ptr(),
+                H::phys_to_virt(self.base).as_mut_ptr(),
+                self.size,
+            );
+        }
+    }
+}
+
+impl<H: PagingHandler> Drop for HostPhysicalRegion<H> {
+    fn drop(&mut self) {
+        H::dealloc_frames(self.base, self.size / PAGE_SIZE_4K);
+    }
 }
 
 /// The virtual memory address space.
@@ -85,14 +150,15 @@ pub struct GuestAddrSpace<
 > {
     ept_addrspace: AddrSpace<M, EPTE, H>,
 
-    guest_mapping: GuestMapping,
-
     // Below are used for guest addrspace.
     gva_range: AddrRange<GuestVirtAddr>,
+
+    /// Guest mapping type.
+    guest_mapping: GuestMapping<H>,
+    /// Guest virtual address areas in GVA.
     gva_areas: BTreeMap<GuestVirtAddr, (AddrRange<GuestVirtAddr>, MappingFlags)>,
 
-    /// Guest Page Table
-    gpt_root_gpa: GuestPhysAddr,
+    /// Guest Page Table levels.
     levels: usize,
 
     phontom: core::marker::PhantomData<GPTE>,
@@ -106,7 +172,96 @@ impl<
 > GuestAddrSpace<M, EPTE, GPTE, H>
 {
     pub fn fork(&mut self) -> AxResult<Self> {
-        unimplemented!()
+        let mut forked_addrspace = AddrSpace::new_empty(
+            GuestPhysAddr::from_usize(0),
+            1 << <EPTMetadata as PagingMetaData>::VA_MAX_BITS,
+        )?;
+
+        let forked_guest_mapping = match self.guest_mapping {
+            GuestMapping::One2OneMapping { page_pos } => GuestMapping::One2OneMapping { page_pos },
+            GuestMapping::CoarseGrainedSegmentation {
+                mm_region_granularity,
+                mm_region_base,
+                mm_page_idx,
+                ref mm_regions,
+                pt_region_base,
+                pt_page_idx,
+                ref pt_regions,
+            } => {
+                let mut new_mm_region_base = GuestPhysAddr::from_usize(0);
+                let mut new_mm_regions = Vec::new();
+                let mut new_pt_region_base = GUEST_PT_ROOT_GPA;
+                let mut new_pt_regions = Vec::new();
+
+                for ori_region in mm_regions {
+                    forked_addrspace.map_linear(
+                        new_mm_region_base,
+                        ori_region.base(), // Map to the original region without copying.
+                        mm_region_granularity,
+                        MappingFlags::READ | MappingFlags::EXECUTE, // erase WRITE permission
+                        true,
+                    )?;
+
+                    new_mm_regions.push(ori_region.clone());
+
+                    new_mm_region_base.add_assign(mm_region_granularity);
+                }
+                if new_mm_region_base != mm_region_base.add(mm_region_granularity) {
+                    error!(
+                        "New memory region base address {:?} does not match original {:?}",
+                        new_mm_region_base, mm_region_base
+                    );
+                }
+
+                // For page table regions, we need to copy the original page table regions.
+                // Because the guest page table CAN NOT be queried by MMU without `WRITE` permission.
+                // ref: Intel SDM 30.3.3.2 EPT Violations
+                for ori_pt_region in pt_regions {
+                    let new_pt_region = HostPhysicalRegion::allocate(PAGE_SIZE_2M)?;
+
+                    // Copy the original region to the new region.
+                    new_pt_region.copy_from(&ori_pt_region);
+
+                    forked_addrspace.map_linear(
+                        new_pt_region_base,
+                        new_pt_region.base(),
+                        PAGE_SIZE_2M,
+                        MappingFlags::READ | MappingFlags::WRITE,
+                        true,
+                    )?;
+
+                    new_pt_regions.push(new_pt_region);
+
+                    new_pt_region_base.add_assign(PAGE_SIZE_2M);
+                }
+
+                if new_pt_region_base != pt_region_base.add(PAGE_SIZE_2M) {
+                    error!(
+                        "New page table region base address {:?} does not match original {:?}",
+                        new_pt_region_base, pt_region_base
+                    );
+                }
+
+                GuestMapping::CoarseGrainedSegmentation {
+                    mm_region_granularity,
+                    mm_region_base,
+                    mm_page_idx,
+                    mm_regions: new_mm_regions,
+                    pt_region_base,
+                    pt_page_idx,
+                    pt_regions: new_pt_regions,
+                }
+            }
+        };
+
+        Ok(Self {
+            ept_addrspace: forked_addrspace,
+            gva_range: self.gva_range.clone(),
+            guest_mapping: forked_guest_mapping,
+            gva_areas: self.gva_areas.clone(),
+            levels: self.levels,
+            phontom: core::marker::PhantomData,
+        })
     }
 }
 
@@ -123,55 +278,60 @@ impl<
 
         let mut ept_addrspace = AddrSpace::new_empty(
             GuestPhysAddr::from_usize(0),
-            1 << <EPTMetadata as PagingMetaData>::VA_MAX_BITS,
+            0xffff << <EPTMetadata as PagingMetaData>::VA_MAX_BITS,
         )?;
 
-        let (guest_mapping, gpt_root_gpa) = match gmt {
+        let guest_mapping = match gmt {
             GuestMappingType::One2OneMapping => {
                 // If one to one mapping, map guest page table root to hpa.
                 ept_addrspace.map_alloc(
-                    GPT_ROOT_GPA,
+                    GUEST_PT_ROOT_GPA,
                     PAGE_SIZE_4K,
                     MappingFlags::READ | MappingFlags::WRITE,
                     true,
                 )?;
-                (GuestMapping::One2OneMapping { page_pos: 1 }, GPT_ROOT_GPA)
+                GuestMapping::One2OneMapping { page_pos: 1 }
             }
             GuestMappingType::CoarseGrainedSegmentation2M
             | GuestMappingType::CoarseGrainedSegmentation1G => {
-                let region_granularity = match gmt {
+                let mm_region_granularity = match gmt {
                     GuestMappingType::CoarseGrainedSegmentation2M => PAGE_SIZE_2M,
                     GuestMappingType::CoarseGrainedSegmentation1G => PAGE_SIZE_1G,
                     _ => unreachable!(),
                 };
-                let page_num = region_granularity / PAGE_SIZE_4K;
-                // Use last page in first region for guest page table root.
-                let page_pos = page_num - 1;
 
                 // Map the first memory region.
-                ept_addrspace.map_alloc(
+                let first_mm_region = HostPhysicalRegion::allocate_ref(mm_region_granularity)?;
+
+                ept_addrspace.map_linear(
                     GUEST_MEM_REGION_BASE,
-                    region_granularity,
+                    first_mm_region.base(),
+                    mm_region_granularity,
                     MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
                     true,
                 )?;
 
-                let gpt_root_gpa = GUEST_MEM_REGION_BASE + page_pos * PAGE_SIZE_4K;
+                let first_pt_region = HostPhysicalRegion::allocate(PAGE_SIZE_2M)?;
 
-                (
-                    GuestMapping::CoarseGrainedSegmentation {
-                        // Mempry page index start from 0.
-                        mem_pos: 0,
-                        // Page table page index decrements from page_num - 1 (0x1FF for 2M, 0x1FFFFF for 1G).,
-                        // but the last page has been used for guest page table root,
-                        // so it should be page_num - 2.
-                        page_pos: page_num - 2,
-                        region_granularity,
-                        current_region_base: GUEST_MEM_REGION_BASE,
-                        huge_page_num: 1,
-                    },
-                    gpt_root_gpa,
-                )
+                ept_addrspace.map_linear(
+                    GUEST_PT_ROOT_GPA,
+                    first_pt_region.base(),
+                    PAGE_SIZE_2M,
+                    MappingFlags::READ | MappingFlags::WRITE,
+                    true,
+                )?;
+
+                GuestMapping::CoarseGrainedSegmentation {
+                    // Memory page index start from 0.
+                    mm_page_idx: 0,
+                    // Page table page index start from 1.
+                    pt_page_idx: 1,
+                    mm_region_granularity,
+                    mm_region_base: GUEST_MEM_REGION_BASE,
+                    mm_regions: vec![first_mm_region],
+                    pt_region_base: GUEST_PT_ROOT_GPA,
+                    pt_regions: vec![first_pt_region],
+                }
             }
         };
 
@@ -183,7 +343,6 @@ impl<
                 1 << <EPTMetadata as PagingMetaData>::VA_MAX_BITS,
             ),
             gva_areas: BTreeMap::new(),
-            gpt_root_gpa,
             levels: M::LEVELS,
             phontom: core::marker::PhantomData,
         };
@@ -227,9 +386,10 @@ impl<
         start_paddr: HostPhysAddr,
         size: usize,
         flags: MappingFlags,
+        allow_huge: bool,
     ) -> AxResult {
         self.ept_addrspace
-            .map_linear(start_vaddr, start_paddr, size, flags)
+            .map_linear(start_vaddr, start_paddr, size, flags, allow_huge)
     }
 
     pub fn guest_map_alloc(
@@ -274,11 +434,13 @@ impl<
                 )?;
             }
             GuestMapping::CoarseGrainedSegmentation {
-                mem_pos: _,
-                page_pos: _,
-                region_granularity: _,
-                current_region_base: _,
-                huge_page_num: _,
+                mm_page_idx: _,
+                pt_page_idx: _,
+                mm_region_granularity: _,
+                mm_region_base: _,
+                mm_regions: _,
+                pt_region_base: _,
+                pt_regions: _,
             } => {
                 if populate {
                     let start_addr = start;
@@ -456,14 +618,23 @@ impl<
                 )
             }
             GuestMapping::CoarseGrainedSegmentation {
-                ref mut mem_pos,
-                page_pos: _,
-                region_granularity: _,
-                current_region_base,
-                huge_page_num: _,
+                mm_region_granularity,
+                mm_region_base,
+                ref mut mm_page_idx,
+                mm_regions: _,
+                pt_region_base: _,
+                pt_page_idx: _,
+                pt_regions: _,
             } => {
-                let allocated_frame_base = current_region_base.add(*mem_pos * PAGE_SIZE_4K);
-                *mem_pos += 1;
+                let allocated_frame_base = mm_region_base.add(*mm_page_idx * PAGE_SIZE_4K);
+                *mm_page_idx += 1;
+
+                assert!(
+                    *mm_page_idx < mm_region_granularity / PAGE_SIZE_4K,
+                    "mm_page_idx {} should be less than {}",
+                    *mm_page_idx,
+                    mm_region_granularity / PAGE_SIZE_4K
+                );
 
                 self.check_memory_region()?;
                 Ok(allocated_frame_base)
@@ -482,7 +653,6 @@ impl<
                 }
 
                 let allocated_frame_base = current_gpt_gpa.add(*page_pos * PAGE_SIZE_4K);
-                // page_pos += 1;
                 *page_pos += 1;
 
                 self.ept_addrspace.map_alloc(
@@ -494,15 +664,23 @@ impl<
                 allocated_frame_base
             }
             GuestMapping::CoarseGrainedSegmentation {
-                mem_pos: _,
-                ref mut page_pos,
-                region_granularity: _,
-                current_region_base,
-                huge_page_num: _,
+                mm_region_granularity: _,
+                mm_region_base: _,
+                mm_page_idx: _,
+                mm_regions: _,
+                pt_region_base,
+                ref mut pt_page_idx,
+                pt_regions: _,
             } => {
-                let allocated_frame_base = current_region_base.add(*page_pos * PAGE_SIZE_4K);
-                *page_pos -= 1;
-                self.check_memory_region()?;
+                let allocated_frame_base = pt_region_base.add(*pt_page_idx * PAGE_SIZE_4K);
+                assert!(
+                    *pt_page_idx < PAGE_SIZE_2M / PAGE_SIZE_4K,
+                    "pt_page_idx {} should be less than {}",
+                    *pt_page_idx,
+                    PAGE_SIZE_2M / PAGE_SIZE_4K,
+                );
+                *pt_page_idx += 1;
+                self.check_pt_region()?;
                 allocated_frame_base
             }
         };
@@ -516,33 +694,84 @@ impl<
                 error!("Do not need to check memory region for one-to-one mapping");
             }
             GuestMapping::CoarseGrainedSegmentation {
-                ref mut mem_pos,
-                ref mut page_pos,
-                ref mut current_region_base,
-                region_granularity,
-                ref mut huge_page_num,
+                mm_region_granularity,
+                ref mut mm_region_base,
+                ref mut mm_page_idx,
+                ref mut mm_regions,
+                pt_region_base: _,
+                pt_page_idx: _,
+                pt_regions: _,
             } => {
-                if mem_pos == page_pos {
-                    assert!(
-                        (region_granularity == PAGE_SIZE_2M) | (region_granularity == PAGE_SIZE_1G)
-                    );
-                    current_region_base.add_assign(region_granularity);
-
-                    warn!(
-                        "Memory region exhausted, allocating new region at {:?}",
-                        current_region_base
-                    );
-
-                    *huge_page_num += 1;
-                    self.ept_addrspace.map_alloc(
-                        *current_region_base,
-                        region_granularity,
-                        MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
-                        true,
-                    )?;
-                    *mem_pos = 0;
-                    *page_pos = region_granularity / PAGE_SIZE_4K - 1;
+                if *mm_page_idx < mm_region_granularity / PAGE_SIZE_4K - 1 {
+                    return Ok(());
                 }
+
+                mm_region_base.add_assign(mm_region_granularity);
+
+                warn!(
+                    "Memory region exhausted, allocating new region at {:?}",
+                    mm_region_base
+                );
+
+                // Allocate new region.
+                let allocated_region = HostPhysicalRegion::allocate_ref(mm_region_granularity)?;
+
+                self.ept_addrspace.map_linear(
+                    *mm_region_base,
+                    allocated_region.base(),
+                    mm_region_granularity,
+                    MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
+                    true,
+                )?;
+
+                mm_regions.push(allocated_region);
+
+                *mm_page_idx = 0;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn check_pt_region(&mut self) -> AxResult {
+        match self.guest_mapping {
+            GuestMapping::One2OneMapping { page_pos: _ } => {
+                error!("Do not need to check memory region for one-to-one mapping");
+            }
+            GuestMapping::CoarseGrainedSegmentation {
+                mm_region_granularity: _,
+                mm_region_base: _,
+                mm_page_idx: _,
+                mm_regions: _,
+                ref mut pt_region_base,
+                ref mut pt_page_idx,
+                ref mut pt_regions,
+            } => {
+                if *pt_page_idx < PAGE_SIZE_2M / PAGE_SIZE_4K - 1 {
+                    return Ok(());
+                }
+
+                pt_region_base.add_assign(PAGE_SIZE_2M);
+
+                warn!(
+                    "PT region exhausted, allocating new region at {:?}",
+                    pt_region_base
+                );
+
+                // Allocate new region.
+                let allocated_region = HostPhysicalRegion::allocate(PAGE_SIZE_2M)?;
+
+                self.ept_addrspace.map_linear(
+                    *pt_region_base,
+                    allocated_region.base(),
+                    PAGE_SIZE_2M,
+                    MappingFlags::READ | MappingFlags::WRITE,
+                    true,
+                )?;
+
+                pt_regions.push(allocated_region);
+
+                *pt_page_idx = 0;
             }
         }
 
@@ -582,7 +811,7 @@ impl<
 {
     /// Get the root page table physical address.
     pub fn guest_page_table_root_gpa(&self) -> GuestPhysAddr {
-        self.gpt_root_gpa
+        GUEST_PT_ROOT_GPA
     }
 
     /// Maps a virtual page to a physical frame with the given `page_size`
@@ -974,5 +1203,29 @@ impl<
             }
         }
         Ok(())
+    }
+}
+
+impl<M: PagingMetaData, EPTE: GenericPTE, GPTE: MoreGenericPTE, H: PagingHandler> Drop
+    for GuestAddrSpace<M, EPTE, GPTE, H>
+{
+    fn drop(&mut self) {
+        debug!("GuestAddrSpace drop");
+        match self.guest_mapping {
+            GuestMapping::One2OneMapping { page_pos: _ } => {
+                // Do nothing
+            }
+            GuestMapping::CoarseGrainedSegmentation {
+                mm_region_granularity: _,
+                mm_region_base: _,
+                mm_page_idx: _,
+                mm_regions: _,
+                pt_region_base: _,
+                pt_page_idx: _,
+                pt_regions: _,
+            } => {
+                warn!("CoarseGrainedSegmentation drop");
+            }
+        }
     }
 }
