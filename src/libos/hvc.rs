@@ -1,18 +1,19 @@
 use std::os::arceos::modules::axhal;
+use std::println;
 
-use axaddrspace::GuestVirtAddr;
+use axaddrspace::{GuestVirtAddr, HostPhysAddr};
 use axerrno::{AxResult, ax_err, ax_err_type};
 use axhvc::{HyperCallCode, HyperCallResult};
 use axvcpu::AxVcpuAccessGuestState;
 
 use crate::libos::instance::InstanceRef;
-use crate::libos::percpu::{current_eptp, current_instance};
 use crate::vmm::VCpuRef;
 
 pub struct InstanceCall {
     vcpu: VCpuRef,
     instance: InstanceRef,
     process_id: usize,
+    eptp: HostPhysAddr,
     code: HyperCallCode,
     args: [u64; 6],
 }
@@ -22,6 +23,7 @@ impl InstanceCall {
         vcpu: VCpuRef,
         instance: InstanceRef,
         process_id: usize,
+        eptp: HostPhysAddr,
         code: u64,
         args: [u64; 6],
     ) -> AxResult<Self> {
@@ -34,6 +36,7 @@ impl InstanceCall {
             vcpu,
             instance,
             process_id,
+            eptp,
             code,
             args,
         })
@@ -58,7 +61,6 @@ impl InstanceCall {
             );
             return ax_err!(PermissionDenied);
         }
-        warn!("Hypercall: {:?} args: {:#x?}", self.code, self.args);
 
         if self.vcpu.get_arch_vcpu().guest_is_privileged() {
             self.execute_privileged()
@@ -78,7 +80,7 @@ impl InstanceCall {
     fn execute_unprivileged(&self) -> HyperCallResult {
         match self.code {
             HyperCallCode::HDebug => self.debug(),
-            HyperCallCode::HExitInstance => self.exit_instance(self.args[0]),
+            HyperCallCode::HExitProcess => self.exit_process(self.args[0]),
             HyperCallCode::HClone => self.clone(),
             HyperCallCode::HRead => self.read(self.args[0], self.args[1], self.args[2]),
             HyperCallCode::HWrite => self.write(self.args[0], self.args[1], self.args[2]),
@@ -100,10 +102,11 @@ impl InstanceCall {
 
     /// Exit the instance with the given exit code.
     /// TODO: we may need to care about more context states.
-    fn exit_instance(&self, exit_code: u64) -> HyperCallResult {
+    fn exit_process(&self, exit_code: u64) -> HyperCallResult {
         info!("HExitInstance code {exit_code:#x}");
 
-        crate::libos::instance::remove_instance(self.instance.id())?;
+        self.instance.remove_process(self.eptp)?;
+
         // DO NOT exit thread here, just mark the percpu as idle.
         // The thread will be exited in the next loop in `libos_vcpu_run`,
         // to let current `InstanceCall` to be dropped peacefully.
@@ -141,25 +144,18 @@ impl InstanceCall {
             "HWrite fd:{} buffer_gva:{:#x} len {:#x}",
             fd, buffer_gva, len
         );
-        let buffer = current_instance().read_from_guest(
-            current_eptp(),
+        let buffer = self.instance.read_from_guest(
+            self.eptp,
             GuestVirtAddr::from_usize(buffer_gva as usize),
             len as usize,
         )?;
 
-        info!(
-            "==== Instance {} Process {} writing begin ====",
-            self.instance.id(),
-            self.process_id
-        );
+        info!("==== I[{}]P({})====\n", self.instance.id(), self.process_id);
 
         axhal::console::write_bytes(buffer.as_slice());
 
-        info!(
-            "xxxx Instance {} Process {} writing end xxxx",
-            self.instance.id(),
-            self.process_id
-        );
+        println!("\n");
+        info!("xxxx I[{}]P({})xxxx", self.instance.id(), self.process_id);
 
         Ok(len as usize)
     }

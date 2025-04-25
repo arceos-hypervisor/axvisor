@@ -173,7 +173,6 @@ pub fn init_instance_percore_task(cpu_id: usize, vcpu: VCpuRef, shared_region_ba
     axtask::spawn_task(vcpu_task);
 }
 
-/// TODO: maybe we tend to pin each vCpu on every physical CPU.
 /// This function is the main routine for the vCPU task.
 pub fn libos_vcpu_run(vcpu: VCpuRef) {
     let vcpu_id = vcpu.id();
@@ -206,22 +205,25 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
             Ok(exit_reason) => {
                 let instance_id = curcpu.shared_region().instance_id;
                 let process_id = curcpu.shared_region().process_id;
+
+                let instance_ref = if let Some(instance) = get_instances_by_id(instance_id as usize)
+                {
+                    instance
+                } else {
+                    error!("Instance not found: {}", instance_id);
+                    mark_idle();
+                    continue;
+                };
+
                 match exit_reason {
                     AxVCpuExitReason::Hypercall { nr, args } => {
-                        debug!("Instance call [{:#x}] args: {:#x?}", nr, args);
-
-                        let instance_ref =
-                            if let Some(instance) = get_instances_by_id(instance_id as usize) {
-                                instance
-                            } else {
-                                error!("Instance not found: {}", instance_id);
-                                break;
-                            };
+                        debug!("Instance call [{:#x}] args: {:x?}", nr, args);
 
                         match InstanceCall::new(
                             vcpu.clone(),
                             instance_ref,
                             process_id as usize,
+                            current_eptp(),
                             nr,
                             args,
                         ) {
@@ -249,16 +251,26 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
                             "Instance[{}] run on Vcpu [{}] failed with exit code {}",
                             instance_id, vcpu_id, hardware_entry_failure_reason
                         );
-                        match crate::libos::instance::remove_instance(instance_id as usize) {
-                            Ok(_) => {
-                                info!("Instance[{}] removed successfully", instance_id);
-                            }
-                            Err(err) => {
-                                error!("Failed to remove instance[{}]: {:?}", instance_id, err);
-                            }
-                        };
 
-                        thread::exit(hardware_entry_failure_reason as i32);
+                        instance_ref
+                            .remove_process(current_eptp())
+                            .unwrap_or_else(|err| {
+                                error!("Failed to remove process: {:?}", err);
+                            });
+                        mark_idle();
+                    }
+                    AxVCpuExitReason::NestedPageFault { addr, access_flags } => {
+                        match instance_ref.handle_ept_page_fault(current_eptp(), addr, access_flags)
+                        {
+                            Ok(_) => {}
+                            Err(err) => {
+                                error!(
+                                    "Failed to handle nested page fault addr {:?} flags {:?}: {:?}",
+                                    addr, access_flags, err
+                                );
+                                break;
+                            }
+                        }
                     }
                     _ => {
                         warn!("Instance run unexpected exit reason: {:?}", exit_reason);

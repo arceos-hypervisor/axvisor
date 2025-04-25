@@ -71,7 +71,7 @@ enum GuestMapping<H: PagingHandler> {
         /// Memory page index incremented from 0.
         mm_page_idx: usize,
         /// Stores the host physical address of allocated regions for normal memory.
-        mm_regions: Vec<HostPhysicalRegionRef<H>>,
+        mm_regions: BTreeMap<GuestPhysAddr, HostPhysicalRegionRef<H>>,
         /// Current page table region base address in GPA.
         pt_region_base: GuestPhysAddr,
         /// Page table page index incremented from 1 (the first is used for page table root).
@@ -193,22 +193,21 @@ impl<
                 pt_page_idx,
                 ref pt_regions,
             } => {
-                let mut new_mm_region_base = GuestPhysAddr::from_usize(0);
-                let mut new_mm_regions = Vec::new();
+                let mut new_mm_regions = BTreeMap::new();
                 let mut new_pt_region_base = GUEST_PT_ROOT_GPA;
                 let mut new_pt_regions = Vec::new();
 
-                for ori_region in mm_regions {
+                for (ori_base, ori_region) in mm_regions {
                     warn!(
                         "Cloning mm [{:?}-{:?}], mapped to [{:?}-{:?}]",
-                        new_mm_region_base,
-                        new_mm_region_base.add(mm_region_granularity),
+                        ori_base,
+                        ori_base.add(mm_region_granularity),
                         ori_region.base(),
                         ori_region.base().add(mm_region_granularity)
                     );
 
                     forked_addrspace.map_linear(
-                        new_mm_region_base,
+                        *ori_base,
                         ori_region.base(), // Map to the original region without copying.
                         mm_region_granularity,
                         MappingFlags::READ | MappingFlags::EXECUTE, // erase WRITE permission
@@ -216,20 +215,12 @@ impl<
                     )?;
 
                     self.ept_addrspace.protect(
-                        new_mm_region_base,
+                        *ori_base,
                         mm_region_granularity,
                         MappingFlags::READ | MappingFlags::EXECUTE, // erase WRITE permission
                     )?;
 
-                    new_mm_regions.push(ori_region.clone());
-
-                    new_mm_region_base.add_assign(mm_region_granularity);
-                }
-                if new_mm_region_base != mm_region_base.add(mm_region_granularity) {
-                    error!(
-                        "New memory region base address {:?} does not match original {:?}",
-                        new_mm_region_base, mm_region_base
-                    );
+                    new_mm_regions.insert(*ori_base, ori_region.clone());
                 }
 
                 // For page table regions, we need to copy the original page table regions.
@@ -282,6 +273,73 @@ impl<
             phontom: core::marker::PhantomData,
         })
     }
+
+    pub fn handle_ept_page_fault(
+        &mut self,
+        addr: GuestPhysAddr,
+        access_flags: MappingFlags,
+    ) -> AxResult<bool> {
+        debug!(
+            "Handle EPT page fault at {:?}, flags {:?}",
+            addr, access_flags
+        );
+
+        match self.guest_mapping {
+            GuestMapping::One2OneMapping { page_pos: _ } => {
+                unimplemented!()
+            }
+            GuestMapping::CoarseGrainedSegmentation {
+                mm_region_granularity,
+                mm_region_base: _,
+                mm_page_idx: _,
+                ref mut mm_regions,
+                pt_region_base: _,
+                pt_page_idx: _,
+                pt_regions: _,
+            } => {
+                let fault_mm_region_base = addr.align_down(mm_region_granularity);
+
+                let fault_mm_region = mm_regions
+                    .get(&fault_mm_region_base)
+                    .ok_or_else(|| ax_err_type!(NotFound, "Fault memory region not found"))?;
+
+                if Arc::strong_count(fault_mm_region) > 1 {
+                    // If the reference count is greater than 1, it means that there is still other GuestAddrSpace
+                    // holding the reference to this region.
+                    // So we need to allocate a new region for this GuestAddrSpace.
+                    let new_pt_region = HostPhysicalRegion::allocate_ref(mm_region_granularity)?;
+
+                    new_pt_region.copy_from(fault_mm_region);
+
+                    self.ept_addrspace.map_linear(
+                        fault_mm_region_base,
+                        new_pt_region.base(),
+                        mm_region_granularity,
+                        MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
+                        true,
+                    )?;
+                    let fault_mm_region = mm_regions.insert(fault_mm_region_base, new_pt_region);
+                    if fault_mm_region.is_none() {
+                        error!(
+                            "Ori memory region [{:?}-{:?}] not exist, check why",
+                            fault_mm_region_base,
+                            fault_mm_region_base.add(mm_region_granularity)
+                        );
+                    }
+                    // The reference count of the original region will be decremented when it is dropped.
+                } else {
+                    // If the reference count is 1, it means that this is the only GuestAddrSpace holding the reference to this region.
+                    // So we can just update the access flags of this region.
+                    self.ept_addrspace.protect(
+                        fault_mm_region_base,
+                        mm_region_granularity,
+                        MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
+                    )?;
+                }
+            }
+        }
+        Ok(true)
+    }
 }
 
 impl<
@@ -320,6 +378,7 @@ impl<
                 };
 
                 // Map the first memory region.
+                let mut mm_regions = BTreeMap::new();
                 let first_mm_region = HostPhysicalRegion::allocate_ref(mm_region_granularity)?;
 
                 ept_addrspace.map_linear(
@@ -329,6 +388,7 @@ impl<
                     MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
                     true,
                 )?;
+                mm_regions.insert(GUEST_MEM_REGION_BASE, first_mm_region);
 
                 let first_pt_region = HostPhysicalRegion::allocate(PAGE_SIZE_2M)?;
 
@@ -347,7 +407,7 @@ impl<
                     pt_page_idx: 1,
                     mm_region_granularity,
                     mm_region_base: GUEST_MEM_REGION_BASE,
-                    mm_regions: vec![first_mm_region],
+                    mm_regions,
                     pt_region_base: GUEST_PT_ROOT_GPA,
                     pt_regions: vec![first_pt_region],
                 }
@@ -497,10 +557,10 @@ impl<
     }
 
     pub fn copy_from_guest(&self, src: GuestVirtAddr, dst: HostVirtAddr, size: usize) -> AxResult {
-        debug!(
-            "copy_from_guest src: {:?} to dst: {:?} size: {:#x}",
-            src, dst, size
-        );
+        // debug!(
+        //     "copy_from_guest src: {:?} to dst: {:?} size: {:#x}",
+        //     src, dst, size
+        // );
 
         let start_addr = src;
         let end_addr = start_addr.add(size);
@@ -523,7 +583,7 @@ impl<
         let mut dst_hva = dst;
 
         for gva in PageIter4K::new(start_addr_aligned, end_addr_aligned).unwrap() {
-            let (gpa, _gflags, _gpgsize) = self.query(gva).map_err(paging_err_to_ax_err)?;
+            let (gpa, _gflags, _gpgsize) = self.guest_query(gva).map_err(paging_err_to_ax_err)?;
             let (hpa, _hflags, _hpgsize) = self
                 .ept_addrspace
                 .translate(gpa)
@@ -587,7 +647,7 @@ impl<
         let mut src_hva = src;
 
         for gva in PageIter4K::new(start_addr_aligned, end_addr_aligned).unwrap() {
-            let (gpa, _gflags, _gpgsize) = self.query(gva).map_err(paging_err_to_ax_err)?;
+            let (gpa, _gflags, _gpgsize) = self.guest_query(gva).map_err(paging_err_to_ax_err)?;
             let (hpa, _hflags, _hpgsize) = self
                 .ept_addrspace
                 .translate(gpa)
@@ -743,8 +803,7 @@ impl<
                     true,
                 )?;
 
-                mm_regions.push(allocated_region);
-
+                mm_regions.insert(*mm_region_base, allocated_region.clone());
                 *mm_page_idx = 0;
             }
         }
@@ -829,7 +888,7 @@ impl<
 > GuestAddrSpace<M, EPTE, GPTE, H>
 {
     /// Get the root page table physical address.
-    pub fn guest_page_table_root_gpa(&self) -> GuestPhysAddr {
+    fn guest_page_table_root_gpa(&self) -> GuestPhysAddr {
         GUEST_PT_ROOT_GPA
     }
 
@@ -849,8 +908,9 @@ impl<
         page_size: PageSize,
         flags: MappingFlags,
     ) -> PagingResult {
-        trace!(
-            "GPT @[{:?}] mapping: {:?} -> {:?}, size {:?} {:?}",
+        info!(
+            "EPTP@[{:?}] GPT @[{:?}] mapping: {:?} -> {:?}, size {:?} {:?}",
+            self.ept_addrspace.page_table_root(),
             self.guest_page_table_root_gpa(),
             vaddr,
             target,
@@ -883,18 +943,15 @@ impl<
         Ok((paddr, size))
     }
 
-    ///
     /// Returns the physical address of the target frame, mapping flags, and
     /// the page size.
     ///
     /// Returns [`Err(PagingError::NotMapped)`](PagingError::NotMapped) if the
     /// mapping is not present.
-    fn query(&self, vaddr: GuestVirtAddr) -> PagingResult<(GuestPhysAddr, MappingFlags, PageSize)> {
-        // debug!(
-        //     "GPT @{:?} query({:?})",
-        //     self.guest_page_table_root_gpa(),
-        //     vaddr
-        // );
+    pub fn guest_query(
+        &self,
+        vaddr: GuestVirtAddr,
+    ) -> PagingResult<(GuestPhysAddr, MappingFlags, PageSize)> {
         let (entry, size) = self.get_entry(vaddr)?;
         if entry.is_unused() {
             return Err(PagingError::NotMapped);

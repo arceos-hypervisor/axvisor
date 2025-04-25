@@ -13,8 +13,8 @@ use axvcpu::AxVcpuAccessGuestState;
 use axvm::HostContext;
 
 use crate::libos::def::{
-    GP_EPTP_LIST_REGION_BASE, INSTANCE_SHARED_REGION_BASE, ProcessMemoryRegion, USER_STACK_BASE,
-    USER_STACK_SIZE,
+    GP_EPTP_LIST_REGION_BASE, GUEST_PT_ROOT_GPA, INSTANCE_SHARED_REGION_BASE, ProcessMemoryRegion,
+    USER_STACK_BASE, USER_STACK_SIZE,
 };
 use crate::libos::gaddrspace::{GuestAddrSpace, GuestMappingType};
 use crate::libos::process::Process;
@@ -128,7 +128,7 @@ impl<H: PagingHandler> Instance<H> {
         // Manipulate guest process's context.
         // `ctx.rip` has been set in `create_instance` in hypercall execution.
         // Todo: manipulate IDT and syscall entry point.
-        ctx.cr3 = init_addrspace.guest_page_table_root_gpa().as_usize() as u64;
+        ctx.cr3 = GUEST_PT_ROOT_GPA.as_usize() as u64;
         ctx.rsp = USER_STACK_BASE.add(USER_STACK_SIZE).as_usize() as u64;
 
         let init_ept_root_hpa = init_addrspace.ept_root_hpa();
@@ -137,6 +137,7 @@ impl<H: PagingHandler> Instance<H> {
 
         let mut processes = BTreeMap::new();
         let init_process = Process::new(0, init_addrspace);
+        // Other processes, including the gate processes, may be forked from this process.
         processes.insert(init_ept_root_hpa, init_process);
         Ok(Arc::new(Self {
             id,
@@ -182,6 +183,36 @@ impl<H: PagingHandler> Instance<H> {
         )?;
 
         Ok(contents)
+    }
+
+    pub fn handle_ept_page_fault(
+        &self,
+        eptp: HostPhysAddr,
+        addr: GuestPhysAddr,
+        access_flags: MappingFlags,
+    ) -> AxResult<bool> {
+        // Handle the page fault in the process's address space.
+        self.processes
+            .lock()
+            .get_mut(&eptp)
+            .ok_or_else(|| {
+                warn!("EPTP {:?} not found in processes", eptp);
+                ax_err_type!(InvalidInput, "Invalid EPTP")
+            })?
+            .addrspace_mut()
+            .handle_ept_page_fault(addr, access_flags)
+    }
+
+    pub fn remove_process(&self, eptp: HostPhysAddr) -> AxResult {
+        self.processes.lock().remove(&eptp).ok_or_else(|| {
+            warn!("EPTP {:?} not found in processes", eptp);
+            ax_err_type!(InvalidInput, "Invalid EPTP")
+        })?;
+        if self.processes.lock().is_empty() {
+            // If there are no processes left, we can remove the instance.
+            remove_instance(self.id)?;
+        }
+        Ok(())
     }
 }
 
