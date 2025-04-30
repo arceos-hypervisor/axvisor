@@ -31,6 +31,7 @@ use std::{
 };
 
 use quote::quote;
+use std::process::Command;
 use toml::Value;
 
 static CONFIGS_DIR_PATH: &str = "configs/vms";
@@ -74,9 +75,9 @@ fn get_configs() -> Result<Vec<ConfigFile>, String> {
 /// Opens the output file for writing.
 ///
 /// Returns the file handle.
-fn open_output_file() -> fs::File {
+fn open_output_file(file_name: &str) -> fs::File {
     let output_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-    let output_file = output_dir.join("vm_configs.rs");
+    let output_file = output_dir.join(file_name);
 
     fs::OpenOptions::new()
         .write(true)
@@ -212,21 +213,9 @@ fn generate_guest_img_loading_functions(
     Ok(())
 }
 
-fn main() -> io::Result<()> {
-    let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
-
-    let platform = env::var("AX_PLATFORM").unwrap_or("".to_string());
-    println!("cargo:rustc-cfg=platform=\"{}\"", platform);
-
-    if platform != "dummy" {
-        gen_linker_script(&arch, platform.as_str()).unwrap();
-    }
-
+fn gen_vm_configs() -> io::Result<()> {
     let config_files = get_configs();
-    let mut output_file = open_output_file();
-
-    println!("cargo:rerun-if-env-changed=AXVISOR_VM_CONFIGS");
-    println!("cargo:rerun-if-changed=build.rs");
+    let mut output_file = open_output_file("vm_configs.rs");
 
     writeln!(
         output_file,
@@ -258,6 +247,92 @@ fn main() -> io::Result<()> {
             writeln!(output_file, "}}\n")?;
         }
     }
+    Ok(())
+}
+
+fn gen_libos_configs() -> io::Result<()> {
+    let mut output_file = open_output_file("libos_configs.rs");
+
+    writeln!(output_file, "pub fn get_shim_image() -> &'static [u8] {{")?;
+
+    writeln!(
+        output_file,
+        "    include_bytes!(\"../../../../../../deps/equation-shim/shim.bin\")"
+    )?;
+
+    writeln!(output_file, "}}\n")?;
+
+    // Execute the readelf command to get the symbol values
+    let output = Command::new("readelf")
+        .arg("-s")
+        .arg("deps/equation-shim/shim.elf")
+        .output()
+        .expect("Failed to execute readelf command");
+
+    if !output.status.success() {
+        panic!(
+            "readelf command failed with error: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    // Parse the output to find skernel and ekernel symbols
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut skernel_value = None;
+    let mut ekernel_value = None;
+
+    for line in stdout.lines() {
+        if line.contains(" skernel") {
+            skernel_value = line
+                .split_whitespace()
+                .nth(1)
+                .and_then(|v| usize::from_str_radix(v, 16).ok());
+        } else if line.contains(" ekernel") {
+            ekernel_value = line
+                .split_whitespace()
+                .nth(1)
+                .and_then(|v| usize::from_str_radix(v, 16).ok());
+        }
+
+        if skernel_value.is_some() && ekernel_value.is_some() {
+            break;
+        }
+    }
+
+    // Ensure both symbols were found
+    let skernel = skernel_value.expect("Failed to find skernel symbol");
+    let ekernel = ekernel_value.expect("Failed to find ekernel symbol");
+
+    // Calculate SHIM_MEM_SIZE
+    let shim_mem_size = ekernel - skernel;
+
+    // Write SHIM_MEM_SIZE to the output file
+    writeln!(
+        output_file,
+        "pub const SHIM_MEM_SIZE: usize = {:#x};",
+        shim_mem_size
+    )?;
+
+    Ok(())
+}
+
+fn main() -> io::Result<()> {
+    let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+
+    let platform = env::var("AX_PLATFORM").unwrap_or("".to_string());
+    println!("cargo:rustc-cfg=platform=\"{}\"", platform);
+
+    if platform != "dummy" {
+        gen_linker_script(&arch, platform.as_str()).unwrap();
+    }
+
+    println!("cargo:rerun-if-env-changed=AXVISOR_VM_CONFIGS");
+    println!("cargo:rerun-if-changed=build.rs");
+
+    gen_vm_configs()?;
+
+    gen_libos_configs()?;
+
     Ok(())
 }
 

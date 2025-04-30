@@ -1,6 +1,6 @@
 use axerrno::{AxResult, ax_err_type};
 
-use memory_addr::{MemoryAddr, PAGE_SIZE_4K};
+use memory_addr::{MemoryAddr, PAGE_SIZE_1G, PAGE_SIZE_4K};
 use page_table_multiarch::PageSize;
 
 use axhal::mem::phys_to_virt;
@@ -20,6 +20,9 @@ pub const INSTANCE_SHREGION_BASE_GVA: GuestVirtAddr =
     GuestVirtAddr::from_usize(0xffff_ff00_0000_0000);
 pub const GP_EPT_LIST_REGION_GVA: GuestVirtAddr = GuestVirtAddr::from_usize(0xffff_ff00_0000_1000);
 
+pub const SHIM_BASE_GVA: GuestVirtAddr = GuestVirtAddr::from_usize(0xffff_ff80_0000_0000);
+pub const SHIM_BASE_GPA: GuestPhysAddr = GuestPhysAddr::from_usize(0x0);
+
 /*  Guest Process Physical Address Space Layout (in GPA).*/
 
 /// Guest Process shared region base address (first page) in first segmentation mapping region.
@@ -32,7 +35,7 @@ pub const GUEST_PT_ROOT_GPA: GuestPhysAddr = GuestPhysAddr::from_usize(0xff80_00
 /// (Only used for coarse-grained segmentation mapping)
 ///
 /// Guest Process first region base address.
-pub const GUEST_MEM_REGION_BASE: GuestPhysAddr = GuestPhysAddr::from_usize(0);
+pub const GUEST_MEM_REGION_BASE: GuestPhysAddr = GuestPhysAddr::from_usize(PAGE_SIZE_1G);
 
 /// The structure of the memory region.
 #[repr(C, packed)]

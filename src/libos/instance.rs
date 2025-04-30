@@ -5,7 +5,7 @@ use std::os::arceos::modules::axhal::paging::PagingHandlerImpl;
 use std::sync::Mutex;
 
 use axerrno::{AxResult, ax_err_type};
-use memory_addr::{MemoryAddr, PAGE_SIZE_4K, is_aligned_4k};
+use memory_addr::{MemoryAddr, PAGE_SIZE_2M, PAGE_SIZE_4K, align_up_4k, is_aligned_4k};
 use page_table_multiarch::{PageSize, PagingHandler};
 
 use axaddrspace::{GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr, MappingFlags};
@@ -14,7 +14,7 @@ use axvm::HostContext;
 
 use crate::libos::def::{
     GP_EPTP_LIST_REGION_BASE, GUEST_PT_ROOT_GPA, INSTANCE_SHARED_REGION_BASE, ProcessMemoryRegion,
-    USER_STACK_BASE, USER_STACK_SIZE,
+    SHIM_BASE_GVA, USER_STACK_BASE, USER_STACK_SIZE,
 };
 use crate::libos::gaddrspace::{GuestAddrSpace, GuestMappingType};
 use crate::libos::process::Process;
@@ -45,6 +45,37 @@ pub struct Instance<H: PagingHandler> {
 }
 
 impl<H: PagingHandler> Instance<H> {
+    pub fn create_shim() -> AxResult<Arc<Self>> {
+        let id = 0;
+
+        debug!("Init shim instance");
+        let mut shim_addrspace =
+            GuestAddrSpace::new(GuestMappingType::CoarseGrainedSegmentation2M)?;
+
+        let mut shim_context = HostContext::construct_guest64(
+            SHIM_BASE_GVA.as_usize() as u64,
+            GUEST_PT_ROOT_GPA.as_usize() as u64,
+        );
+
+        let init_ept_root_hpa = shim_addrspace.ept_root_hpa();
+
+        info!(
+            "Shim instance {}: init eptp at: {:?}",
+            id, init_ept_root_hpa
+        );
+
+        let mut processes = BTreeMap::new();
+        let init_process = Process::new(0, shim_addrspace);
+        // Other processes, including the gate processes, may be forked from this process.
+        processes.insert(init_ept_root_hpa, init_process);
+
+        Ok(Arc::new(Self {
+            id,
+            processes: Mutex::new(processes),
+            ctx: shim_context,
+        }))
+    }
+
     /// Create a new instance alone with its first process.
     /// The first process is initialized by the ELF segments in `elf_regions`
     /// with a newly constructed `GuestAddrSpace`.
@@ -322,6 +353,18 @@ pub fn create_instance(
     if id == 0 {
         instance_ref.init_gate_processes()?;
     }
+
+    Ok(())
+}
+
+pub fn init_shim() -> AxResult {
+    let shim_instance = Instance::<PagingHandlerImpl>::create_shim()?;
+
+    INSTANCES
+        .lock()
+        .insert(shim_instance.id(), shim_instance.clone());
+
+    shim_instance.init_gate_processes()?;
 
     Ok(())
 }

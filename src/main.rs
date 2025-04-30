@@ -14,6 +14,10 @@ mod vmm;
 
 mod libos;
 
+pub fn get_shim_image() -> &'static [u8] {
+    include_bytes!("../deps/equation-shim/shim.bin")
+}
+
 #[unsafe(no_mangle)]
 fn main() {
     info!("Starting virtualization...");

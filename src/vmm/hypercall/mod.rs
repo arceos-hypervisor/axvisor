@@ -71,6 +71,7 @@ impl HyperCall {
     fn execute_unprivileged(&self) -> HyperCallResult {
         match self.code {
             HyperCallCode::HDebug => self.debug(),
+            HyperCallCode::HInitShim => self.init_shim(),
             HyperCallCode::HCreateInstance => self.create_instance(
                 self.args[0],
                 self.args[1],
@@ -118,6 +119,11 @@ impl HyperCall {
     fn debug(&self) -> HyperCallResult {
         info!("HDebug {:#x?}", self.args);
         Ok(HyperCallCode::HDebug as usize)
+    }
+
+    fn init_shim(&self) -> HyperCallResult {
+        crate::libos::instance::init_shim()?;
+        Ok(0)
     }
 
     fn create_instance(

@@ -5,7 +5,8 @@ use std::vec::Vec;
 
 use axerrno::{AxError, AxResult, ax_err, ax_err_type};
 use memory_addr::{
-    AddrRange, MemoryAddr, PAGE_SIZE_1G, PAGE_SIZE_2M, PAGE_SIZE_4K, PageIter4K, is_aligned_4k,
+    AddrRange, MemoryAddr, PAGE_SIZE_1G, PAGE_SIZE_2M, PAGE_SIZE_4K, PageIter4K, align_up_4k,
+    is_aligned_4k,
 };
 use page_table_multiarch::{
     GenericPTE, MappingFlags, PageSize, PagingError, PagingHandler, PagingMetaData, PagingResult,
@@ -13,6 +14,9 @@ use page_table_multiarch::{
 
 use axaddrspace::npt::EPTMetadata;
 use axaddrspace::{AddrSpace, GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr};
+
+use crate::libos::config::{SHIM_MEM_SIZE, get_shim_image};
+use crate::libos::def::{SHIM_BASE_GPA, SHIM_BASE_GVA};
 
 use super::def::{GUEST_MEM_REGION_BASE, GUEST_PT_ROOT_GPA};
 use super::gpt::{ENTRY_COUNT, MoreGenericPTE, p1_index, p2_index, p3_index, p4_index, p5_index};
@@ -90,8 +94,16 @@ struct HostPhysicalRegion<H: PagingHandler> {
 type HostPhysicalRegionRef<H> = Arc<HostPhysicalRegion<H>>;
 
 impl<H: PagingHandler> HostPhysicalRegion<H> {
-    fn allocate(granularity: usize) -> AxResult<Self> {
-        let hpa = H::alloc_frames(granularity / PAGE_SIZE_4K, granularity).ok_or_else(|| {
+    fn allocate(granularity: usize, align_pow2: Option<usize>) -> AxResult<Self> {
+        let hpa = H::alloc_frames(
+            granularity / PAGE_SIZE_4K,
+            if let Some(align_pow2) = align_pow2 {
+                align_pow2
+            } else {
+                granularity
+            },
+        )
+        .ok_or_else(|| {
             ax_err_type!(NoMemory, "Failed to allocate memory for HostPhysicalRegion")
         })?;
 
@@ -107,8 +119,11 @@ impl<H: PagingHandler> HostPhysicalRegion<H> {
         })
     }
 
-    fn allocate_ref(granularity: usize) -> AxResult<HostPhysicalRegionRef<H>> {
-        Ok(Arc::new(Self::allocate(granularity)?))
+    fn allocate_ref(
+        granularity: usize,
+        align_pow2: Option<usize>,
+    ) -> AxResult<HostPhysicalRegionRef<H>> {
+        Ok(Arc::new(Self::allocate(granularity, align_pow2)?))
     }
 
     fn base(&self) -> HostPhysAddr {
@@ -133,6 +148,20 @@ impl<H: PagingHandler> HostPhysicalRegion<H> {
             );
         }
     }
+
+    fn copy_from_slice(&self, src: &[u8], offset: usize, size: usize) -> AxResult {
+        if size > self.size - offset {
+            return ax_err!(InvalidInput, "Copy size exceeds region size");
+        }
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                src.as_ptr(),
+                H::phys_to_virt(self.base.add(offset)).as_mut_ptr(),
+                size,
+            );
+        }
+        Ok(())
+    }
 }
 
 impl<H: PagingHandler> Drop for HostPhysicalRegion<H> {
@@ -154,6 +183,8 @@ pub struct GuestAddrSpace<
     H: PagingHandler,
 > {
     ept_addrspace: AddrSpace<M, EPTE, H>,
+
+    shim_region: HostPhysicalRegionRef<H>,
 
     // Below are used for guest addrspace.
     gva_range: AddrRange<GuestVirtAddr>,
@@ -227,7 +258,7 @@ impl<
                 // Because the guest page table CAN NOT be queried by MMU without `WRITE` permission.
                 // ref: Intel SDM 30.3.3.2 EPT Violations
                 for ori_pt_region in pt_regions {
-                    let new_pt_region = HostPhysicalRegion::allocate(PAGE_SIZE_2M)?;
+                    let new_pt_region = HostPhysicalRegion::allocate(PAGE_SIZE_2M, None)?;
 
                     // Copy the original region to the new region.
                     new_pt_region.copy_from(&ori_pt_region);
@@ -266,6 +297,7 @@ impl<
 
         Ok(Self {
             ept_addrspace: forked_addrspace,
+            shim_region: self.shim_region.clone(),
             gva_range: self.gva_range.clone(),
             guest_mapping: forked_guest_mapping,
             gva_areas: self.gva_areas.clone(),
@@ -307,7 +339,8 @@ impl<
                     // If the reference count is greater than 1, it means that there is still other GuestAddrSpace
                     // holding the reference to this region.
                     // So we need to allocate a new region for this GuestAddrSpace.
-                    let new_pt_region = HostPhysicalRegion::allocate_ref(mm_region_granularity)?;
+                    let new_pt_region =
+                        HostPhysicalRegion::allocate_ref(mm_region_granularity, None)?;
 
                     new_pt_region.copy_from(fault_mm_region);
 
@@ -358,6 +391,31 @@ impl<
             0xffff << <EPTMetadata as PagingMetaData>::VA_MAX_BITS,
         )?;
 
+        let shim_binary = get_shim_image();
+        let shim_binary_size = align_up_4k(shim_binary.len());
+
+        let shim_memory_size = if !is_aligned_4k(SHIM_MEM_SIZE) {
+            warn!("SHIM_MEM_SIZE {} is not aligned to 4K", SHIM_MEM_SIZE);
+            align_up_4k(SHIM_MEM_SIZE)
+        } else {
+            SHIM_MEM_SIZE
+        };
+
+        debug!("Shim binary size: {:#x}", shim_binary_size);
+
+        // Copy the shim binary to the guest address space.
+        let shim_region = HostPhysicalRegion::allocate_ref(shim_memory_size, Some(PAGE_SIZE_4K))?;
+
+        ept_addrspace.map_linear(
+            SHIM_BASE_GPA,
+            shim_region.base(),
+            shim_memory_size,
+            MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
+            true,
+        )?;
+
+        shim_region.copy_from_slice(shim_binary, 0, shim_binary_size)?;
+
         let guest_mapping = match gmt {
             GuestMappingType::One2OneMapping => {
                 // If one to one mapping, map guest page table root to hpa.
@@ -379,7 +437,8 @@ impl<
 
                 // Map the first memory region.
                 let mut mm_regions = BTreeMap::new();
-                let first_mm_region = HostPhysicalRegion::allocate_ref(mm_region_granularity)?;
+                let first_mm_region =
+                    HostPhysicalRegion::allocate_ref(mm_region_granularity, None)?;
 
                 ept_addrspace.map_linear(
                     GUEST_MEM_REGION_BASE,
@@ -390,7 +449,7 @@ impl<
                 )?;
                 mm_regions.insert(GUEST_MEM_REGION_BASE, first_mm_region);
 
-                let first_pt_region = HostPhysicalRegion::allocate(PAGE_SIZE_2M)?;
+                let first_pt_region = HostPhysicalRegion::allocate(PAGE_SIZE_2M, None)?;
 
                 ept_addrspace.map_linear(
                     GUEST_PT_ROOT_GPA,
@@ -416,6 +475,7 @@ impl<
 
         let mut guest_addrspace = Self {
             ept_addrspace,
+            shim_region,
             guest_mapping,
             gva_range: AddrRange::from_start_size(
                 GuestVirtAddr::from_usize(0),
@@ -426,18 +486,35 @@ impl<
             phontom: core::marker::PhantomData,
         };
 
-        // If one-to-one mapping, map 512GB memory with 1GB huge page.
-        if gmt == GuestMappingType::One2OneMapping {
-            for gva in (0..PAGE_SIZE_1G * 512).step_by(PAGE_SIZE_1G) {
+        match gmt {
+            // If one-to-one mapping, map 512GB memory with 1GB huge page,
+            // include the shim memory region.
+            GuestMappingType::One2OneMapping => {
+                for gva in (0..PAGE_SIZE_1G * 512).step_by(PAGE_SIZE_1G) {
+                    guest_addrspace
+                        .guest_map_region(
+                            GuestVirtAddr::from_usize(gva),
+                            |_| GuestPhysAddr::from_usize(gva),
+                            PAGE_SIZE_1G,
+                            MappingFlags::READ
+                                | MappingFlags::WRITE
+                                | MappingFlags::EXECUTE
+                                | MappingFlags::USER,
+                            true,
+                            false,
+                        )
+                        .map_err(paging_err_to_ax_err)?;
+                }
+            }
+            GuestMappingType::CoarseGrainedSegmentation1G
+            | GuestMappingType::CoarseGrainedSegmentation2M => {
+                // Map shim memory region.
                 guest_addrspace
                     .guest_map_region(
-                        GuestVirtAddr::from_usize(gva),
-                        |_| GuestPhysAddr::from_usize(gva),
-                        PAGE_SIZE_1G,
-                        MappingFlags::READ
-                            | MappingFlags::WRITE
-                            | MappingFlags::EXECUTE
-                            | MappingFlags::USER,
+                        SHIM_BASE_GVA,
+                        |gva| SHIM_BASE_GPA.add(gva.sub_addr(SHIM_BASE_GVA)),
+                        shim_memory_size,
+                        MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
                         true,
                         false,
                     )
@@ -793,7 +870,8 @@ impl<
                 );
 
                 // Allocate new region.
-                let allocated_region = HostPhysicalRegion::allocate_ref(mm_region_granularity)?;
+                let allocated_region =
+                    HostPhysicalRegion::allocate_ref(mm_region_granularity, None)?;
 
                 self.ept_addrspace.map_linear(
                     *mm_region_base,
@@ -837,7 +915,7 @@ impl<
                 );
 
                 // Allocate new region.
-                let allocated_region = HostPhysicalRegion::allocate(PAGE_SIZE_2M)?;
+                let allocated_region = HostPhysicalRegion::allocate(PAGE_SIZE_2M, None)?;
 
                 self.ept_addrspace.map_linear(
                     *pt_region_base,
@@ -909,7 +987,7 @@ impl<
         flags: MappingFlags,
     ) -> PagingResult {
         info!(
-            "EPTP@[{:?}] GPT @[{:?}] mapping: {:?} -> {:?}, size {:?} {:?}",
+            "EPTP@[{:?}]GPT@[{:?}] mapping {:?} -> {:?} {:?} {:?}",
             self.ept_addrspace.page_table_root(),
             self.guest_page_table_root_gpa(),
             vaddr,
