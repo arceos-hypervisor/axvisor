@@ -262,6 +262,8 @@ fn gen_libos_configs() -> io::Result<()> {
 
     writeln!(output_file, "}}\n")?;
 
+    println!("cargo:rerun-if-changed=deps/equation-shim/shim.elf");
+
     // Execute the readelf command to get the symbol values
     let output = Command::new("readelf")
         .arg("-s")
@@ -278,12 +280,49 @@ fn gen_libos_configs() -> io::Result<()> {
 
     // Parse the output to find skernel and ekernel symbols
     let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut entry_value = None;
+    let mut stext_value = None;
+    let mut etext_value = None;
+    let mut srodata_value = None;
+    let mut erodata_value = None;
+    let mut sdata_value = None;
+    // [sdata ~ ekernel] == [.data~.bss]
     let mut skernel_value = None;
     let mut ekernel_value = None;
 
     for line in stdout.lines() {
-        if line.contains(" skernel") {
+        if line.contains(" _start") {
+            entry_value = line
+                .split_whitespace()
+                .nth(1)
+                .and_then(|v| usize::from_str_radix(v, 16).ok());
+        } else if line.contains(" skernel") {
             skernel_value = line
+                .split_whitespace()
+                .nth(1)
+                .and_then(|v| usize::from_str_radix(v, 16).ok());
+        } else if line.contains(" stext") {
+            stext_value = line
+                .split_whitespace()
+                .nth(1)
+                .and_then(|v| usize::from_str_radix(v, 16).ok());
+        } else if line.contains(" etext") {
+            etext_value = line
+                .split_whitespace()
+                .nth(1)
+                .and_then(|v| usize::from_str_radix(v, 16).ok());
+        } else if line.contains(" srodata") {
+            srodata_value = line
+                .split_whitespace()
+                .nth(1)
+                .and_then(|v| usize::from_str_radix(v, 16).ok());
+        } else if line.contains(" erodata") {
+            erodata_value = line
+                .split_whitespace()
+                .nth(1)
+                .and_then(|v| usize::from_str_radix(v, 16).ok());
+        } else if line.contains(" sdata") {
+            sdata_value = line
                 .split_whitespace()
                 .nth(1)
                 .and_then(|v| usize::from_str_radix(v, 16).ok());
@@ -294,23 +333,52 @@ fn gen_libos_configs() -> io::Result<()> {
                 .and_then(|v| usize::from_str_radix(v, 16).ok());
         }
 
-        if skernel_value.is_some() && ekernel_value.is_some() {
+        if entry_value.is_some()
+            && skernel_value.is_some()
+            && stext_value.is_some()
+            && etext_value.is_some()
+            && srodata_value.is_some()
+            && erodata_value.is_some()
+            && sdata_value.is_some()
+            && ekernel_value.is_some()
+        {
             break;
         }
     }
 
     // Ensure both symbols were found
+    let entry = entry_value.expect("Failed to find entry symbol");
     let skernel = skernel_value.expect("Failed to find skernel symbol");
+    let stext = stext_value.expect("Failed to find stext symbol");
+    let etext = etext_value.expect("Failed to find etext symbol");
+    let srodata = srodata_value.expect("Failed to find srodata symbol");
+    let erodata = erodata_value.expect("Failed to find erodata symbol");
+    let sdata = sdata_value.expect("Failed to find sdata symbol");
     let ekernel = ekernel_value.expect("Failed to find ekernel symbol");
 
-    // Calculate SHIM_MEM_SIZE
-    let shim_mem_size = ekernel - skernel;
-
-    // Write SHIM_MEM_SIZE to the output file
+    writeln!(output_file, "pub const SHIM_ENTRY: usize = {:#x};", entry)?;
     writeln!(
         output_file,
-        "pub const SHIM_MEM_SIZE: usize = {:#x};",
-        shim_mem_size
+        "pub const SHIM_SKERNEL: usize = {:#x};",
+        skernel
+    )?;
+    writeln!(output_file, "pub const SHIM_STEXT: usize = {:#x};", stext)?;
+    writeln!(output_file, "pub const SHIM_ETEXT: usize = {:#x};", etext)?;
+    writeln!(
+        output_file,
+        "pub const SHIM_SRODATA: usize = {:#x};",
+        srodata
+    )?;
+    writeln!(
+        output_file,
+        "pub const SHIM_ERODATA: usize = {:#x};",
+        erodata
+    )?;
+    writeln!(output_file, "pub const SHIM_SDATA: usize = {:#x};", sdata)?;
+    writeln!(
+        output_file,
+        "pub const SHIM_EKERNEL: usize = {:#x};",
+        ekernel
     )?;
 
     Ok(())

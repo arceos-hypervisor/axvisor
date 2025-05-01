@@ -15,8 +15,11 @@ use page_table_multiarch::{
 use axaddrspace::npt::EPTMetadata;
 use axaddrspace::{AddrSpace, GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr};
 
-use crate::libos::config::{SHIM_MEM_SIZE, get_shim_image};
-use crate::libos::def::{SHIM_BASE_GPA, SHIM_BASE_GVA};
+use crate::libos::config::{
+    SHIM_EKERNEL, SHIM_ERODATA, SHIM_ETEXT, SHIM_SDATA, SHIM_SKERNEL, SHIM_SRODATA, SHIM_STEXT,
+    get_shim_image,
+};
+use crate::libos::def::SHIM_BASE_GPA;
 
 use super::def::{GUEST_MEM_REGION_BASE, GUEST_PT_ROOT_GPA};
 use super::gpt::{ENTRY_COUNT, MoreGenericPTE, p1_index, p2_index, p3_index, p4_index, p5_index};
@@ -394,11 +397,14 @@ impl<
         let shim_binary = get_shim_image();
         let shim_binary_size = align_up_4k(shim_binary.len());
 
-        let shim_memory_size = if !is_aligned_4k(SHIM_MEM_SIZE) {
-            warn!("SHIM_MEM_SIZE {} is not aligned to 4K", SHIM_MEM_SIZE);
-            align_up_4k(SHIM_MEM_SIZE)
+        let shim_memory_size = if !is_aligned_4k(SHIM_EKERNEL - SHIM_SKERNEL) {
+            warn!(
+                "SHIM_MEM_SIZE {} is not aligned to 4K",
+                SHIM_EKERNEL - SHIM_SKERNEL
+            );
+            align_up_4k(SHIM_EKERNEL - SHIM_SKERNEL)
         } else {
-            SHIM_MEM_SIZE
+            SHIM_EKERNEL - SHIM_SKERNEL
         };
 
         debug!("Shim binary size: {:#x}", shim_binary_size);
@@ -406,6 +412,7 @@ impl<
         // Copy the shim binary to the guest address space.
         let shim_region = HostPhysicalRegion::allocate_ref(shim_memory_size, Some(PAGE_SIZE_4K))?;
 
+        // Todo: distinguish data, text, rodata, bss sections.
         ept_addrspace.map_linear(
             SHIM_BASE_GPA,
             shim_region.base(),
@@ -508,13 +515,38 @@ impl<
             }
             GuestMappingType::CoarseGrainedSegmentation1G
             | GuestMappingType::CoarseGrainedSegmentation2M => {
-                // Map shim memory region.
+                // Map shim kernel sections.
+                let guest_virt2phys_offset = SHIM_SKERNEL - SHIM_BASE_GPA.as_usize();
+
+                // Text section.
                 guest_addrspace
                     .guest_map_region(
-                        SHIM_BASE_GVA,
-                        |gva| SHIM_BASE_GPA.add(gva.sub_addr(SHIM_BASE_GVA)),
-                        shim_memory_size,
-                        MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
+                        GuestVirtAddr::from_usize(SHIM_STEXT),
+                        |gva| SHIM_BASE_GPA.add(gva.sub(guest_virt2phys_offset).as_usize()),
+                        SHIM_ETEXT - SHIM_STEXT,
+                        MappingFlags::READ | MappingFlags::EXECUTE,
+                        true,
+                        false,
+                    )
+                    .map_err(paging_err_to_ax_err)?;
+                // Rodata section.
+                guest_addrspace
+                    .guest_map_region(
+                        GuestVirtAddr::from_usize(SHIM_SRODATA),
+                        |gva| SHIM_BASE_GPA.add(gva.sub(guest_virt2phys_offset).as_usize()),
+                        SHIM_ERODATA - SHIM_SRODATA,
+                        MappingFlags::READ,
+                        true,
+                        false,
+                    )
+                    .map_err(paging_err_to_ax_err)?;
+                // Data, bss section.
+                guest_addrspace
+                    .guest_map_region(
+                        GuestVirtAddr::from_usize(SHIM_SDATA),
+                        |gva| SHIM_BASE_GPA.add(gva.sub(guest_virt2phys_offset).as_usize()),
+                        SHIM_EKERNEL - SHIM_SDATA,
+                        MappingFlags::READ | MappingFlags::WRITE,
                         true,
                         false,
                     )
@@ -986,7 +1018,7 @@ impl<
         page_size: PageSize,
         flags: MappingFlags,
     ) -> PagingResult {
-        info!(
+        trace!(
             "EPTP@[{:?}]GPT@[{:?}] mapping {:?} -> {:?} {:?} {:?}",
             self.ept_addrspace.page_table_root(),
             self.guest_page_table_root_gpa(),

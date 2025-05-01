@@ -5,16 +5,17 @@ use std::os::arceos::modules::axhal::paging::PagingHandlerImpl;
 use std::sync::Mutex;
 
 use axerrno::{AxResult, ax_err_type};
-use memory_addr::{MemoryAddr, PAGE_SIZE_2M, PAGE_SIZE_4K, align_up_4k, is_aligned_4k};
+use memory_addr::{MemoryAddr, PAGE_SIZE_4K, is_aligned_4k};
 use page_table_multiarch::{PageSize, PagingHandler};
 
 use axaddrspace::{GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr, MappingFlags};
 use axvcpu::AxVcpuAccessGuestState;
 use axvm::HostContext;
 
+use crate::libos::config::SHIM_ENTRY;
 use crate::libos::def::{
     GP_EPTP_LIST_REGION_BASE, GUEST_PT_ROOT_GPA, INSTANCE_SHARED_REGION_BASE, ProcessMemoryRegion,
-    SHIM_BASE_GVA, USER_STACK_BASE, USER_STACK_SIZE,
+    USER_STACK_BASE, USER_STACK_SIZE,
 };
 use crate::libos::gaddrspace::{GuestAddrSpace, GuestMappingType};
 use crate::libos::process::Process;
@@ -52,10 +53,8 @@ impl<H: PagingHandler> Instance<H> {
         let mut shim_addrspace =
             GuestAddrSpace::new(GuestMappingType::CoarseGrainedSegmentation2M)?;
 
-        let mut shim_context = HostContext::construct_guest64(
-            SHIM_BASE_GVA.as_usize() as u64,
-            GUEST_PT_ROOT_GPA.as_usize() as u64,
-        );
+        let mut shim_context =
+            HostContext::construct_guest64(SHIM_ENTRY as u64, GUEST_PT_ROOT_GPA.as_usize() as u64);
 
         let init_ept_root_hpa = shim_addrspace.ept_root_hpa();
 

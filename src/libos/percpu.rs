@@ -272,6 +272,18 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
                             }
                         }
                     }
+                    AxVCpuExitReason::SystemDown => {
+                        info!(
+                            "Instance[{}] run on Vcpu [{}] system down",
+                            instance_id, vcpu_id
+                        );
+                        instance_ref
+                            .remove_process(current_eptp())
+                            .unwrap_or_else(|err| {
+                                error!("Failed to remove process: {:?}", err);
+                            });
+                        mark_idle();
+                    }
                     _ => {
                         warn!("Instance run unexpected exit reason: {:?}", exit_reason);
                         break;
