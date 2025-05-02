@@ -814,6 +814,7 @@ name = "equation_defs"
 version = "0.1.0"
 dependencies = [
  "axaddrspace",
+ "bitmaps",
  "memory_addr",
 ]
 
