@@ -284,6 +284,10 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
                             });
                         mark_idle();
                     }
+                    AxVCpuExitReason::Nothing => {
+                        // Nothing to do, just continue.
+                        continue;
+                    }
                     _ => {
                         warn!("Instance run unexpected exit reason: {:?}", exit_reason);
                         break;

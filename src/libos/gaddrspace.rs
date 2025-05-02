@@ -19,9 +19,12 @@ use crate::libos::config::{
     SHIM_EKERNEL, SHIM_ERODATA, SHIM_ETEXT, SHIM_SDATA, SHIM_SKERNEL, SHIM_SRODATA, SHIM_STEXT,
     get_shim_image,
 };
-use crate::libos::def::SHIM_BASE_GPA;
+use crate::libos::def::{
+    GUEST_MEM_REGION_BASE, GUEST_PT_ROOT_GPA, INSTANCE_INNER_REGION_BASE_GPA,
+    INSTANCE_INNER_REGION_BASE_GVA, PROCESS_INNER_REGION_BASE_GPA, PROCESS_INNER_REGION_BASE_GVA,
+    ProcessInnerRegion, SHIM_BASE_GPA,
+};
 
-use super::def::{GUEST_MEM_REGION_BASE, GUEST_PT_ROOT_GPA};
 use super::gpt::{ENTRY_COUNT, MoreGenericPTE, p1_index, p2_index, p3_index, p4_index, p5_index};
 
 // Copy from `axmm`.
@@ -71,18 +74,8 @@ enum GuestMapping<H: PagingHandler> {
     },
     /// Coarse-grained segmentation (2M/1G).
     CoarseGrainedSegmentation {
-        /// Manage LibOS's memory addrspace at 2MB/1GB granularity.
-        mm_region_granularity: usize,
-        /// Current normal memory region base address in GPA.
-        mm_region_base: GuestPhysAddr,
-        /// Memory page index incremented from 0.
-        mm_page_idx: usize,
         /// Stores the host physical address of allocated regions for normal memory.
         mm_regions: BTreeMap<GuestPhysAddr, HostPhysicalRegionRef<H>>,
-        /// Current page table region base address in GPA.
-        pt_region_base: GuestPhysAddr,
-        /// Page table page index incremented from 1 (the first is used for page table root).
-        pt_page_idx: usize,
         /// Stores the host physical address of allocated regions for page table memory.
         pt_regions: Vec<HostPhysicalRegion<H>>,
     },
@@ -97,13 +90,13 @@ struct HostPhysicalRegion<H: PagingHandler> {
 type HostPhysicalRegionRef<H> = Arc<HostPhysicalRegion<H>>;
 
 impl<H: PagingHandler> HostPhysicalRegion<H> {
-    fn allocate(granularity: usize, align_pow2: Option<usize>) -> AxResult<Self> {
+    fn allocate(size: usize, align_pow2: Option<usize>) -> AxResult<Self> {
         let hpa = H::alloc_frames(
-            granularity / PAGE_SIZE_4K,
+            size / PAGE_SIZE_4K,
             if let Some(align_pow2) = align_pow2 {
                 align_pow2
             } else {
-                granularity
+                size
             },
         )
         .ok_or_else(|| {
@@ -112,25 +105,36 @@ impl<H: PagingHandler> HostPhysicalRegion<H> {
 
         // Clear the memory region.
         unsafe {
-            core::ptr::write_bytes(H::phys_to_virt(hpa).as_mut_ptr(), 0, granularity);
+            core::ptr::write_bytes(H::phys_to_virt(hpa).as_mut_ptr(), 0, size);
         }
 
         Ok(Self {
             base: hpa,
-            size: granularity,
+            size,
             phontom: core::marker::PhantomData,
         })
     }
 
-    fn allocate_ref(
-        granularity: usize,
-        align_pow2: Option<usize>,
-    ) -> AxResult<HostPhysicalRegionRef<H>> {
-        Ok(Arc::new(Self::allocate(granularity, align_pow2)?))
+    fn allocate_ref(size: usize, align_pow2: Option<usize>) -> AxResult<HostPhysicalRegionRef<H>> {
+        Ok(Arc::new(Self::allocate(size, align_pow2)?))
     }
 
     fn base(&self) -> HostPhysAddr {
         self.base
+    }
+
+    fn size(&self) -> usize {
+        self.size
+    }
+
+    fn as_ptr_of<T>(&self) -> *const T {
+        assert!(self.size >= core::mem::size_of::<T>());
+        H::phys_to_virt(self.base).as_ptr_of::<T>()
+    }
+
+    fn as_mut_ptr_of<T>(&self) -> *mut T {
+        assert!(self.size >= core::mem::size_of::<T>());
+        H::phys_to_virt(self.base).as_mut_ptr_of::<T>()
     }
 
     fn copy_from(&self, src: &Self) {
@@ -189,6 +193,9 @@ pub struct GuestAddrSpace<
 
     shim_region: HostPhysicalRegionRef<H>,
 
+    process_inner_region: HostPhysicalRegion<H>,
+    instance_inner_region: HostPhysicalRegionRef<H>,
+
     // Below are used for guest addrspace.
     gva_range: AddrRange<GuestVirtAddr>,
 
@@ -216,20 +223,58 @@ impl<
             1 << <EPTMetadata as PagingMetaData>::VA_MAX_BITS,
         )?;
 
+        // Map the shim memory region.
+        forked_addrspace.map_linear(
+            SHIM_BASE_GPA,
+            self.shim_region.base(),
+            self.shim_region.size(),
+            MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
+            true,
+        )?;
+
+        // Allocate and map the process inner region.
+        let forked_process_inner_region = HostPhysicalRegion::allocate(PAGE_SIZE_4K, None)?;
+        forked_process_inner_region.copy_from(&self.process_inner_region);
+        let process_inner_region = unsafe {
+            forked_process_inner_region
+                .as_mut_ptr_of::<ProcessInnerRegion>()
+                .as_mut()
+        }
+        .unwrap();
+        process_inner_region.process_id = self.get_process_id() as u64 + 1;
+        forked_addrspace.map_linear(
+            PROCESS_INNER_REGION_BASE_GPA,
+            forked_process_inner_region.base(),
+            forked_process_inner_region.size(),
+            MappingFlags::READ | MappingFlags::WRITE,
+            false,
+        )?;
+
+        // Map the instance inner region.
+        forked_addrspace.map_linear(
+            INSTANCE_INNER_REGION_BASE_GPA,
+            self.instance_inner_region.base(),
+            self.instance_inner_region.size(),
+            MappingFlags::READ | MappingFlags::WRITE,
+            false,
+        )?;
+
         let forked_guest_mapping = match self.guest_mapping {
             GuestMapping::One2OneMapping { page_pos } => GuestMapping::One2OneMapping { page_pos },
             GuestMapping::CoarseGrainedSegmentation {
-                mm_region_granularity,
-                mm_region_base,
-                mm_page_idx,
+                // mm_region_granularity,
+                // mm_region_base,
+                // mm_page_idx,
                 ref mm_regions,
-                pt_region_base,
-                pt_page_idx,
+                // pt_region_base,
+                // pt_page_idx,
                 ref pt_regions,
             } => {
                 let mut new_mm_regions = BTreeMap::new();
                 let mut new_pt_region_base = GUEST_PT_ROOT_GPA;
                 let mut new_pt_regions = Vec::new();
+
+                let mm_region_granularity = self.get_process_inner_region().mm_region_granularity;
 
                 for (ori_base, ori_region) in mm_regions {
                     warn!(
@@ -279,6 +324,8 @@ impl<
                     new_pt_region_base.add_assign(PAGE_SIZE_2M);
                 }
 
+                let pt_region_base = self.get_process_inner_region().pt_region_base;
+
                 if new_pt_region_base != pt_region_base.add(PAGE_SIZE_2M) {
                     error!(
                         "New page table region base address {:?} does not match original {:?}",
@@ -287,12 +334,12 @@ impl<
                 }
 
                 GuestMapping::CoarseGrainedSegmentation {
-                    mm_region_granularity,
-                    mm_region_base,
-                    mm_page_idx,
+                    // mm_region_granularity,
+                    // mm_region_base,
+                    // mm_page_idx,
                     mm_regions: new_mm_regions,
-                    pt_region_base,
-                    pt_page_idx,
+                    // pt_region_base,
+                    // pt_page_idx,
                     pt_regions: new_pt_regions,
                 }
             }
@@ -301,6 +348,8 @@ impl<
         Ok(Self {
             ept_addrspace: forked_addrspace,
             shim_region: self.shim_region.clone(),
+            process_inner_region: forked_process_inner_region,
+            instance_inner_region: self.instance_inner_region.clone(),
             gva_range: self.gva_range.clone(),
             guest_mapping: forked_guest_mapping,
             gva_areas: self.gva_areas.clone(),
@@ -318,18 +367,19 @@ impl<
             "Handle EPT page fault at {:?}, flags {:?}",
             addr, access_flags
         );
+        let mm_region_granularity = self.get_process_inner_region().mm_region_granularity;
 
         match self.guest_mapping {
             GuestMapping::One2OneMapping { page_pos: _ } => {
                 unimplemented!()
             }
             GuestMapping::CoarseGrainedSegmentation {
-                mm_region_granularity,
-                mm_region_base: _,
-                mm_page_idx: _,
+                // mm_region_granularity,
+                // mm_region_base: _,
+                // mm_page_idx: _,
                 ref mut mm_regions,
-                pt_region_base: _,
-                pt_page_idx: _,
+                // pt_region_base: _,
+                // pt_page_idx: _,
                 pt_regions: _,
             } => {
                 let fault_mm_region_base = addr.align_down(mm_region_granularity);
@@ -376,6 +426,28 @@ impl<
         }
         Ok(true)
     }
+
+    pub fn get_process_inner_region(&self) -> &ProcessInnerRegion {
+        unsafe {
+            self.process_inner_region
+                .as_ptr_of::<ProcessInnerRegion>()
+                .as_ref()
+        }
+        .unwrap()
+    }
+
+    pub fn get_process_inner_region_mut(&mut self) -> &mut ProcessInnerRegion {
+        unsafe {
+            self.process_inner_region
+                .as_mut_ptr_of::<ProcessInnerRegion>()
+                .as_mut()
+        }
+        .unwrap()
+    }
+
+    pub fn get_process_id(&self) -> usize {
+        self.get_process_inner_region().process_id as usize
+    }
 }
 
 impl<
@@ -386,7 +458,7 @@ impl<
 > GuestAddrSpace<M, EPTE, GPTE, H>
 {
     /// Creates a new guest address space.
-    pub fn new(gmt: GuestMappingType) -> AxResult<Self> {
+    pub fn new(process_id: usize, gmt: GuestMappingType) -> AxResult<Self> {
         info!("Generate GuestAddrSpace with {:?}", gmt);
 
         let mut ept_addrspace = AddrSpace::new_empty(
@@ -407,11 +479,8 @@ impl<
             SHIM_EKERNEL - SHIM_SKERNEL
         };
 
-        debug!("Shim binary size: {:#x}", shim_binary_size);
-
-        // Copy the shim binary to the guest address space.
+        // Allocate and map the shim memory region.
         let shim_region = HostPhysicalRegion::allocate_ref(shim_memory_size, Some(PAGE_SIZE_4K))?;
-
         // Todo: distinguish data, text, rodata, bss sections.
         ept_addrspace.map_linear(
             SHIM_BASE_GPA,
@@ -420,9 +489,31 @@ impl<
             MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
             true,
         )?;
-
+        // Copy the shim binary to the guest address space.
         shim_region.copy_from_slice(shim_binary, 0, shim_binary_size)?;
 
+        // Allocate and map the process inner region.
+        let process_inner_region = HostPhysicalRegion::allocate(PAGE_SIZE_4K, None)?;
+        ept_addrspace.map_linear(
+            PROCESS_INNER_REGION_BASE_GPA,
+            process_inner_region.base(),
+            process_inner_region.size(),
+            MappingFlags::READ | MappingFlags::WRITE,
+            false,
+        )?;
+
+        // Allocate and map the instance inner region.
+        // The instance inner region is shared by all processes in the same instance, so use `allocate_ref` here.
+        let instance_inner_region = HostPhysicalRegion::allocate_ref(PAGE_SIZE_4K, None)?;
+        ept_addrspace.map_linear(
+            INSTANCE_INNER_REGION_BASE_GPA,
+            instance_inner_region.base(),
+            instance_inner_region.size(),
+            MappingFlags::READ | MappingFlags::WRITE,
+            false,
+        )?;
+
+        let mut region_granularity = 0;
         let guest_mapping = match gmt {
             GuestMappingType::One2OneMapping => {
                 // If one to one mapping, map guest page table root to hpa.
@@ -446,7 +537,6 @@ impl<
                 let mut mm_regions = BTreeMap::new();
                 let first_mm_region =
                     HostPhysicalRegion::allocate_ref(mm_region_granularity, None)?;
-
                 ept_addrspace.map_linear(
                     GUEST_MEM_REGION_BASE,
                     first_mm_region.base(),
@@ -456,8 +546,8 @@ impl<
                 )?;
                 mm_regions.insert(GUEST_MEM_REGION_BASE, first_mm_region);
 
+                // Map the first page table region.
                 let first_pt_region = HostPhysicalRegion::allocate(PAGE_SIZE_2M, None)?;
-
                 ept_addrspace.map_linear(
                     GUEST_PT_ROOT_GPA,
                     first_pt_region.base(),
@@ -466,15 +556,9 @@ impl<
                     true,
                 )?;
 
+                region_granularity = mm_region_granularity;
                 GuestMapping::CoarseGrainedSegmentation {
-                    // Memory page index start from 0.
-                    mm_page_idx: 0,
-                    // Page table page index start from 1.
-                    pt_page_idx: 1,
-                    mm_region_granularity,
-                    mm_region_base: GUEST_MEM_REGION_BASE,
                     mm_regions,
-                    pt_region_base: GUEST_PT_ROOT_GPA,
                     pt_regions: vec![first_pt_region],
                 }
             }
@@ -483,6 +567,8 @@ impl<
         let mut guest_addrspace = Self {
             ept_addrspace,
             shim_region,
+            process_inner_region,
+            instance_inner_region,
             guest_mapping,
             gva_range: AddrRange::from_start_size(
                 GuestVirtAddr::from_usize(0),
@@ -492,6 +578,16 @@ impl<
             levels: M::LEVELS,
             phontom: core::marker::PhantomData,
         };
+
+        let process_inner_region = guest_addrspace.get_process_inner_region_mut();
+        process_inner_region.process_id = process_id as u64;
+        // Memory page index start from 0.
+        process_inner_region.mm_page_idx = 0;
+        process_inner_region.mm_region_base = GUEST_MEM_REGION_BASE;
+        process_inner_region.mm_region_granularity = region_granularity;
+        // Page table page index start from 1.
+        process_inner_region.pt_page_idx = 1;
+        process_inner_region.pt_region_base = GUEST_PT_ROOT_GPA;
 
         match gmt {
             // If one-to-one mapping, map 512GB memory with 1GB huge page,
@@ -517,7 +613,6 @@ impl<
             | GuestMappingType::CoarseGrainedSegmentation2M => {
                 // Map shim kernel sections.
                 let guest_virt2phys_offset = SHIM_SKERNEL - SHIM_BASE_GPA.as_usize();
-
                 // Text section.
                 guest_addrspace
                     .guest_map_region(
@@ -551,6 +646,28 @@ impl<
                         false,
                     )
                     .map_err(paging_err_to_ax_err)?;
+
+                // Map instance inner region and process inner region.
+                guest_addrspace
+                    .guest_map_region(
+                        INSTANCE_INNER_REGION_BASE_GVA,
+                        |_gva| INSTANCE_INNER_REGION_BASE_GPA,
+                        PAGE_SIZE_4K,
+                        MappingFlags::READ | MappingFlags::WRITE,
+                        false,
+                        false,
+                    )
+                    .map_err(paging_err_to_ax_err)?;
+                guest_addrspace
+                    .guest_map_region(
+                        PROCESS_INNER_REGION_BASE_GVA,
+                        |_gva| PROCESS_INNER_REGION_BASE_GPA,
+                        PAGE_SIZE_4K,
+                        MappingFlags::READ | MappingFlags::WRITE,
+                        false,
+                        false,
+                    )
+                    .map_err(paging_err_to_ax_err)?;
             }
         }
 
@@ -570,14 +687,14 @@ impl<
     /// The `flags` parameter indicates the mapping permissions and attributes.
     pub fn ept_map_linear(
         &mut self,
-        start_vaddr: M::VirtAddr,
-        start_paddr: HostPhysAddr,
+        start_gpa: M::VirtAddr,
+        start_hpa: HostPhysAddr,
         size: usize,
         flags: MappingFlags,
         allow_huge: bool,
     ) -> AxResult {
         self.ept_addrspace
-            .map_linear(start_vaddr, start_paddr, size, flags, allow_huge)
+            .map_linear(start_gpa, start_hpa, size, flags, allow_huge)
     }
 
     pub fn guest_map_alloc(
@@ -622,12 +739,7 @@ impl<
                 )?;
             }
             GuestMapping::CoarseGrainedSegmentation {
-                mm_page_idx: _,
-                pt_page_idx: _,
-                mm_region_granularity: _,
-                mm_region_base: _,
                 mm_regions: _,
-                pt_region_base: _,
                 pt_regions: _,
             } => {
                 if populate {
@@ -806,21 +918,20 @@ impl<
                 )
             }
             GuestMapping::CoarseGrainedSegmentation {
-                mm_region_granularity,
-                mm_region_base,
-                ref mut mm_page_idx,
                 mm_regions: _,
-                pt_region_base: _,
-                pt_page_idx: _,
                 pt_regions: _,
             } => {
-                let allocated_frame_base = mm_region_base.add(*mm_page_idx * PAGE_SIZE_4K);
-                *mm_page_idx += 1;
+                let mm_region_granularity = self.get_process_inner_region().mm_region_granularity;
+                let mm_region_base = self.get_process_inner_region().mm_region_base;
+                let mm_page_idx = self.get_process_inner_region().mm_page_idx;
+
+                let allocated_frame_base = mm_region_base.add(mm_page_idx * PAGE_SIZE_4K);
+                self.get_process_inner_region_mut().mm_page_idx = mm_page_idx + 1;
 
                 assert!(
-                    *mm_page_idx < mm_region_granularity / PAGE_SIZE_4K,
+                    mm_page_idx < mm_region_granularity / PAGE_SIZE_4K,
                     "mm_page_idx {} should be less than {}",
-                    *mm_page_idx,
+                    mm_page_idx,
                     mm_region_granularity / PAGE_SIZE_4K
                 );
 
@@ -852,22 +963,22 @@ impl<
                 allocated_frame_base
             }
             GuestMapping::CoarseGrainedSegmentation {
-                mm_region_granularity: _,
-                mm_region_base: _,
-                mm_page_idx: _,
                 mm_regions: _,
-                pt_region_base,
-                ref mut pt_page_idx,
                 pt_regions: _,
             } => {
-                let allocated_frame_base = pt_region_base.add(*pt_page_idx * PAGE_SIZE_4K);
+                let pt_region_base = self.get_process_inner_region().pt_region_base;
+                let pt_page_idx = self.get_process_inner_region().pt_page_idx;
+
+                let allocated_frame_base = pt_region_base.add(pt_page_idx * PAGE_SIZE_4K);
                 assert!(
-                    *pt_page_idx < PAGE_SIZE_2M / PAGE_SIZE_4K,
+                    pt_page_idx < PAGE_SIZE_2M / PAGE_SIZE_4K,
                     "pt_page_idx {} should be less than {}",
-                    *pt_page_idx,
+                    pt_page_idx,
                     PAGE_SIZE_2M / PAGE_SIZE_4K,
                 );
-                *pt_page_idx += 1;
+                self.get_process_inner_region_mut().pt_page_idx = pt_page_idx + 1;
+
+                // *pt_page_idx += 1;
                 self.check_pt_region()?;
                 allocated_frame_base
             }
@@ -877,24 +988,23 @@ impl<
     }
 
     fn check_memory_region(&mut self) -> AxResult {
+        let mm_region_granularity = self.get_process_inner_region().mm_region_granularity;
+        let mm_region_base = self.get_process_inner_region().mm_region_base;
+        let mm_page_idx = self.get_process_inner_region().mm_page_idx;
+
         match self.guest_mapping {
             GuestMapping::One2OneMapping { page_pos: _ } => {
                 error!("Do not need to check memory region for one-to-one mapping");
             }
             GuestMapping::CoarseGrainedSegmentation {
-                mm_region_granularity,
-                ref mut mm_region_base,
-                ref mut mm_page_idx,
                 ref mut mm_regions,
-                pt_region_base: _,
-                pt_page_idx: _,
                 pt_regions: _,
             } => {
-                if *mm_page_idx < mm_region_granularity / PAGE_SIZE_4K - 1 {
+                if mm_page_idx < mm_region_granularity / PAGE_SIZE_4K - 1 {
                     return Ok(());
                 }
 
-                mm_region_base.add_assign(mm_region_granularity);
+                let mm_region_base = mm_region_base.add(mm_region_granularity);
 
                 warn!(
                     "Memory region exhausted, allocating new region at {:?}",
@@ -906,40 +1016,44 @@ impl<
                     HostPhysicalRegion::allocate_ref(mm_region_granularity, None)?;
 
                 self.ept_addrspace.map_linear(
-                    *mm_region_base,
+                    mm_region_base,
                     allocated_region.base(),
                     mm_region_granularity,
                     MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
                     true,
                 )?;
 
-                mm_regions.insert(*mm_region_base, allocated_region.clone());
-                *mm_page_idx = 0;
+                mm_regions.insert(mm_region_base, allocated_region.clone());
+                self.get_process_inner_region_mut().mm_page_idx = 0;
             }
         }
+
+        self.get_process_inner_region_mut().mm_page_idx = 0;
+        self.get_process_inner_region_mut()
+            .mm_region_base
+            .add_assign(mm_region_granularity);
 
         Ok(())
     }
 
     fn check_pt_region(&mut self) -> AxResult {
+        let pt_page_idx = self.get_process_inner_region().pt_page_idx;
+        let pt_region_base = self.get_process_inner_region().pt_region_base;
+
         match self.guest_mapping {
             GuestMapping::One2OneMapping { page_pos: _ } => {
                 error!("Do not need to check memory region for one-to-one mapping");
             }
             GuestMapping::CoarseGrainedSegmentation {
-                mm_region_granularity: _,
-                mm_region_base: _,
-                mm_page_idx: _,
                 mm_regions: _,
-                ref mut pt_region_base,
-                ref mut pt_page_idx,
                 ref mut pt_regions,
             } => {
-                if *pt_page_idx < PAGE_SIZE_2M / PAGE_SIZE_4K - 1 {
+                // let pt_region_base = self.get_process_inner_region().pt_region_base;
+                if pt_page_idx < PAGE_SIZE_2M / PAGE_SIZE_4K - 1 {
                     return Ok(());
                 }
 
-                pt_region_base.add_assign(PAGE_SIZE_2M);
+                let pt_region_base = pt_region_base.add(PAGE_SIZE_2M);
 
                 warn!(
                     "PT region exhausted, allocating new region at {:?}",
@@ -950,7 +1064,7 @@ impl<
                 let allocated_region = HostPhysicalRegion::allocate(PAGE_SIZE_2M, None)?;
 
                 self.ept_addrspace.map_linear(
-                    *pt_region_base,
+                    pt_region_base,
                     allocated_region.base(),
                     PAGE_SIZE_2M,
                     MappingFlags::READ | MappingFlags::WRITE,
@@ -959,9 +1073,15 @@ impl<
 
                 pt_regions.push(allocated_region);
 
-                *pt_page_idx = 0;
+                // *pt_page_idx = 0;
+                // process_inner_region_mut_ref.pt_page_idx = 0;
             }
         }
+
+        self.get_process_inner_region_mut().pt_page_idx = 0;
+        self.get_process_inner_region_mut()
+            .pt_region_base
+            .add_assign(PAGE_SIZE_2M);
 
         Ok(())
     }
@@ -1402,12 +1522,12 @@ impl<M: PagingMetaData, EPTE: GenericPTE, GPTE: MoreGenericPTE, H: PagingHandler
                 // Do nothing
             }
             GuestMapping::CoarseGrainedSegmentation {
-                mm_region_granularity: _,
-                mm_region_base: _,
-                mm_page_idx: _,
+                // mm_region_granularity: _,
+                // mm_region_base: _,
+                // mm_page_idx: _,
                 mm_regions: _,
-                pt_region_base: _,
-                pt_page_idx: _,
+                // pt_region_base: _,
+                // pt_page_idx: _,
                 pt_regions: _,
             } => {
                 warn!("CoarseGrainedSegmentation drop");

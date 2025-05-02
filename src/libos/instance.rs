@@ -14,8 +14,8 @@ use axvm::HostContext;
 
 use crate::libos::config::SHIM_ENTRY;
 use crate::libos::def::{
-    GP_EPTP_LIST_REGION_BASE, GUEST_PT_ROOT_GPA, INSTANCE_SHARED_REGION_BASE, ProcessMemoryRegion,
-    USER_STACK_BASE, USER_STACK_SIZE,
+    GP_EPTP_LIST_REGION_BASE_GPA, GUEST_PT_ROOT_GPA, INSTANCE_SHARED_REGION_BASE_GPA,
+    ProcessMemoryRegion, USER_STACK_BASE, USER_STACK_SIZE,
 };
 use crate::libos::gaddrspace::{GuestAddrSpace, GuestMappingType};
 use crate::libos::process::Process;
@@ -48,12 +48,13 @@ pub struct Instance<H: PagingHandler> {
 impl<H: PagingHandler> Instance<H> {
     pub fn create_shim() -> AxResult<Arc<Self>> {
         let id = 0;
+        let pid = 0;
 
         debug!("Init shim instance");
-        let mut shim_addrspace =
-            GuestAddrSpace::new(GuestMappingType::CoarseGrainedSegmentation2M)?;
+        let shim_addrspace =
+            GuestAddrSpace::new(pid, GuestMappingType::CoarseGrainedSegmentation2M)?;
 
-        let mut shim_context =
+        let shim_context =
             HostContext::construct_guest64(SHIM_ENTRY as u64, GUEST_PT_ROOT_GPA.as_usize() as u64);
 
         let init_ept_root_hpa = shim_addrspace.ept_root_hpa();
@@ -64,7 +65,7 @@ impl<H: PagingHandler> Instance<H> {
         );
 
         let mut processes = BTreeMap::new();
-        let init_process = Process::new(0, shim_addrspace);
+        let init_process = Process::new(pid, shim_addrspace);
         // Other processes, including the gate processes, may be forked from this process.
         processes.insert(init_ept_root_hpa, init_process);
 
@@ -86,7 +87,7 @@ impl<H: PagingHandler> Instance<H> {
         mapping_type: GuestMappingType,
     ) -> AxResult<Arc<Self>> {
         debug!("Generate instance {}", id);
-        let mut init_addrspace = GuestAddrSpace::new(mapping_type)?;
+        let mut init_addrspace = GuestAddrSpace::new(id, mapping_type)?;
 
         // Parse and copy ELF segments to guest process's address space.
         // Todo: distinguish shared regions.
@@ -296,7 +297,7 @@ impl<H: PagingHandler> Instance<H> {
             // Alloc and map percpu instance shared region.
             let shared_region_base_hpa = H::alloc_frame().ok_or_else(|| ax_err_type!(NoMemory))?;
             gp_as.ept_map_linear(
-                INSTANCE_SHARED_REGION_BASE,
+                INSTANCE_SHARED_REGION_BASE_GPA,
                 shared_region_base_hpa,
                 PAGE_SIZE_4K,
                 MappingFlags::READ | MappingFlags::WRITE,
@@ -306,7 +307,7 @@ impl<H: PagingHandler> Instance<H> {
             // Map the EPTP list region for gate process.
             let gp_eptp_list_base_hpa = vcpu.get_arch_vcpu().eptp_list_region();
             gp_as.ept_map_linear(
-                GP_EPTP_LIST_REGION_BASE,
+                GP_EPTP_LIST_REGION_BASE_GPA,
                 gp_eptp_list_base_hpa,
                 PAGE_SIZE_4K,
                 MappingFlags::READ | MappingFlags::WRITE,

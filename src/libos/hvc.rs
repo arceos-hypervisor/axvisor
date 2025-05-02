@@ -71,6 +71,7 @@ impl InstanceCall {
 
     fn execute_privileged(&self) -> HyperCallResult {
         match self.code {
+            HyperCallCode::HyperVisorDebug => self.debug(),
             _ => {
                 unimplemented!()
             }
@@ -97,6 +98,11 @@ impl InstanceCall {
 impl InstanceCall {
     fn debug(&self) -> HyperCallResult {
         info!("HDebug {:#x?}", self.args);
+
+        let sp = self.vcpu.get_arch_vcpu().stack_pointer();
+
+        warn!("HDebug: vcpu {} stack pointer {:#x}", self.vcpu.id(), sp,);
+
         Ok(HyperCallCode::HDebug as usize)
     }
 

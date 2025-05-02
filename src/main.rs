@@ -1,6 +1,8 @@
 #![no_std]
 #![no_main]
 
+use std::os::arceos::modules::axlog;
+
 #[macro_use]
 extern crate log;
 #[macro_use]
@@ -14,12 +16,24 @@ mod vmm;
 
 mod libos;
 
-pub fn get_shim_image() -> &'static [u8] {
-    include_bytes!("../deps/equation-shim/shim.bin")
-}
+const LOGO: &str = r"
+ _____                  _   _              ___  ____  
+| ____|__ _ _   _  __ _| |_(_) ___  _ __  / _ \/ ___| 
+|  _| / _` | | | |/ _` | __| |/ _ \| '_ \| | | \___ \ 
+| |__| (_| | |_| | (_| | |_| | (_) | | | | |_| |___) |
+|_____\__, |\__,_|\__,_|\__|_|\___/|_| |_|\___/|____/ 
+         |_|                                              
+             ___   ____ ___   ______
+            |__ \ / __ \__ \ / ____/
+            __/ // / / /_/ //___ \  
+           / __// /_/ / __/____/ /  
+          /____/\____/____/_____/   
+";
 
 #[unsafe(no_mangle)]
 fn main() {
+    axlog::ax_println!("{}", LOGO);
+
     info!("Starting virtualization...");
 
     info!("Hardware support: {:?}", axvm::has_hardware_support());

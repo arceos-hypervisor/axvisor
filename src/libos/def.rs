@@ -1,6 +1,6 @@
 use axerrno::{AxResult, ax_err_type};
 
-use memory_addr::{MemoryAddr, PAGE_SIZE_1G, PAGE_SIZE_4K};
+use memory_addr::{MemoryAddr, PAGE_SIZE_4K};
 use page_table_multiarch::PageSize;
 
 use axhal::mem::phys_to_virt;
@@ -10,39 +10,12 @@ use axaddrspace::{GuestPhysAddr, GuestVirtAddr, HostPhysAddr, MappingFlags};
 
 use crate::vmm::{VCpuRef, VMRef};
 
-/* Guest Process Virtual Address Space Layout (in GVA).*/
+pub use equation_defs::*;
 
 /// Guest Process stack size.
 pub const USER_STACK_SIZE: usize = 4096 * 4; // 16K
 /// Guest Process stack base address.
 pub const USER_STACK_BASE: GuestVirtAddr = GuestVirtAddr::from_usize(0x400_000 - USER_STACK_SIZE);
-pub const INSTANCE_SHREGION_BASE_GVA: GuestVirtAddr =
-    GuestVirtAddr::from_usize(0xffff_ff00_0000_0000);
-pub const GP_EPT_LIST_REGION_GVA: GuestVirtAddr = GuestVirtAddr::from_usize(0xffff_ff00_0000_1000);
-
-pub const SHIM_BASE_GPA: GuestPhysAddr = GuestPhysAddr::from_usize(0x0);
-
-/*  Guest Process Physical Address Space Layout (in GPA).*/
-
-/// Guest Process shared region base address (first page) in first segmentation mapping region.
-pub const INSTANCE_SHARED_REGION_BASE: GuestPhysAddr = GuestPhysAddr::from_usize(0xff00_0000_0000);
-/// Guest Process's GPA view of the EPTP list region on current CPU, only mapped in gate processes.
-pub const GP_EPTP_LIST_REGION_BASE: GuestPhysAddr = GuestPhysAddr::from_usize(0xff00_0000_1000);
-/// Guest Process's GPA view of the guest page table, which will be set as the process's CR3.
-pub const GUEST_PT_ROOT_GPA: GuestPhysAddr = GuestPhysAddr::from_usize(0xff80_0000_0000);
-
-/// (Only used for coarse-grained segmentation mapping)
-///
-/// Guest Process first region base address.
-pub const GUEST_MEM_REGION_BASE: GuestPhysAddr = GuestPhysAddr::from_usize(PAGE_SIZE_1G);
-
-/// The structure of the memory region.
-#[repr(C, packed)]
-#[derive(Debug, Clone, Copy, Default)]
-pub struct InstanceSharedRegion {
-    pub instance_id: u64,
-    pub process_id: u64,
-}
 
 /// The structure of the memory region.
 #[repr(C, packed)]
