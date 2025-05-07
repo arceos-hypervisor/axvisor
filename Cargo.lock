@@ -538,6 +538,7 @@ dependencies = [
 name = "axvisor"
 version = "0.1.0"
 dependencies = [
+ "allocator",
  "axaddrspace",
  "axconfig 0.1.0 (git+https://github.com/arceos-hypervisor/arceos.git?branch=vmm)",
  "axerrno",
@@ -648,8 +649,6 @@ dependencies = [
 [[package]]
 name = "bitmaps"
 version = "3.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1d084b0137aaa901caf9f1e8b21daa6aa24d41cd806e111335541eff9683bd6"
 
 [[package]]
 name = "byteorder"
@@ -813,7 +812,10 @@ checksum = "361a90feb7004eca4019fb28352a9465666b24f840f5c3cddf0ff13920590b89"
 name = "equation_defs"
 version = "0.1.0"
 dependencies = [
+ "allocator",
  "axaddrspace",
+ "bit_field",
+ "bitmap-allocator",
  "bitmaps",
  "memory_addr",
 ]
