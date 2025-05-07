@@ -1,7 +1,7 @@
 use alloc::sync::Arc;
 use core::ops::AddAssign;
 use equation_defs::bitmap_allocator::PageAllocator;
-use equation_defs::{GUEST_MEMORY_REGION_BASE_GVA, GUEST_PT_BASE_GVA, SHIM_PHYS_VIRT_OFFSET};
+use equation_defs::{GUEST_MEMORY_REGION_BASE_GVA, GUEST_PT_BASE_GVA};
 use std::collections::btree_map::BTreeMap;
 use std::vec::Vec;
 
@@ -16,6 +16,7 @@ use page_table_multiarch::{
 
 use axaddrspace::npt::EPTMetadata;
 use axaddrspace::{AddrSpace, GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr};
+use equation_defs::{MMFrameAllocator, PTFrameAllocator};
 
 use crate::libos::config::{
     SHIM_EKERNEL, SHIM_ERODATA, SHIM_ETEXT, SHIM_SDATA, SHIM_SKERNEL, SHIM_SRODATA, SHIM_STEXT,
@@ -109,7 +110,7 @@ impl<H: PagingHandler> HostPhysicalRegion<H> {
 
         // Clear the memory region.
         unsafe {
-            core::ptr::write_bytes(H::phys_to_virt(hpa).as_mut_ptr(), 0, size);
+            core::ptr::write_bytes(H::phys_to_virt(hpa).as_mut_ptr(), 0, size_aligned);
         }
 
         Ok(Self {
@@ -332,16 +333,6 @@ impl<
                     new_pt_region_base.add_assign(PAGE_SIZE_2M);
                 }
 
-                let pt_region_base =
-                    GuestPhysAddr::from_usize(self.get_process_inner_region().pt_region_base);
-
-                if new_pt_region_base != pt_region_base.add(PAGE_SIZE_2M) {
-                    error!(
-                        "New page table region base address {:?} does not match original {:?}",
-                        new_pt_region_base, pt_region_base
-                    );
-                }
-
                 GuestMapping::CoarseGrainedSegmentation {
                     mm_regions: new_mm_regions,
                     pt_regions: new_pt_regions,
@@ -452,6 +443,14 @@ impl<
         .unwrap()
     }
 
+    fn mm_frame_allocator(&mut self) -> &mut MMFrameAllocator {
+        &mut self.get_process_inner_region_mut().mm_frame_allocator
+    }
+
+    fn pt_frame_allocator(&mut self) -> &mut PTFrameAllocator {
+        &mut self.get_process_inner_region_mut().pt_frame_allocator
+    }
+
     pub fn get_process_id(&self) -> usize {
         self.get_process_inner_region().process_id as usize
     }
@@ -515,13 +514,13 @@ impl<
         debug!(
             "Process inner region base: {:?} size {:#x}",
             process_inner_region.base(),
-            process_inner_region_size_aligned
+            process_inner_region.size()
         );
 
         ept_addrspace.map_linear(
             PROCESS_INNER_REGION_BASE_GPA,
             process_inner_region.base(),
-            process_inner_region_size_aligned,
+            process_inner_region.size(),
             MappingFlags::READ | MappingFlags::WRITE,
             false,
         )?;
@@ -607,18 +606,35 @@ impl<
         // Init the process inner region.
         let process_inner_region = guest_addrspace.get_process_inner_region_mut();
         process_inner_region.process_id = process_id;
-
+        process_inner_region.mm_region_granularity = region_granularity;
         process_inner_region.mm_frame_allocator.init_with_page_size(
             PAGE_SIZE_4K,
             region_granularity,
             GUEST_MEM_REGION_BASE.as_usize(),
             region_granularity,
         );
+        process_inner_region.pt_frame_allocator.init_with_page_size(
+            PAGE_SIZE_4K,
+            PAGE_SIZE_2M,
+            GUEST_PT_ROOT_GPA.as_usize(),
+            PAGE_SIZE_2M,
+        );
 
-        process_inner_region.mm_region_granularity = region_granularity;
-        // Page table page index start from 1.
-        process_inner_region.pt_page_idx = 1;
-        process_inner_region.pt_region_base = GUEST_PT_ROOT_GPA.as_usize();
+        // Alloc the page table root frame first.
+        let guest_pg_root = process_inner_region
+            .pt_frame_allocator
+            .alloc_pages(1, PAGE_SIZE_4K)
+            .map_err(|e| {
+                error!("Failed to allocate page table root frame: {:?}", e);
+                ax_err_type!(NoMemory, "Failed to allocate PT frame")
+            })?;
+        if GUEST_PT_ROOT_GPA.as_usize() != guest_pg_root {
+            error!(
+                "Guest page table root GPA: {:?} != {:?}, something wrong",
+                GUEST_PT_ROOT_GPA, guest_pg_root
+            );
+            return ax_err!(BadState, "Guest page table root GPA mismatch");
+        }
 
         match gmt {
             // If one-to-one mapping, map 512GB memory with 1GB huge page,
@@ -735,6 +751,18 @@ impl<
                         false,
                     )
                     .map_err(paging_err_to_ax_err)?;
+            }
+        }
+
+        match guest_addrspace.guest_query(GuestVirtAddr::from_usize(0x200000)) {
+            Ok((gpa, _flags, _pgsize)) => {
+                warn!(
+                    "Guest page table root GPA: {:?} {:?} {:?}",
+                    gpa, _flags, _pgsize
+                );
+            }
+            Err(e) => {
+                info!("Failed to query guest page table root GPA: {:?}", e);
             }
         }
 
@@ -988,8 +1016,7 @@ impl<
                 mm_regions: _,
                 pt_regions: _,
             } => {
-                let mm_region_granularity = self.get_process_inner_region().mm_region_granularity;
-                let mm_allocator = &mut self.get_process_inner_region_mut().mm_frame_allocator;
+                let mm_allocator = self.mm_frame_allocator();
 
                 let allocated_frame_base = GuestPhysAddr::from_usize(
                     mm_allocator.alloc_pages(1, PAGE_SIZE_4K).map_err(|e| {
@@ -1004,7 +1031,7 @@ impl<
         }
     }
 
-    fn alloc_page_frame(&mut self) -> AxResult<GuestPhysAddr> {
+    fn alloc_pt_frame(&mut self) -> AxResult<GuestPhysAddr> {
         let current_gpt_gpa = self.guest_page_table_root_gpa();
 
         let allocated_frame_base = match self.guest_mapping {
@@ -1029,26 +1056,22 @@ impl<
                 mm_regions: _,
                 pt_regions: _,
             } => {
-                let pt_region_base =
-                    GuestPhysAddr::from_usize(self.get_process_inner_region().pt_region_base);
-                let pt_page_idx = self.get_process_inner_region().pt_page_idx;
+                let pt_allocator = self.pt_frame_allocator();
 
-                let allocated_frame_base = pt_region_base.add(pt_page_idx * PAGE_SIZE_4K);
-                assert!(
-                    pt_page_idx < PAGE_SIZE_2M / PAGE_SIZE_4K,
-                    "pt_page_idx {} should be less than {}",
-                    pt_page_idx,
-                    PAGE_SIZE_2M / PAGE_SIZE_4K,
+                let allocated_frame_base = GuestPhysAddr::from_usize(
+                    pt_allocator.alloc_pages(1, PAGE_SIZE_4K).map_err(|e| {
+                        error!("Failed to allocate page table frame: {:?}", e);
+                        ax_err_type!(NoMemory, "Failed to allocate page table frame")
+                    })?,
                 );
-                self.get_process_inner_region_mut().pt_page_idx = pt_page_idx + 1;
 
-                warn!(
-                    "Allocating page frame at {:?}, pt_page_idx {}",
+                trace!(
+                    "Allocating page table frame at {:?}, used/total:[{}/{}]",
                     allocated_frame_base,
-                    self.get_process_inner_region_mut().pt_page_idx
+                    pt_allocator.used_pages(),
+                    pt_allocator.total_pages(),
                 );
 
-                // *pt_page_idx += 1;
                 self.check_pt_region()?;
                 allocated_frame_base
             }
@@ -1113,52 +1136,6 @@ impl<
     }
 
     fn check_pt_region(&mut self) -> AxResult {
-        let pt_page_idx = self.get_process_inner_region().pt_page_idx;
-        let pt_region_base =
-            GuestPhysAddr::from_usize(self.get_process_inner_region().pt_region_base);
-
-        match self.guest_mapping {
-            GuestMapping::One2OneMapping { page_pos: _ } => {
-                error!("Do not need to check memory region for one-to-one mapping");
-            }
-            GuestMapping::CoarseGrainedSegmentation {
-                mm_regions: _,
-                ref mut pt_regions,
-            } => {
-                if pt_page_idx < PAGE_SIZE_2M / PAGE_SIZE_4K - 1 {
-                    return Ok(());
-                }
-
-                let pt_region_base = pt_region_base.add(PAGE_SIZE_2M);
-
-                warn!(
-                    "PT region exhausted, allocating new region at {:?}",
-                    pt_region_base
-                );
-
-                // Allocate new region.
-                let allocated_region = HostPhysicalRegion::allocate(PAGE_SIZE_2M, None)?;
-
-                self.ept_addrspace.map_linear(
-                    pt_region_base,
-                    allocated_region.base(),
-                    PAGE_SIZE_2M,
-                    MappingFlags::READ | MappingFlags::WRITE,
-                    true,
-                )?;
-
-                pt_regions.push(allocated_region);
-
-                // *pt_page_idx = 0;
-                // process_inner_region_mut_ref.pt_page_idx = 0;
-            }
-        }
-
-        self.get_process_inner_region_mut().pt_page_idx = 0;
-        self.get_process_inner_region_mut()
-            .pt_region_base
-            .add_assign(PAGE_SIZE_2M);
-
         Ok(())
     }
 }
@@ -1295,7 +1272,7 @@ impl<
             return Err(PagingError::NotAligned);
         }
         debug!(
-            "(GPT@{:#x})guest_map_region: [{:#x}, {:#x}) [{:#x}, {:#x}] {:?}",
+            "(GPT@{:#x})guest_map_region GVA:[{:#x}, {:#x}) to GPA:[{:#x}, {:#x}] {:?}",
             self.guest_page_table_root_gpa(),
             vaddr_usize,
             vaddr_usize + size,
@@ -1375,7 +1352,7 @@ impl<
 > GuestAddrSpace<M, EPTE, GPTE, H>
 {
     fn alloc_table(&mut self) -> PagingResult<GPTE::PhysAddr> {
-        if let Ok(gpa) = self.alloc_page_frame() {
+        if let Ok(gpa) = self.alloc_pt_frame() {
             let (hpa, _flags, _pgsize) = self.ept_addrspace.translate(gpa).ok_or_else(|| {
                 warn!("Failed to translate GPA {:?}", gpa);
                 PagingError::NotMapped
