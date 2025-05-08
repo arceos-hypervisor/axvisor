@@ -1,8 +1,5 @@
 ```
-mkdir -p deps
-cd deps
-git clone git@github.com:EquationOS/jailhouse-equation.git
-
+./scripts/dev_deps.sh
 ```
 
 ## Getting Started
