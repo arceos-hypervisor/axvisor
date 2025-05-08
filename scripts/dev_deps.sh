@@ -7,10 +7,17 @@ mkdir -p ../crates ../deps
 cd ../crates || exit
 git clone git@github.com:EquationOS/arceos.git --branch vmm_type15
 git clone git@github.com:arceos-hypervisor/axaddrspace.git --branch type15
+git clone git@github.com:arceos-hypervisor/axhvc.git
 git clone git@github.com:arceos-hypervisor/axvm.git --branch type15
 git clone git@github.com:arceos-hypervisor/axvcpu.git --branch type15
+git clone git@github.com:EquationOS/bitmaps.git
+git clone git@github.com:EquationOS/equation_defs.git
+git clone git@github.com:arceos-org/memory_addr.git --branch wip
+git clone git@github.com:arceos-org/page_table_multiarch.git --branch alloc_frames
 git clone git@github.com:arceos-hypervisor/x86_vcpu.git --branch type15
 
 # Clone repository into the deps directory
 cd ../deps || exit
+git clone git@github.com:arceos-hypervisor/axvisor-tools.git --branch axvisor
+git clone git@github.com:EquationOS/shim.git
 git clone git@github.com:EquationOS/jailhouse-equation.git --branch axvisor
