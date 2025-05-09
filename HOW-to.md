@@ -8,7 +8,7 @@
 
 ```bash
 make PLATFORM=x86_64-qemu-linux defconfig
-make PLATFORM=x86_64-qemu-linux SMP=4 LOG=debug scp_linux
+make PLATFORM=x86_64-qemu-linux SMP=4 LOG=debug AXVISOR_VM_CONFIGS=configs/vms/nimbos-x86_64.toml scp_to_hw HW_IP=xxx.xxx.xxx.xxx
 ```
 
 ### Test in QEMU (ubuntu as the guest OS)
@@ -54,11 +54,11 @@ make PLATFORM=x86_64-qemu-linux SMP=4 LOG=debug scp_linux
     make
     ```
 
-    To change the CPU number reserved for ArceOS, modify the `RT_CPUS` macro in `jailhouse-equation/tools/jailhouse.c`.
-
 5. Enable AxVisor
 
-    `./enable-axvisor.sh`
+    `./enable-axvisor.sh 1`
+
+    Parameter `1` means CPU number reserved for ArceOS.
 
 ## Development
 

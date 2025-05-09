@@ -99,9 +99,7 @@ impl InstanceCall {
     fn debug(&self) -> HyperCallResult {
         info!("HDebug {:#x?}", self.args);
 
-        let sp = self.vcpu.get_arch_vcpu().stack_pointer();
-
-        warn!("HDebug: vcpu {} stack pointer {:#x}", self.vcpu.id(), sp,);
+        self.vcpu.get_arch_vcpu().dump();
 
         Ok(HyperCallCode::HDebug as usize)
     }

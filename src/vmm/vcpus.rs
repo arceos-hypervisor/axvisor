@@ -6,7 +6,7 @@ use std::os::arceos::modules::{axhal, axtask};
 
 use axaddrspace::GuestPhysAddr;
 use axtask::{AxTaskRef, TaskInner, WaitQueue};
-use axvcpu::{AxVCpuExitReason, VCpuState};
+use axvcpu::{AxVCpuExitReason, AxVcpuAccessGuestState, VCpuState};
 
 use api::sys::ax_terminate;
 use api::task::AxCpuMask;
@@ -359,7 +359,8 @@ pub fn vm_vcpu_run(vm: VMRef, vcpu: VCpuRef) {
                     ax_terminate()
                 }
                 _ => {
-                    warn!("Unhandled VM-Exit");
+                    warn!("Unhandled VM-Exit {:?}", exit_reason);
+                    vcpu.get_arch_vcpu().dump();
                 }
             },
             Err(err) => {

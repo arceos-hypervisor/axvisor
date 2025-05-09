@@ -158,7 +158,10 @@ pub(crate) fn enable_virtualization() {
 /// This function should be called when the hypervisor is shutting down,
 /// and the current core is not reserved for the hypervisor.
 ///
-/// It will spawn a task on each core to disable virtualization.
+/// TODO: improve the shutdown process.
+/// Currently, it will just try to spawn a task on each core to 
+/// disable virtualization on the remaining cores.
+/// It should be improved to handle the shutdown process more gracefully.
 pub(crate) fn disable_virtualization_on_remaining_cores() -> AxResult {
     let reserved_cpus = get_reserved_cpus();
 
@@ -219,7 +222,7 @@ pub(crate) fn disable_virtualization_on_remaining_cores() -> AxResult {
     use axhal::time::wall_time;
     use core::time::Duration;
 
-    let deadline = wall_time() + Duration::from_secs(2);
+    let deadline = wall_time() + Duration::from_secs(1);
 
     // Wait for all instance cores to disable virtualization.
     while get_instance_cpus() > 0 {

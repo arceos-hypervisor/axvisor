@@ -1,4 +1,5 @@
 use alloc::string::ToString;
+use axaddrspace::MappingFlags;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use std::os::arceos::{api::task::AxCpuMask, modules::axconfig, modules::axhal::hvconfig};
 
@@ -14,12 +15,12 @@ pub mod config {
     #[allow(dead_code)]
     pub fn default_static_vm_configs() -> Vec<&'static str> {
         vec![
-            #[cfg(target_arch = "x86_64")]
-            core::include_str!("../../configs/vms/nimbos-x86_64.toml"),
-            #[cfg(target_arch = "aarch64")]
-            core::include_str!("../../configs/vms/nimbos-aarch64.toml"),
-            #[cfg(target_arch = "riscv64")]
-            core::include_str!("../../configs/vms/nimbos-riscv64.toml"),
+            // #[cfg(target_arch = "x86_64")]
+            // core::include_str!("../../configs/vms/nimbos-x86_64.toml"),
+            // #[cfg(target_arch = "aarch64")]
+            // core::include_str!("../../configs/vms/nimbos-aarch64.toml"),
+            // #[cfg(target_arch = "riscv64")]
+            // core::include_str!("../../configs/vms/nimbos-riscv64.toml"),
         ]
     }
 
@@ -97,10 +98,14 @@ pub fn init_host_vm() {
 
     // Map host VM memory regions.
     for region in axhal::host_memory_regions() {
+        let mapping_flags = MappingFlags::from(region.flags);
+
         host_vm_cfg.append_memory_region(VmMemConfig {
             gpa: region.paddr.as_usize(),
             size: region.size,
-            flags: region.flags.bits(),
+            // region.flags is of type `MemRegionFlags`.
+            // MappingFlags is required here.
+            flags: mapping_flags.bits(),
             map_type: VmMemMappingType::MapIentical,
         });
     }

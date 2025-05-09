@@ -176,9 +176,13 @@ justrun:
 debug: build
 	$(call run_qemu_debug)
 
-.PHONY: scp_linux
-scp_linux: $(OUT_DIR) $(OUT_BIN)
-	$(call scp_bin)
+.PHONY: scp_to_qemu
+scp_to_qemu: $(OUT_DIR) $(OUT_BIN)
+	$(call scp_qemu)
+
+.PHONY: scp_to_hw
+scp_to_hw: $(OUT_DIR) $(OUT_BIN)
+	$(call scp_hw)
 
 .PNONY: ssh
 ssh:

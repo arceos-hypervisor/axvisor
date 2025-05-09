@@ -62,6 +62,7 @@ impl HyperCall {
     fn execute_privileged(&self) -> HyperCallResult {
         match self.code {
             HyperCallCode::HypervisorDisable => self.hypervisor_disable(),
+            HyperCallCode::HyperVisorDebug => self.debug(),
             _ => {
                 unimplemented!()
             }
@@ -118,6 +119,9 @@ impl HyperCall {
 
     fn debug(&self) -> HyperCallResult {
         info!("HDebug {:#x?}", self.args);
+
+        self.vcpu.get_arch_vcpu().dump();
+
         Ok(HyperCallCode::HDebug as usize)
     }
 

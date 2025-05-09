@@ -257,17 +257,17 @@ fn gen_libos_configs() -> io::Result<()> {
 
     writeln!(
         output_file,
-        "    include_bytes!(\"../../../../../../deps/equation-shim/shim.bin\")"
+        "    include_bytes!(\"../../../../../../deps/shim/shim.bin\")"
     )?;
 
     writeln!(output_file, "}}\n")?;
 
-    println!("cargo:rerun-if-changed=deps/equation-shim/shim.elf");
+    println!("cargo:rerun-if-changed=deps/shim/shim.elf");
 
     // Execute the readelf command to get the symbol values
     let output = Command::new("readelf")
         .arg("-s")
-        .arg("deps/equation-shim/shim.elf")
+        .arg("deps/shim/shim.elf")
         .output()
         .expect("Failed to execute readelf command");
 
