@@ -26,6 +26,7 @@ impl<H: PagingHandler> Process<H> {
 
     pub fn set_pid(&mut self, pid: usize) {
         self.pid = pid;
+        self.guest_as.set_process_id(pid);
     }
 
     pub fn addrspace_root(&self) -> HostPhysAddr {
@@ -46,7 +47,7 @@ impl<H: PagingHandler> Process<H> {
             pid, self.pid
         );
 
-        let new_as = self.guest_as.fork()?;
+        let new_as = self.guest_as.fork(pid)?;
         let new_process = Process::new(pid, new_as);
         Ok(new_process)
     }

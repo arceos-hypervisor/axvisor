@@ -10,7 +10,37 @@ use axaddrspace::{GuestPhysAddr, GuestVirtAddr, HostPhysAddr, MappingFlags};
 
 use crate::vmm::{VCpuRef, VMRef};
 
-pub use equation_defs::*;
+use equation_defs::*;
+
+pub use equation_defs::{
+    INSTANCE_INNER_REGION_SIZE, INSTANCE_SHARED_REGION_SIZE, InstanceSharedRegion,
+    PROCESS_INNER_REGION_SIZE, ProcessInnerRegion,
+};
+
+pub const GUEST_MEM_REGION_BASE_GPA: GuestPhysAddr =
+    GuestPhysAddr::from_usize(GUEST_MEM_REGION_BASE_PA);
+pub const SHIM_BASE_GPA: GuestPhysAddr = GuestPhysAddr::from_usize(SHIM_BASE_PA);
+pub const GUEST_PT_ROOT_GPA: GuestPhysAddr = GuestPhysAddr::from_usize(GUEST_PT_ROOT_PA);
+pub const INSTANCE_SHARED_REGION_BASE_GPA: GuestPhysAddr =
+    GuestPhysAddr::from_usize(INSTANCE_SHARED_REGION_BASE_PA);
+pub const INSTANCE_INNER_REGION_BASE_GPA: GuestPhysAddr =
+    GuestPhysAddr::from_usize(INSTANCE_INNER_REGION_BASE_PA);
+pub const PROCESS_INNER_REGION_BASE_GPA: GuestPhysAddr =
+    GuestPhysAddr::from_usize(PROCESS_INNER_REGION_BASE_PA);
+pub const GP_EPTP_LIST_REGION_BASE_GPA: GuestPhysAddr =
+    GuestPhysAddr::from_usize(GP_EPTP_LIST_REGION_BASE_PA);
+
+pub const GUEST_MEMORY_REGION_BASE_GVA: GuestVirtAddr =
+    GuestVirtAddr::from_usize(GUEST_MEMORY_REGION_BASE_VA);
+pub const GP_EPT_LIST_REGION_BASE_GVA: GuestVirtAddr =
+    GuestVirtAddr::from_usize(GP_EPT_LIST_REGION_VA as usize);
+pub const GUEST_PT_BASE_GVA: GuestVirtAddr = GuestVirtAddr::from_usize(GUEST_PT_BASE_VA as usize);
+pub const PROCESS_INNER_REGION_BASE_GVA: GuestVirtAddr =
+    GuestVirtAddr::from_usize(PROCESS_INNER_REGION_BASE_VA as usize);
+pub const INSTANCE_INNER_REGION_BASE_GVA: GuestVirtAddr =
+    GuestVirtAddr::from_usize(INSTANCE_INNER_REGION_BASE_VA as usize);
+pub const INSTANCE_SHARED_REGION_BASE_GVA: GuestVirtAddr =
+    GuestVirtAddr::from_usize(INSTANCE_SHARED_REGION_BASE_VA as usize);
 
 /// Guest Process stack size.
 pub const USER_STACK_SIZE: usize = 4096 * 4; // 16K

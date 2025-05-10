@@ -159,7 +159,7 @@ pub(crate) fn enable_virtualization() {
 /// and the current core is not reserved for the hypervisor.
 ///
 /// TODO: improve the shutdown process.
-/// Currently, it will just try to spawn a task on each core to 
+/// Currently, it will just try to spawn a task on each core to
 /// disable virtualization on the remaining cores.
 /// It should be improved to handle the shutdown process more gracefully.
 pub(crate) fn disable_virtualization_on_remaining_cores() -> AxResult {

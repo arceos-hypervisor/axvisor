@@ -1,7 +1,5 @@
 use alloc::sync::Arc;
 use core::ops::AddAssign;
-use equation_defs::bitmap_allocator::PageAllocator;
-use equation_defs::{GUEST_MEMORY_REGION_BASE_GVA, GUEST_PT_BASE_GVA};
 use std::collections::btree_map::BTreeMap;
 use std::vec::Vec;
 
@@ -16,6 +14,7 @@ use page_table_multiarch::{
 
 use axaddrspace::npt::EPTMetadata;
 use axaddrspace::{AddrSpace, GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr};
+use equation_defs::bitmap_allocator::PageAllocator;
 use equation_defs::{MMFrameAllocator, PTFrameAllocator};
 
 use crate::libos::config::{
@@ -23,9 +22,15 @@ use crate::libos::config::{
     get_shim_image,
 };
 use crate::libos::def::{
-    GUEST_MEM_REGION_BASE, GUEST_PT_ROOT_GPA, INSTANCE_INNER_REGION_BASE_GPA,
-    INSTANCE_INNER_REGION_BASE_GVA, PROCESS_INNER_REGION_BASE_GPA, PROCESS_INNER_REGION_BASE_GVA,
-    ProcessInnerRegion, SHIM_BASE_GPA,
+    GUEST_MEM_REGION_BASE_GPA, GUEST_PT_ROOT_GPA, INSTANCE_INNER_REGION_BASE_GPA,
+    PROCESS_INNER_REGION_BASE_GPA, SHIM_BASE_GPA,
+};
+use crate::libos::def::{
+    GUEST_MEMORY_REGION_BASE_GVA, GUEST_PT_BASE_GVA, INSTANCE_INNER_REGION_BASE_GVA,
+    PROCESS_INNER_REGION_BASE_GVA,
+};
+use crate::libos::def::{
+    INSTANCE_INNER_REGION_SIZE, PROCESS_INNER_REGION_SIZE, ProcessInnerRegion,
 };
 
 use super::gpt::{ENTRY_COUNT, MoreGenericPTE, p1_index, p2_index, p3_index, p4_index, p5_index};
@@ -230,13 +235,15 @@ impl<
     H: PagingHandler,
 > GuestAddrSpace<M, EPTE, GPTE, H>
 {
-    pub fn fork(&mut self) -> AxResult<Self> {
+    pub fn fork(&mut self, pid: usize) -> AxResult<Self> {
         let mut forked_addrspace = AddrSpace::new_empty(
             GuestPhysAddr::from_usize(0),
             1 << <EPTMetadata as PagingMetaData>::VA_MAX_BITS,
         )?;
 
         // Map the shim memory region.
+        // DO NOT allocate a new shim memory region,
+        // since it is shared by all processes in the same instance.
         forked_addrspace.map_linear(
             SHIM_BASE_GPA,
             self.shim_region.base(),
@@ -246,16 +253,28 @@ impl<
         )?;
 
         // Allocate and map the process inner region.
+        // The process inner region is used to store the process ID and memory allocation information, which is process-specific.
         let forked_process_inner_region =
-            HostPhysicalRegion::allocate(core::mem::size_of::<ProcessInnerRegion>(), None)?;
+            HostPhysicalRegion::allocate(self.process_inner_region.size(), Some(PAGE_SIZE_4K))?;
         forked_process_inner_region.copy_from(&self.process_inner_region);
+
+        // Init the forked process inner region.
         let process_inner_region = unsafe {
             forked_process_inner_region
                 .as_mut_ptr_of::<ProcessInnerRegion>()
                 .as_mut()
         }
         .unwrap();
-        process_inner_region.process_id = self.get_process_id() + 1;
+
+        if pid == self.get_process_id() {
+            error!("Forked process ID is same as parent process ID");
+            return ax_err!(
+                InvalidInput,
+                "Forked process ID is same as parent process ID"
+            );
+        }
+
+        process_inner_region.process_id = pid;
         forked_addrspace.map_linear(
             PROCESS_INNER_REGION_BASE_GPA,
             forked_process_inner_region.base(),
@@ -265,6 +284,7 @@ impl<
         )?;
 
         // Map the instance inner region.
+        // Do not allocate a new instance inner region, since it is shared by all processes in the same instance.
         forked_addrspace.map_linear(
             INSTANCE_INNER_REGION_BASE_GPA,
             self.instance_inner_region.base(),
@@ -285,9 +305,10 @@ impl<
 
                 let mm_region_granularity = self.get_process_inner_region().mm_region_granularity;
 
+                // Perform COW at coarse grained region granularity.
                 for (ori_base, ori_region) in mm_regions {
                     warn!(
-                        "Cloning mm [{:?}-{:?}], mapped to [{:?}-{:?}]",
+                        "Cloning mm [{:?}-{:?}], which is mapped to [{:?}-{:?}]",
                         ori_base,
                         ori_base.add(mm_region_granularity),
                         ori_region.base(),
@@ -454,6 +475,10 @@ impl<
     pub fn get_process_id(&self) -> usize {
         self.get_process_inner_region().process_id as usize
     }
+
+    pub fn set_process_id(&mut self, pid: usize) {
+        self.get_process_inner_region_mut().process_id = pid;
+    }
 }
 
 impl<
@@ -463,7 +488,8 @@ impl<
     H: PagingHandler,
 > GuestAddrSpace<M, EPTE, GPTE, H>
 {
-    /// Creates a new guest address space.
+    /// Creates a new guest address space,
+    /// alone with the shim kernel memory region mapped.
     pub fn new(process_id: usize, gmt: GuestMappingType) -> AxResult<Self> {
         info!("Generate GuestAddrSpace with {:?}", gmt);
 
@@ -504,10 +530,8 @@ impl<
         );
 
         // Allocate and map the process inner region.
-        let process_inner_region = HostPhysicalRegion::allocate(
-            core::mem::size_of::<ProcessInnerRegion>(),
-            Some(PAGE_SIZE_4K),
-        )?;
+        let process_inner_region =
+            HostPhysicalRegion::allocate(PROCESS_INNER_REGION_SIZE, Some(PAGE_SIZE_4K))?;
 
         let process_inner_region_size_aligned = process_inner_region.size();
 
@@ -528,7 +552,7 @@ impl<
         // Allocate and map the instance inner region.
         // The instance inner region is shared by all processes in the same instance, so use `allocate_ref` here.
         let instance_inner_region =
-            HostPhysicalRegion::allocate_ref(PAGE_SIZE_4K, Some(PAGE_SIZE_4K))?;
+            HostPhysicalRegion::allocate_ref(INSTANCE_INNER_REGION_SIZE, Some(PAGE_SIZE_4K))?;
         ept_addrspace.map_linear(
             INSTANCE_INNER_REGION_BASE_GPA,
             instance_inner_region.base(),
@@ -562,13 +586,13 @@ impl<
                 let first_mm_region =
                     HostPhysicalRegion::allocate_ref(mm_region_granularity, None)?;
                 ept_addrspace.map_linear(
-                    GUEST_MEM_REGION_BASE,
+                    GUEST_MEM_REGION_BASE_GPA,
                     first_mm_region.base(),
                     mm_region_granularity,
                     MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
                     true,
                 )?;
-                mm_regions.insert(GUEST_MEM_REGION_BASE, first_mm_region);
+                mm_regions.insert(GUEST_MEM_REGION_BASE_GPA, first_mm_region);
 
                 // Map the first page table region.
                 let first_pt_region = HostPhysicalRegion::allocate(PAGE_SIZE_2M, None)?;
@@ -610,7 +634,7 @@ impl<
         process_inner_region.mm_frame_allocator.init_with_page_size(
             PAGE_SIZE_4K,
             region_granularity,
-            GUEST_MEM_REGION_BASE.as_usize(),
+            GUEST_MEM_REGION_BASE_GPA.as_usize(),
             region_granularity,
         );
         process_inner_region.pt_frame_allocator.init_with_page_size(
@@ -703,7 +727,7 @@ impl<
                 guest_addrspace
                     .guest_map_region(
                         GUEST_MEMORY_REGION_BASE_GVA,
-                        |_gva| GUEST_MEM_REGION_BASE,
+                        |_gva| GUEST_MEM_REGION_BASE_GPA,
                         region_granularity,
                         MappingFlags::READ | MappingFlags::WRITE,
                         true,
@@ -737,7 +761,7 @@ impl<
                     )
                     .map_err(paging_err_to_ax_err)?;
 
-                info!("Mapping process inner region");
+                info!("Mapping process inner region with user permission");
                 guest_addrspace
                     .guest_map_region(
                         PROCESS_INNER_REGION_BASE_GVA,
@@ -746,7 +770,7 @@ impl<
                                 .add(gva.sub(PROCESS_INNER_REGION_BASE_GVA.as_usize()).as_usize())
                         },
                         process_inner_region_size_aligned,
-                        MappingFlags::READ | MappingFlags::WRITE,
+                        MappingFlags::READ | MappingFlags::WRITE | MappingFlags::USER,
                         false,
                         false,
                     )

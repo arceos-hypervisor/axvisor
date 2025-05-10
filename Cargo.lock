@@ -813,10 +813,10 @@ name = "equation_defs"
 version = "0.1.0"
 dependencies = [
  "allocator",
- "axaddrspace",
  "bit_field",
  "bitmap-allocator",
  "bitmaps",
+ "log",
  "memory_addr",
 ]
 

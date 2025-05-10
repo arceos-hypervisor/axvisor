@@ -1,7 +1,10 @@
 use alloc::string::ToString;
-use axaddrspace::MappingFlags;
+use alloc::vec::Vec;
 use core::sync::atomic::{AtomicUsize, Ordering};
+
 use std::os::arceos::{api::task::AxCpuMask, modules::axconfig, modules::axhal::hvconfig};
+
+use axaddrspace::MappingFlags;
 
 use axvm::config::{AxVMConfig, AxVMCrateConfig};
 
@@ -79,7 +82,7 @@ pub fn init_host_vm() {
     // We need to ensure that the reserved CPUs' id starts from 0.
     let mut instance_cpu_cnt = 0;
     for i in 0..axconfig::SMP {
-        if !hvconfig::cpu_is_reserved(i) {
+        if !hvconfig::core_id_is_reserved(i) {
             unsafe {
                 INSTANCE_CPU_MASK = INSTANCE_CPU_MASK | (1 << i);
             }
@@ -91,6 +94,18 @@ pub fn init_host_vm() {
         error!(
             "CPU mask does not match instance CPU count: {} != {}",
             instance_cpu_cnt, instance_cpus
+        );
+    }
+
+    let instance_cpu_mask = AxCpuMask::from_raw_bits(unsafe { INSTANCE_CPU_MASK });
+
+    if instance_cpu_mask.len() != instance_cpus {
+        let cpu_ids: Vec<usize> = instance_cpu_mask.into_iter().collect();
+        error!(
+            "CPU mask length does not match instance CPU count: {} != {}, known instance cpus: {:?}",
+            instance_cpu_mask.len(),
+            instance_cpus,
+            cpu_ids,
         );
     }
 
