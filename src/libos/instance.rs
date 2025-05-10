@@ -5,6 +5,7 @@ use std::os::arceos::modules::axhal::paging::PagingHandlerImpl;
 use std::sync::Mutex;
 
 use axerrno::{AxResult, ax_err_type};
+use bitmaps::Bitmap;
 use memory_addr::{MemoryAddr, PAGE_SIZE_4K, is_aligned_4k};
 use page_table_multiarch::{PageSize, PagingHandler};
 
@@ -14,13 +15,21 @@ use axvm::HostContext;
 
 use crate::libos::config::SHIM_ENTRY;
 use crate::libos::def::{
-    GP_EPTP_LIST_REGION_BASE_GPA, GUEST_PT_ROOT_GPA, INSTANCE_SHARED_REGION_BASE_GPA,
-    ProcessMemoryRegion, USER_STACK_BASE, USER_STACK_SIZE,
+    EPTP_LIST_REGION_SIZE, EPTPList, GP_EPT_LIST_REGION_BASE_GVA, GP_EPTP_LIST_REGION_BASE_GPA,
+    GUEST_PT_ROOT_GPA, INSTANCE_SHARED_REGION_BASE_GPA, ProcessMemoryRegion, USER_STACK_BASE,
+    USER_STACK_SIZE,
 };
 use crate::libos::gaddrspace::{GuestAddrSpace, GuestMappingType};
 use crate::libos::process::Process;
+use crate::libos::region::HostPhysicalRegion;
 use crate::vmm::VCpu;
 use crate::vmm::config::{get_instance_cpus, get_instance_cpus_mask};
+
+/// Maximum number of processes in an instance,
+/// Intel's EPTP List can only support 512 EPTP entries,
+/// since the first entry is reserved for the gate process,
+/// theoretically, we can only have 511 processes in an instance.
+const MAX_PROCESS_NUM: usize = 512;
 
 // How to init gate instance
 // First, init addrspace on one core.
@@ -37,8 +46,14 @@ pub type InstanceRef = Arc<Instance<PagingHandlerImpl>>;
 pub struct Instance<H: PagingHandler> {
     /// The ID of the instance.
     id: usize,
+    /// The bitmap of process IDs in the instance,
+    /// - `true` means the PID is used.
+    /// - `false` means the PID is free.
+    pid_bitmap: Mutex<Bitmap<MAX_PROCESS_NUM>>,
     /// The list of processes in the instance.
     pub processes: Mutex<BTreeMap<HostPhysAddr, Process<H>>>,
+
+    eptp_list_region: HostPhysicalRegion<H>,
     /// The initialized context of the instance's first process.
     /// It is used to initialize the vCPU context for the first process.
     /// See `init_gate_processes` for details.
@@ -48,9 +63,12 @@ pub struct Instance<H: PagingHandler> {
 impl<H: PagingHandler> Instance<H> {
     pub fn create_shim() -> AxResult<Arc<Self>> {
         let id = 0;
-        let pid = 0;
+        let pid = get_instance_cpus_mask().first_index().ok_or_else(|| {
+            warn!("No CPU available for instance");
+            ax_err_type!(InvalidInput, "No CPU available for instance")
+        })?;
 
-        debug!("Init shim instance");
+        debug!("Init shim instance, first process ID: {}", pid);
         let shim_addrspace =
             GuestAddrSpace::new(pid, GuestMappingType::CoarseGrainedSegmentation2M)?;
 
@@ -69,9 +87,18 @@ impl<H: PagingHandler> Instance<H> {
         // Other processes, including the gate processes, may be forked from this process.
         processes.insert(init_ept_root_hpa, init_process);
 
+        let eptp_list_region =
+            HostPhysicalRegion::allocate(EPTP_LIST_REGION_SIZE, Some(PAGE_SIZE_4K))?;
+
+        let eptp_list = unsafe { eptp_list_region.as_mut_ptr_of::<EPTPList>().as_mut() }
+            .expect("Failed to get EPTP list");
+        eptp_list.set(pid, init_ept_root_hpa);
+
         Ok(Arc::new(Self {
             id,
+            pid_bitmap: Mutex::new(Bitmap::mask(1)),
             processes: Mutex::new(processes),
+            eptp_list_region,
             ctx: shim_context,
         }))
     }
@@ -170,8 +197,14 @@ impl<H: PagingHandler> Instance<H> {
         let init_process = Process::new(0, init_addrspace);
         // Other processes, including the gate processes, may be forked from this process.
         processes.insert(init_ept_root_hpa, init_process);
+
+        let eptp_list_region =
+            HostPhysicalRegion::allocate(EPTP_LIST_REGION_SIZE, Some(PAGE_SIZE_4K))?;
+
         Ok(Arc::new(Self {
             id,
+            pid_bitmap: Mutex::new(Bitmap::mask(1)),
+            eptp_list_region,
             processes: Mutex::new(processes),
             ctx,
         }))
@@ -179,6 +212,17 @@ impl<H: PagingHandler> Instance<H> {
 
     pub fn id(&self) -> usize {
         self.id
+    }
+
+    pub fn alloc_pid(&self) -> Option<usize> {
+        let mut pid_bitmap = self.pid_bitmap.lock();
+
+        if let Some(pid) = pid_bitmap.first_false_index() {
+            pid_bitmap.set(pid, true);
+            Some(pid)
+        } else {
+            None
+        }
     }
 
     pub fn guest_phys_to_host_phys(
@@ -234,11 +278,69 @@ impl<H: PagingHandler> Instance<H> {
             .handle_ept_page_fault(addr, access_flags)
     }
 
-    pub fn remove_process(&self, eptp: HostPhysAddr) -> AxResult {
-        self.processes.lock().remove(&eptp).ok_or_else(|| {
+    /// Handle the clone hypercall to create a new process.
+    /// This function will fork the process with the given EPTP and return the new EPTP's index.
+    pub fn handle_clone(&self, eptp: HostPhysAddr) -> AxResult<usize> {
+        let new_pid = self.alloc_pid().ok_or_else(|| {
+            warn!("Process ID overflow");
+            ax_err_type!(ResourceBusy, "Process ID overflow")
+        })?;
+
+        let mut processes = self.processes.lock();
+
+        let cur_process = processes.get_mut(&eptp).ok_or_else(|| {
             warn!("EPTP {:?} not found in processes", eptp);
             ax_err_type!(InvalidInput, "Invalid EPTP")
         })?;
+
+        let new_process = cur_process.fork(new_pid)?;
+        let new_eptp = new_process.ept_root();
+        let new_pid = new_process.pid();
+        processes.insert(new_eptp, new_process);
+
+        // Update the EPTP list in the instance.
+        if !self.get_eptp_list().set(new_pid, new_eptp) {
+            warn!(
+                "Instance[{}] failed to set EPTP {} for new process",
+                self.id(),
+                new_pid
+            );
+            return Err(ax_err_type!(BadState, "Failed to set EPTP list"));
+        }
+
+        Ok(new_pid)
+    }
+
+    pub fn remove_process(&self, eptp: HostPhysAddr) -> AxResult {
+        let removed_process = self.processes.lock().remove(&eptp).ok_or_else(|| {
+            warn!("EPTP {:?} not found in processes", eptp);
+            ax_err_type!(InvalidInput, "Invalid EPTP")
+        })?;
+
+        match self.get_eptp_list().remove(removed_process.pid()) {
+            Some(removed_eptp) => {
+                if removed_eptp != eptp {
+                    warn!(
+                        "Process [{}] EPTP {:?} is not the same as the removed EPTP {:?}",
+                        removed_process.pid(),
+                        eptp,
+                        removed_eptp
+                    );
+                    return Err(ax_err_type!(BadState, "Invalid EPTP list"));
+                }
+                // Successfully removed the EPTP from the list.
+            }
+            None => {
+                warn!(
+                    "Failed to remove Process[{}]'s EPTP {:?} from instance {}",
+                    removed_process.pid(),
+                    eptp,
+                    self.id()
+                );
+                return Err(ax_err_type!(BadState, "Failed to remove EPTP list"));
+            }
+        }
+
         if self.processes.lock().is_empty() {
             // If there are no processes left, we can remove the instance.
             remove_instance(self.id)?;
@@ -270,9 +372,12 @@ impl<H: PagingHandler> Instance<H> {
         let mut init_process_entry = processes.first_entry().unwrap();
         let init_process = init_process_entry.get_mut();
 
-        init_process.set_pid(cpu_ids[0]);
+        if cpu_ids[0] != init_process.pid() {
+            return Err(ax_err_type!(BadState, "Incorrect CPU ID for init process"));
+        }
 
         let mut secondary_gate_processes = Vec::new();
+
         // Fork gate process on each core from init process.
         for i in 1..get_instance_cpus() {
             let cpu_id = cpu_ids[i];
@@ -280,7 +385,7 @@ impl<H: PagingHandler> Instance<H> {
         }
 
         for sgp in secondary_gate_processes {
-            let sgp_hpa = sgp.addrspace_root();
+            let sgp_hpa = sgp.ept_root();
             processes.insert(sgp_hpa, sgp);
         }
 
@@ -305,13 +410,39 @@ impl<H: PagingHandler> Instance<H> {
             )?;
 
             // Map the EPTP list region for gate process.
+            // GVA -> GPA
+            gp_as
+                .guest_map_region(
+                    GP_EPT_LIST_REGION_BASE_GVA,
+                    |_gva| GP_EPTP_LIST_REGION_BASE_GPA,
+                    EPTP_LIST_REGION_SIZE,
+                    MappingFlags::READ | MappingFlags::WRITE,
+                    false,
+                    false,
+                )
+                .map_err(super::gaddrspace::paging_err_to_ax_err)?;
+
+            // GPA -> HPA
             let gp_eptp_list_base_hpa = vcpu.get_arch_vcpu().eptp_list_region();
             gp_as.ept_map_linear(
                 GP_EPTP_LIST_REGION_BASE_GPA,
                 gp_eptp_list_base_hpa,
-                PAGE_SIZE_4K,
+                EPTP_LIST_REGION_SIZE,
                 MappingFlags::READ | MappingFlags::WRITE,
                 false,
+            )?;
+
+            // Copy gate instance's EPTP list to the vCPU's EPTP list region.
+            let vcpu_eptp_list_region_hva = H::phys_to_virt(gp_eptp_list_base_hpa);
+            self.eptp_list_region.copy_to_slice(
+                unsafe {
+                    core::slice::from_raw_parts_mut(
+                        vcpu_eptp_list_region_hva.as_mut_ptr(),
+                        EPTP_LIST_REGION_SIZE,
+                    )
+                },
+                0,
+                EPTP_LIST_REGION_SIZE,
             )?;
 
             crate::libos::percpu::init_instance_percore_task(
@@ -322,6 +453,11 @@ impl<H: PagingHandler> Instance<H> {
         }
 
         Ok(())
+    }
+
+    fn get_eptp_list(&self) -> &mut EPTPList {
+        unsafe { self.eptp_list_region.as_mut_ptr_of::<EPTPList>().as_mut() }
+            .expect("Failed to get EPTP list")
     }
 }
 

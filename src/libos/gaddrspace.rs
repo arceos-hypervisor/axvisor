@@ -32,11 +32,13 @@ use crate::libos::def::{
 use crate::libos::def::{
     INSTANCE_INNER_REGION_SIZE, PROCESS_INNER_REGION_SIZE, ProcessInnerRegion,
 };
-
-use super::gpt::{ENTRY_COUNT, MoreGenericPTE, p1_index, p2_index, p3_index, p4_index, p5_index};
+use crate::libos::gpt::{
+    ENTRY_COUNT, MoreGenericPTE, p1_index, p2_index, p3_index, p4_index, p5_index,
+};
+use crate::libos::region::{HostPhysicalRegion, HostPhysicalRegionRef};
 
 // Copy from `axmm`.
-fn paging_err_to_ax_err(err: PagingError) -> AxError {
+pub(super) fn paging_err_to_ax_err(err: PagingError) -> AxError {
     warn!("Paging error: {:?}", err);
     match err {
         PagingError::NoMemory => AxError::NoMemory,
@@ -87,109 +89,6 @@ enum GuestMapping<H: PagingHandler> {
         /// Stores the host physical address of allocated regions for page table memory.
         pt_regions: Vec<HostPhysicalRegion<H>>,
     },
-}
-
-struct HostPhysicalRegion<H: PagingHandler> {
-    base: HostPhysAddr,
-    size: usize,
-    phontom: core::marker::PhantomData<H>,
-}
-
-type HostPhysicalRegionRef<H> = Arc<HostPhysicalRegion<H>>;
-
-impl<H: PagingHandler> HostPhysicalRegion<H> {
-    fn allocate(size: usize, align_pow2: Option<usize>) -> AxResult<Self> {
-        let size_aligned = align_up_4k(size);
-
-        let hpa = H::alloc_frames(
-            size_aligned / PAGE_SIZE_4K,
-            if let Some(align_pow2) = align_pow2 {
-                align_pow2
-            } else {
-                PAGE_SIZE_4K
-            },
-        )
-        .ok_or_else(|| {
-            ax_err_type!(NoMemory, "Failed to allocate memory for HostPhysicalRegion")
-        })?;
-
-        // Clear the memory region.
-        unsafe {
-            core::ptr::write_bytes(H::phys_to_virt(hpa).as_mut_ptr(), 0, size_aligned);
-        }
-
-        Ok(Self {
-            base: hpa,
-            size: size_aligned,
-            phontom: core::marker::PhantomData,
-        })
-    }
-
-    fn allocate_ref(size: usize, align_pow2: Option<usize>) -> AxResult<HostPhysicalRegionRef<H>> {
-        Ok(Arc::new(Self::allocate(size, align_pow2)?))
-    }
-
-    fn base(&self) -> HostPhysAddr {
-        self.base
-    }
-
-    fn size(&self) -> usize {
-        self.size
-    }
-
-    fn as_ptr_of<T>(&self) -> *const T {
-        assert!(self.size >= core::mem::size_of::<T>());
-        H::phys_to_virt(self.base).as_ptr_of::<T>()
-    }
-
-    fn as_mut_ptr_of<T>(&self) -> *mut T {
-        assert!(self.size >= core::mem::size_of::<T>());
-        H::phys_to_virt(self.base).as_mut_ptr_of::<T>()
-    }
-
-    fn copy_from(&self, src: &Self) {
-        if self.size != src.size {
-            warn!(
-                "{:?} copying memory regions from {:?} with different sizes: {} vs {}",
-                self.base,
-                src.base(),
-                self.size,
-                src.size
-            );
-        }
-        unsafe {
-            core::ptr::copy_nonoverlapping(
-                H::phys_to_virt(src.base()).as_ptr(),
-                H::phys_to_virt(self.base).as_mut_ptr(),
-                self.size,
-            );
-        }
-    }
-
-    fn copy_from_slice(&self, src: &[u8], offset: usize, size: usize) -> AxResult {
-        if size > self.size - offset {
-            return ax_err!(InvalidInput, "Copy size exceeds region size");
-        }
-        unsafe {
-            core::ptr::copy_nonoverlapping(
-                src.as_ptr(),
-                H::phys_to_virt(self.base.add(offset)).as_mut_ptr(),
-                size,
-            );
-        }
-        Ok(())
-    }
-}
-
-impl<H: PagingHandler> Drop for HostPhysicalRegion<H> {
-    fn drop(&mut self) {
-        debug!(
-            "Dropping HostPhysicalRegion [{:?}-{:?}]",
-            self.base,
-            self.base.add(self.size)
-        );
-        H::dealloc_frames(self.base, self.size / PAGE_SIZE_4K);
-    }
 }
 
 /// The virtual memory address space.
@@ -266,7 +165,7 @@ impl<
         }
         .unwrap();
 
-        if pid == self.get_process_id() {
+        if pid == self.process_id() {
             error!("Forked process ID is same as parent process ID");
             return ax_err!(
                 InvalidInput,
@@ -472,12 +371,8 @@ impl<
         &mut self.get_process_inner_region_mut().pt_frame_allocator
     }
 
-    pub fn get_process_id(&self) -> usize {
+    pub fn process_id(&self) -> usize {
         self.get_process_inner_region().process_id as usize
-    }
-
-    pub fn set_process_id(&mut self, pid: usize) {
-        self.get_process_inner_region_mut().process_id = pid;
     }
 }
 
@@ -775,18 +670,6 @@ impl<
                         false,
                     )
                     .map_err(paging_err_to_ax_err)?;
-            }
-        }
-
-        match guest_addrspace.guest_query(GuestVirtAddr::from_usize(0x200000)) {
-            Ok((gpa, _flags, _pgsize)) => {
-                warn!(
-                    "Guest page table root GPA: {:?} {:?} {:?}",
-                    gpa, _flags, _pgsize
-                );
-            }
-            Err(e) => {
-                info!("Failed to query guest page table root GPA: {:?}", e);
             }
         }
 

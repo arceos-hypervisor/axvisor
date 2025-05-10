@@ -13,7 +13,7 @@ use crate::vmm::{VCpuRef, VMRef};
 use equation_defs::*;
 
 pub use equation_defs::{
-    INSTANCE_INNER_REGION_SIZE, INSTANCE_SHARED_REGION_SIZE, InstanceSharedRegion,
+    EPTP_LIST_REGION_SIZE, INSTANCE_INNER_REGION_SIZE, InstanceSharedRegion,
     PROCESS_INNER_REGION_SIZE, ProcessInnerRegion,
 };
 
@@ -46,6 +46,66 @@ pub const INSTANCE_SHARED_REGION_BASE_GVA: GuestVirtAddr =
 pub const USER_STACK_SIZE: usize = 4096 * 4; // 16K
 /// Guest Process stack base address.
 pub const USER_STACK_BASE: GuestVirtAddr = GuestVirtAddr::from_usize(0x400_000 - USER_STACK_SIZE);
+
+pub const EPTP_LIST_LENGTH: usize = 512;
+
+/// The EPTP list structure,
+/// which size is strictly 4K.
+pub struct EPTPList {
+    eptp_list: [HostPhysAddr; EPTP_LIST_LENGTH],
+}
+
+static_assertions::const_assert_eq!(core::mem::size_of::<EPTPList>(), PAGE_SIZE_4K,);
+
+impl EPTPList {
+    /// Get EPTP entry by the given index.
+    /// If the entry is not set, return None.
+    #[allow(unused)]
+    pub fn get(&self, index: usize) -> Option<HostPhysAddr> {
+        assert!(index < EPTP_LIST_LENGTH);
+
+        let eptp = self.eptp_list[index];
+
+        if eptp.as_usize() == 0 {
+            None
+        } else {
+            Some(eptp)
+        }
+    }
+
+    /// Set EPTP entry by the given index.
+    /// If the entry is already set, return false.
+    /// Return true if the entry is updated successfully.
+    pub fn set(&mut self, index: usize, eptp: HostPhysAddr) -> bool {
+        assert!(index < EPTP_LIST_LENGTH);
+
+        let old_eptp = self.eptp_list[index];
+
+        if old_eptp.as_usize() != 0 {
+            false
+        } else {
+            self.eptp_list[index] = eptp;
+            true
+        }
+    }
+
+    /// Clear EPTP entry by the given index.
+    /// If the entry is already cleared, return None.
+    /// Return the removed EPTP entry in `HostPhysAddr` if it is cleared successfully.
+    pub fn remove(&mut self, index: usize) -> Option<HostPhysAddr> {
+        assert!(index < EPTP_LIST_LENGTH);
+
+        let old_eptp = self.eptp_list[index];
+
+        if old_eptp.as_usize() == 0 {
+            return None;
+        } else {
+            let removed_eptp = self.eptp_list[index];
+            self.eptp_list[index] = HostPhysAddr::from_usize(0);
+            Some(removed_eptp)
+        }
+    }
+}
 
 /// The structure of the memory region.
 #[repr(C, packed)]

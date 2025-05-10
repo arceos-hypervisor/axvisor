@@ -46,40 +46,19 @@ impl InstanceCall {
         // First, check if the vcpu is allowed to execute the hypercall.
         if self.code.is_privileged() ^ self.vcpu.get_arch_vcpu().guest_is_privileged() {
             warn!(
-                "{} vcpu trying to execute {} hypercall {:?}",
+                "Vcpu[{}] execute hypercall {:?} from {}",
+                self.vcpu.id(),
+                self.code,
                 if self.vcpu.get_arch_vcpu().guest_is_privileged() {
-                    "Privileged"
+                    "Ring 0"
                 } else {
-                    "Unprivileged"
+                    "Ring 3"
                 },
-                if self.code.is_privileged() {
-                    "privileged"
-                } else {
-                    "unprivileged"
-                },
-                self.code
             );
-            return ax_err!(PermissionDenied);
         }
 
-        if self.vcpu.get_arch_vcpu().guest_is_privileged() {
-            self.execute_privileged()
-        } else {
-            self.execute_unprivileged()
-        }
-    }
-
-    fn execute_privileged(&self) -> HyperCallResult {
         match self.code {
             HyperCallCode::HyperVisorDebug => self.debug(),
-            _ => {
-                unimplemented!()
-            }
-        }
-    }
-
-    fn execute_unprivileged(&self) -> HyperCallResult {
-        match self.code {
             HyperCallCode::HDebug => self.debug(),
             HyperCallCode::HExitProcess => self.exit_process(self.args[0]),
             HyperCallCode::HClone => self.clone(),
@@ -121,7 +100,8 @@ impl InstanceCall {
 
     fn clone(&self) -> HyperCallResult {
         info!("HClone");
-        Ok(0)
+
+        self.instance.handle_clone(self.eptp)
     }
 
     fn mmap(&self, addr: u64, len: u64, prot: u64, flags: u64) -> HyperCallResult {

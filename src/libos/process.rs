@@ -24,12 +24,7 @@ impl<H: PagingHandler> Process<H> {
         self.pid
     }
 
-    pub fn set_pid(&mut self, pid: usize) {
-        self.pid = pid;
-        self.guest_as.set_process_id(pid);
-    }
-
-    pub fn addrspace_root(&self) -> HostPhysAddr {
+    pub fn ept_root(&self) -> HostPhysAddr {
         self.guest_as.ept_root_hpa()
     }
 
