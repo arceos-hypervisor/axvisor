@@ -50,7 +50,7 @@ impl HyperCall {
             );
             return ax_err!(PermissionDenied);
         }
-        warn!("Hypercall: {:?} args: {:#x?}", self.code, self.args);
+        debug!("VMM Hypercall: {:?} args: {:x?}", self.code, self.args);
 
         if self.vcpu.get_arch_vcpu().guest_is_privileged() {
             self.execute_privileged()

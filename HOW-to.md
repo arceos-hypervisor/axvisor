@@ -6,9 +6,25 @@
 
 ### Build
 
+* build shim
+
+```bash
+cd deps/shim
+make APPS=hello_world:page_fault:gp:forktest LOG=debug
+```
+
+* build axcli
+
+```bash
+cd deps/axvisor-tools/axcli
+cargo build --release
+```
+
+* build axvisor
+
 ```bash
 make PLATFORM=x86_64-qemu-linux defconfig
-make PLATFORM=x86_64-qemu-linux SMP=4 LOG=debug AXVISOR_VM_CONFIGS=configs/vms/nimbos-x86_64.toml scp_to_hw HW_IP=xxx.xxx.xxx.xxx
+make PLATFORM=x86_64-qemu-linux SMP=4 LOG=debug scp_to_qemu
 ```
 
 ### Test in QEMU (ubuntu as the guest OS)
@@ -37,6 +53,10 @@ make PLATFORM=x86_64-qemu-linux SMP=4 LOG=debug AXVISOR_VM_CONFIGS=configs/vms/n
     ```bash
     scp -P 2334 -r deps/jailhouse-equation ubuntu@localhost:~/ # in host
     ```
+    Copy axcli tool:
+    ```bash
+    scp -P 2334 deps/axvisor-tools/axcli/target/release/axcli ubuntu@localhost:~/
+    ```
 
     Then run `setup.sh` in guest, (you only need to run it once see [`setup.sh`](scripts/guest/setup.sh) for details).
 
@@ -59,6 +79,9 @@ make PLATFORM=x86_64-qemu-linux SMP=4 LOG=debug AXVISOR_VM_CONFIGS=configs/vms/n
     `./enable-axvisor.sh 1`
 
     Parameter `1` means CPU number reserved for ArceOS.
+
+6. Initialize Shim
+    `./axcli instance init`
 
 ## Development
 

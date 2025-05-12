@@ -204,8 +204,8 @@ impl<
 
                 // Perform COW at coarse grained region granularity.
                 for (ori_base, ori_region) in mm_regions {
-                    warn!(
-                        "Cloning mm [{:?}-{:?}], which is mapped to [{:?}-{:?}]",
+                    debug!(
+                        "GuestAddrSpace fork region [{:?}-{:?}], which is mapped to [{:?}-{:?}]",
                         ori_base,
                         ori_base.add(mm_region_granularity),
                         ori_region.base(),
@@ -1487,7 +1487,7 @@ impl<M: PagingMetaData, EPTE: GenericPTE, GPTE: MoreGenericPTE, H: PagingHandler
                 mm_regions: _,
                 pt_regions: _,
             } => {
-                warn!("CoarseGrainedSegmentation drop");
+                debug!("CoarseGrainedSegmentation drop");
             }
         }
     }

@@ -40,6 +40,7 @@ pub const PROCESS_INNER_REGION_BASE_GVA: GuestVirtAddr =
     GuestVirtAddr::from_usize(PROCESS_INNER_REGION_BASE_VA as usize);
 pub const INSTANCE_INNER_REGION_BASE_GVA: GuestVirtAddr =
     GuestVirtAddr::from_usize(INSTANCE_INNER_REGION_BASE_VA as usize);
+#[allow(unused)]
 pub const INSTANCE_SHARED_REGION_BASE_GVA: GuestVirtAddr =
     GuestVirtAddr::from_usize(INSTANCE_SHARED_REGION_BASE_VA as usize);
 
@@ -79,6 +80,7 @@ impl EPTPList {
         }
     }
 
+    #[allow(unused)]
     pub unsafe fn dump_region(region: HostVirtAddr) {
         assert!(region.is_aligned(PAGE_SIZE_4K));
 

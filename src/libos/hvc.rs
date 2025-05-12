@@ -44,7 +44,7 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
     pub fn execute(&self) -> HyperCallResult {
         // First, check if the vcpu is allowed to execute the hypercall.
         if self.code.is_privileged() ^ self.vcpu.get_arch_vcpu().guest_is_privileged() {
-            warn!(
+            debug!(
                 "Vcpu[{}] execute hypercall {:?} from {}",
                 self.vcpu.id(),
                 self.code,

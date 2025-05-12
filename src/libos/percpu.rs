@@ -77,6 +77,7 @@ impl<H: PagingHandler> LibOSPerCpu<H> {
         }
     }
 
+    #[allow(unused)]
     fn dump_current_eptp_list(&self) {
         info!(
             "Current EPTP list region {:?} for CPU {}, vcpu {}",
