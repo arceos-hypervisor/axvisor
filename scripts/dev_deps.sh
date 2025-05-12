@@ -5,11 +5,11 @@ mkdir -p ../crates ../deps
 
 # Clone repositories into the crates directory
 cd ../crates || exit
-git clone git@github.com:EquationOS/arceos.git --branch vmm_type15_hw
-git clone git@github.com:arceos-hypervisor/axaddrspace.git --branch type15
+git clone git@github.com:EquationOS/arceos.git --branch equation
+git clone git@github.com:arceos-hypervisor/axaddrspace.git --branch equation
 git clone git@github.com:arceos-hypervisor/axhvc.git
 git clone git@github.com:arceos-hypervisor/axvm.git --branch type15_hw
-git clone git@github.com:arceos-hypervisor/axvcpu.git --branch type15
+git clone git@github.com:arceos-hypervisor/axvcpu.git --branch equation
 git clone git@github.com:EquationOS/bitmaps.git
 git clone git@github.com:EquationOS/equation_defs.git
 git clone git@github.com:arceos-org/memory_addr.git --branch wip
