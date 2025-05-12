@@ -5,6 +5,7 @@ use std::os::arceos::modules::axhal::paging::PagingHandlerImpl;
 use std::os::arceos::modules::{axconfig, axtask};
 use std::thread;
 
+use axaddrspace::npt::EPTPointer;
 use axaddrspace::{GuestPhysAddr, HostPhysAddr};
 use lazyinit::LazyInit;
 
@@ -13,7 +14,7 @@ use axtask::{AxCpuMask, TaskInner};
 use axvcpu::{AxVCpuExitReason, AxVcpuAccessGuestState, VCpuState};
 use page_table_multiarch::{MappingFlags, PageSize, PagingHandler};
 
-use crate::libos::def::InstanceSharedRegion;
+use crate::libos::def::{EPTPList, InstanceSharedRegion};
 use crate::libos::hvc::InstanceCall;
 use crate::libos::instance::{InstanceRef, get_instances_by_id};
 use crate::task_ext::{TaskExt, TaskExtType};
@@ -46,12 +47,13 @@ impl From<usize> for LibOSPerCpuStatus {
     }
 }
 
-struct LibOSPerCpu<H: PagingHandler> {
+pub(super) struct LibOSPerCpu<H: PagingHandler> {
+    cpu_id: usize,
     vcpu: VCpuRef,
     shared_region_base: HostPhysAddr,
+    cpu_eptp_list_region: HostPhysAddr,
     status: AtomicUsize,
     _phantom: PhantomData<H>,
-    // running: AtomicBool,
 }
 
 impl<H: PagingHandler> LibOSPerCpu<H> {
@@ -74,6 +76,86 @@ impl<H: PagingHandler> LibOSPerCpu<H> {
                 .unwrap()
         }
     }
+
+    fn dump_current_eptp_list(&self) {
+        info!(
+            "Current EPTP list region {:?} for CPU {}, vcpu {}",
+            self.cpu_eptp_list_region,
+            self.cpu_id,
+            self.vcpu.id()
+        );
+        unsafe {
+            EPTPList::dump_region(H::phys_to_virt(self.cpu_eptp_list_region));
+        }
+    }
+
+    /// Update the EPTP list region on this CPU with the given EPTP list.
+    fn update_eptp_list_region(&self, eptp_list: &EPTPList) {
+        debug!(
+            "Updating EPTP list region {:?} for CPU {}, vcpu {}",
+            self.cpu_eptp_list_region,
+            self.cpu_id,
+            self.vcpu.id()
+        );
+
+        // self.dump_current_eptp_list();
+
+        unsafe {
+            eptp_list.copy_into_region(H::phys_to_virt(self.cpu_eptp_list_region));
+        }
+    }
+
+    /// Sync the EPTP list region on all vCPUs that the given instance is running on.
+    pub fn sync_eptp_list_region_on_all_vcpus(instance_id: usize, eptp_list: &EPTPList) {
+        debug!("Syncing EPTP list for Instance {}", instance_id);
+
+        for pcpu_id in get_instance_cpus_mask().into_iter() {
+            let remote_percpu = unsafe { LIBOS_PERCPU.remote_ref_mut_raw(pcpu_id) };
+            if remote_percpu.is_inited() && remote_percpu.current_instance_id() == instance_id {
+                debug!(
+                    "Syncing EPTP list for Instance {} on CPU {}, vcpu {}",
+                    instance_id,
+                    pcpu_id,
+                    remote_percpu.vcpu.id()
+                );
+                remote_percpu.update_eptp_list_region(eptp_list);
+            } else {
+                warn!("PerCPU data for CPU {} not initialized", pcpu_id);
+            }
+        }
+    }
+
+    pub fn current_process_id(&self) -> usize {
+        self.shared_region().process_id as usize
+    }
+
+    pub fn current_instance_id(&self) -> usize {
+        self.shared_region().instance_id as usize
+    }
+    pub fn current_instance(&self) -> InstanceRef {
+        get_instances_by_id(self.current_instance_id() as usize).expect("Instance not found")
+    }
+
+    pub fn current_ept_pointer(&self) -> EPTPointer {
+        self.vcpu.get_arch_vcpu().ept_pointer()
+    }
+
+    pub fn current_ept_root(&self) -> HostPhysAddr {
+        self.current_ept_pointer().into_ept_root()
+    }
+
+    pub fn guest_phys_to_host_phys(
+        &self,
+        gpa: GuestPhysAddr,
+    ) -> Option<(HostPhysAddr, MappingFlags, PageSize)> {
+        self.current_instance()
+            .guest_phys_to_host_phys(self.current_ept_root(), gpa)
+    }
+
+    pub fn mark_idle(&self) {
+        self.status
+            .store(LibOSPerCpuStatus::Idle.into(), Ordering::SeqCst);
+    }
 }
 
 impl<H: PagingHandler> Drop for LibOSPerCpu<H> {
@@ -82,38 +164,12 @@ impl<H: PagingHandler> Drop for LibOSPerCpu<H> {
     }
 }
 
-pub fn current_instance_id() -> usize {
-    let curcpu = unsafe { LIBOS_PERCPU.current_ref_raw() };
-    curcpu.shared_region().instance_id as usize
-}
-
-pub fn current_instance() -> InstanceRef {
-    get_instances_by_id(current_instance_id()).expect("Instance not found")
-}
-
-pub fn current_process_id() -> usize {
-    let curcpu = unsafe { LIBOS_PERCPU.current_ref_raw() };
-    curcpu.shared_region().process_id as usize
-}
-
-pub fn current_eptp() -> HostPhysAddr {
-    let curcpu = unsafe { LIBOS_PERCPU.current_ref_raw() };
-    let eptp = curcpu.vcpu.get_arch_vcpu().current_ept_root();
-
-    const PHYS_ADDR_MASK: usize = 0x000f_ffff_ffff_f000; // bits 12..52
-
-    HostPhysAddr::from_usize(eptp.as_usize() & PHYS_ADDR_MASK)
-}
-
 pub fn gpa_to_hpa(gpa: GuestPhysAddr) -> Option<(HostPhysAddr, MappingFlags, PageSize)> {
-    current_instance().guest_phys_to_host_phys(current_eptp(), gpa)
+    current_libos_percpu().guest_phys_to_host_phys(gpa)
 }
 
-pub fn mark_idle() {
-    let curcpu = unsafe { LIBOS_PERCPU.current_ref_raw() };
-    curcpu
-        .status
-        .store(LibOSPerCpuStatus::Idle.into(), Ordering::SeqCst);
+fn current_libos_percpu() -> &'static LibOSPerCpu<PagingHandlerImpl> {
+    unsafe { LIBOS_PERCPU.current_ref_raw() }
 }
 
 #[percpu::def_percpu]
@@ -137,8 +193,10 @@ pub fn init_instance_percore_task(cpu_id: usize, vcpu: VCpuRef, shared_region_ba
 
     if !remote_percpu.is_inited() {
         remote_percpu.init_once(LibOSPerCpu {
+            cpu_id,
             vcpu: vcpu.clone(),
             shared_region_base,
+            cpu_eptp_list_region: vcpu.get_arch_vcpu().eptp_list_region(),
             status: AtomicUsize::new(LibOSPerCpuStatus::Ready.into()),
             _phantom: PhantomData,
         });
@@ -146,6 +204,7 @@ pub fn init_instance_percore_task(cpu_id: usize, vcpu: VCpuRef, shared_region_ba
         info!("Re-initializing LibOSPerCpu for CPU {}", cpu_id);
         remote_percpu.vcpu = vcpu.clone();
         remote_percpu.shared_region_base = shared_region_base;
+        remote_percpu.cpu_eptp_list_region = vcpu.get_arch_vcpu().eptp_list_region();
         remote_percpu
             .status
             .store(LibOSPerCpuStatus::Ready.into(), Ordering::SeqCst);
@@ -159,6 +218,14 @@ pub fn init_instance_percore_task(cpu_id: usize, vcpu: VCpuRef, shared_region_ba
 
     remote_percpu.shared_region_mut().instance_id = 0;
     remote_percpu.shared_region_mut().process_id = cpu_id as _;
+
+    info!(
+        "LibOSPerCpu CPU[{}] initialized, vcpu {}, shared region {:?}, eptp list region {:?}",
+        remote_percpu.cpu_id,
+        remote_percpu.vcpu.id(),
+        remote_percpu.shared_region_base,
+        remote_percpu.cpu_eptp_list_region
+    );
 
     let mut vcpu_task: TaskInner = TaskInner::new(
         crate::vmm::vcpu_run,
@@ -178,14 +245,14 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
     let vcpu_id = vcpu.id();
     let cpu_id = this_cpu_id();
 
-    let process_id = current_process_id();
+    let curcpu = unsafe { LIBOS_PERCPU.current_ref_raw() };
 
     info!(
-        "Instance task on Core[{}] running, VCPU id {}, process id {}",
-        cpu_id, vcpu_id, process_id
+        "Instance task on Core[{}] running, VCPU id {}, Init process id {}",
+        cpu_id,
+        vcpu_id,
+        curcpu.current_process_id()
     );
-
-    let curcpu = unsafe { LIBOS_PERCPU.current_ref_raw() };
 
     vcpu.bind()
         .inspect_err(|err| {
@@ -204,14 +271,13 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
         match vcpu.run() {
             Ok(exit_reason) => {
                 let instance_id = curcpu.shared_region().instance_id;
-                let process_id = curcpu.shared_region().process_id;
 
                 let instance_ref = if let Some(instance) = get_instances_by_id(instance_id as usize)
                 {
                     instance
                 } else {
                     error!("Instance not found: {}", instance_id);
-                    mark_idle();
+                    curcpu.mark_idle();
                     continue;
                 };
 
@@ -221,9 +287,8 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
 
                         match InstanceCall::new(
                             vcpu.clone(),
-                            instance_ref,
-                            process_id as usize,
-                            current_eptp(),
+                            &curcpu,
+                            instance_ref.clone(),
                             nr,
                             args,
                         ) {
@@ -253,15 +318,18 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
                         );
 
                         instance_ref
-                            .remove_process(current_eptp())
+                            .remove_process(curcpu.current_ept_root())
                             .unwrap_or_else(|err| {
                                 error!("Failed to remove process: {:?}", err);
                             });
-                        mark_idle();
+                        curcpu.mark_idle();
                     }
                     AxVCpuExitReason::NestedPageFault { addr, access_flags } => {
-                        match instance_ref.handle_ept_page_fault(current_eptp(), addr, access_flags)
-                        {
+                        match instance_ref.handle_ept_page_fault(
+                            curcpu.current_ept_root(),
+                            addr,
+                            access_flags,
+                        ) {
                             Ok(_) => {}
                             Err(err) => {
                                 error!(
@@ -278,11 +346,11 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
                             instance_id, vcpu_id
                         );
                         instance_ref
-                            .remove_process(current_eptp())
+                            .remove_process(curcpu.current_ept_root())
                             .unwrap_or_else(|err| {
                                 error!("Failed to remove process: {:?}", err);
                             });
-                        mark_idle();
+                        curcpu.mark_idle();
                     }
                     AxVCpuExitReason::Nothing => {
                         // Nothing to do, just continue.

@@ -8,13 +8,13 @@ use page_table_multiarch::PagingHandler;
 
 use axaddrspace::HostPhysAddr;
 
-pub(super) struct HostPhysicalRegion<H: PagingHandler> {
+pub(crate) struct HostPhysicalRegion<H: PagingHandler> {
     base: HostPhysAddr,
     size: usize,
     phontom: core::marker::PhantomData<H>,
 }
 
-pub(super) type HostPhysicalRegionRef<H> = Arc<HostPhysicalRegion<H>>;
+pub(crate) type HostPhysicalRegionRef<H> = Arc<HostPhysicalRegion<H>>;
 
 impl<H: PagingHandler> HostPhysicalRegion<H> {
     pub fn allocate(size: usize, align_pow2: Option<usize>) -> AxResult<Self> {

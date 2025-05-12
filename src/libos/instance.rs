@@ -1,6 +1,7 @@
 use alloc::collections::btree_map::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use core::sync::atomic::{AtomicBool, Ordering};
 use std::os::arceos::modules::axhal::paging::PagingHandlerImpl;
 use std::sync::Mutex;
 
@@ -9,6 +10,7 @@ use bitmaps::Bitmap;
 use memory_addr::{MemoryAddr, PAGE_SIZE_4K, is_aligned_4k};
 use page_table_multiarch::{PageSize, PagingHandler};
 
+use axaddrspace::npt::EPTPointer;
 use axaddrspace::{GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr, MappingFlags};
 use axvcpu::AxVcpuAccessGuestState;
 use axvm::HostContext;
@@ -16,12 +18,12 @@ use axvm::HostContext;
 use crate::libos::config::SHIM_ENTRY;
 use crate::libos::def::{
     EPTP_LIST_REGION_SIZE, EPTPList, GP_EPT_LIST_REGION_BASE_GVA, GP_EPTP_LIST_REGION_BASE_GPA,
-    GUEST_PT_ROOT_GPA, INSTANCE_SHARED_REGION_BASE_GPA, ProcessMemoryRegion, USER_STACK_BASE,
-    USER_STACK_SIZE,
+    GUEST_PT_ROOT_GPA, INSTANCE_INNER_REGION_SIZE, INSTANCE_SHARED_REGION_BASE_GPA,
+    ProcessMemoryRegion, USER_STACK_BASE, USER_STACK_SIZE,
 };
 use crate::libos::gaddrspace::{GuestAddrSpace, GuestMappingType};
 use crate::libos::process::Process;
-use crate::libos::region::HostPhysicalRegion;
+use crate::libos::region::{HostPhysicalRegion, HostPhysicalRegionRef};
 use crate::vmm::VCpu;
 use crate::vmm::config::{get_instance_cpus, get_instance_cpus_mask};
 
@@ -53,7 +55,14 @@ pub struct Instance<H: PagingHandler> {
     /// The list of processes in the instance.
     pub processes: Mutex<BTreeMap<HostPhysAddr, Process<H>>>,
 
+    /// The region for instance inner data, which is shared by all processes in the instance.
+    instance_inner_region: HostPhysicalRegionRef<H>,
+    /// The region for EPTP list, which is shared by all processes in the instance.
     eptp_list_region: HostPhysicalRegion<H>,
+    /// Dirty flag for EPTP list, if `true`, the EPTP list has been modified.
+    /// This flag is used to indicate that the EPTP list needs to be updated in the vCPUs.
+    eptp_list_dirty: AtomicBool,
+
     /// The initialized context of the instance's first process.
     /// It is used to initialize the vCPU context for the first process.
     /// See `init_gate_processes` for details.
@@ -68,9 +77,25 @@ impl<H: PagingHandler> Instance<H> {
             ax_err_type!(InvalidInput, "No CPU available for instance")
         })?;
 
-        debug!("Init shim instance, first process ID: {}", pid);
-        let shim_addrspace =
-            GuestAddrSpace::new(pid, GuestMappingType::CoarseGrainedSegmentation2M)?;
+        info!("Init shim instance, first process ID: {}", pid);
+
+        // Allocate the instance inner region.
+        // The instance inner region is shared by all processes in the same instance, so use `allocate_ref` here.
+        let instance_inner_region =
+            HostPhysicalRegion::allocate_ref(INSTANCE_INNER_REGION_SIZE, Some(PAGE_SIZE_4K))?;
+
+        // Allocate the EPTP list region.
+        // The EPTP list region is shared by all processes in the same instance,
+        // But it does not need to be mapped in all processes's ept address space.
+        // So we can use `allocate` here.
+        let eptp_list_region =
+            HostPhysicalRegion::allocate(EPTP_LIST_REGION_SIZE, Some(PAGE_SIZE_4K))?;
+
+        let shim_addrspace = GuestAddrSpace::new(
+            pid,
+            instance_inner_region.clone(),
+            GuestMappingType::CoarseGrainedSegmentation2M,
+        )?;
 
         let shim_context =
             HostContext::construct_guest64(SHIM_ENTRY as u64, GUEST_PT_ROOT_GPA.as_usize() as u64);
@@ -87,18 +112,23 @@ impl<H: PagingHandler> Instance<H> {
         // Other processes, including the gate processes, may be forked from this process.
         processes.insert(init_ept_root_hpa, init_process);
 
-        let eptp_list_region =
-            HostPhysicalRegion::allocate(EPTP_LIST_REGION_SIZE, Some(PAGE_SIZE_4K))?;
-
         let eptp_list = unsafe { eptp_list_region.as_mut_ptr_of::<EPTPList>().as_mut() }
             .expect("Failed to get EPTP list");
-        eptp_list.set(pid, init_ept_root_hpa);
+        eptp_list.set(pid, EPTPointer::from_table_phys(init_ept_root_hpa));
+
+        let mut pid_bitmap = Bitmap::new();
+        // Set the first process ID to `true` in the bitmap.
+        pid_bitmap.set(pid, true);
+        // Set the gate process ID to `true` in the bitmap.
+        pid_bitmap.set(0, true);
 
         Ok(Arc::new(Self {
             id,
-            pid_bitmap: Mutex::new(Bitmap::mask(1)),
+            pid_bitmap: Mutex::new(pid_bitmap),
             processes: Mutex::new(processes),
+            instance_inner_region,
             eptp_list_region,
+            eptp_list_dirty: AtomicBool::new(false),
             ctx: shim_context,
         }))
     }
@@ -113,8 +143,15 @@ impl<H: PagingHandler> Instance<H> {
         mut ctx: HostContext,
         mapping_type: GuestMappingType,
     ) -> AxResult<Arc<Self>> {
-        debug!("Generate instance {}", id);
-        let mut init_addrspace = GuestAddrSpace::new(id, mapping_type)?;
+        info!("Generate instance {}", id);
+
+        // Allocate the instance inner region.
+        // The instance inner region is shared by all processes in the same instance, so use `allocate_ref` here.
+        let instance_inner_region =
+            HostPhysicalRegion::allocate_ref(INSTANCE_INNER_REGION_SIZE, Some(PAGE_SIZE_4K))?;
+
+        let mut init_addrspace =
+            GuestAddrSpace::new(id, instance_inner_region.clone(), mapping_type)?;
 
         // Parse and copy ELF segments to guest process's address space.
         // Todo: distinguish shared regions.
@@ -204,7 +241,9 @@ impl<H: PagingHandler> Instance<H> {
         Ok(Arc::new(Self {
             id,
             pid_bitmap: Mutex::new(Bitmap::mask(1)),
+            instance_inner_region,
             eptp_list_region,
+            eptp_list_dirty: AtomicBool::new(false),
             processes: Mutex::new(processes),
             ctx,
         }))
@@ -294,12 +333,12 @@ impl<H: PagingHandler> Instance<H> {
         })?;
 
         let new_process = cur_process.fork(new_pid)?;
-        let new_eptp = new_process.ept_root();
+        let new_eptp = EPTPointer::from_table_phys(new_process.ept_root());
         let new_pid = new_process.pid();
-        processes.insert(new_eptp, new_process);
+        processes.insert(new_eptp.into_ept_root(), new_process);
 
-        // Update the EPTP list in the instance.
-        if !self.get_eptp_list().set(new_pid, new_eptp) {
+        // Update the EPTP list of the instance.
+        if !self.manipulate_eptp_list(|eptp_list| eptp_list.set(new_pid, new_eptp)) {
             warn!(
                 "Instance[{}] failed to set EPTP {} for new process",
                 self.id(),
@@ -317,9 +356,9 @@ impl<H: PagingHandler> Instance<H> {
             ax_err_type!(InvalidInput, "Invalid EPTP")
         })?;
 
-        match self.get_eptp_list().remove(removed_process.pid()) {
+        match self.get_eptp_list_mut().remove(removed_process.pid()) {
             Some(removed_eptp) => {
-                if removed_eptp != eptp {
+                if removed_eptp.into_ept_root() != eptp {
                     warn!(
                         "Process [{}] EPTP {:?} is not the same as the removed EPTP {:?}",
                         removed_process.pid(),
@@ -346,6 +385,22 @@ impl<H: PagingHandler> Instance<H> {
             remove_instance(self.id)?;
         }
         Ok(())
+    }
+
+    pub fn get_eptp_list(&self) -> &EPTPList {
+        unsafe { self.eptp_list_region.as_ptr_of::<EPTPList>().as_ref() }
+            .expect("Failed to get EPTP list")
+    }
+
+    /// Check if the EPTP list is dirty,
+    /// if it is dirty, it will be reset to false.
+    ///
+    /// This function is used to check if the EPTP list has been modified
+    /// and needs to be updated in the vCPUs.
+    pub fn eptp_list_dirty(&self) -> bool {
+        self.eptp_list_dirty
+            .compare_exchange(true, false, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
     }
 }
 
@@ -396,7 +451,7 @@ impl<H: PagingHandler> Instance<H> {
             let gp_as = p.addrspace_mut();
 
             // Init vCPU for each core.
-            let vcpu = VCpu::new(cpu_id, 0, Some(1 << cpu_id), cpu_id)?;
+            let vcpu = Arc::new(VCpu::new(cpu_id, 0, Some(1 << cpu_id), cpu_id)?);
             vcpu.setup_from_context(gp_as.ept_root_hpa(), self.ctx.clone())?;
 
             // Alloc and map percpu instance shared region.
@@ -445,19 +500,25 @@ impl<H: PagingHandler> Instance<H> {
                 EPTP_LIST_REGION_SIZE,
             )?;
 
-            crate::libos::percpu::init_instance_percore_task(
-                cpu_id,
-                Arc::new(vcpu),
-                shared_region_base_hpa,
-            );
+            crate::libos::percpu::init_instance_percore_task(cpu_id, vcpu, shared_region_base_hpa);
         }
 
         Ok(())
     }
 
-    fn get_eptp_list(&self) -> &mut EPTPList {
+    fn get_eptp_list_mut(&self) -> &mut EPTPList {
         unsafe { self.eptp_list_region.as_mut_ptr_of::<EPTPList>().as_mut() }
             .expect("Failed to get EPTP list")
+    }
+
+    fn manipulate_eptp_list<R>(&self, f: impl FnOnce(&mut EPTPList) -> R) -> R {
+        let result = f(self.get_eptp_list_mut());
+
+        // Mark the EPTP list as dirty to indicate that it has been modified.
+        // we need to update the EPTP list of all the vCPUs that this instance are
+        // running on.
+        self.eptp_list_dirty.store(true, Ordering::Release);
+        result
     }
 }
 

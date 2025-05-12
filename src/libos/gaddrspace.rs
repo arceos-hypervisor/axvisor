@@ -29,9 +29,7 @@ use crate::libos::def::{
     GUEST_MEMORY_REGION_BASE_GVA, GUEST_PT_BASE_GVA, INSTANCE_INNER_REGION_BASE_GVA,
     PROCESS_INNER_REGION_BASE_GVA,
 };
-use crate::libos::def::{
-    INSTANCE_INNER_REGION_SIZE, PROCESS_INNER_REGION_SIZE, ProcessInnerRegion,
-};
+use crate::libos::def::{PROCESS_INNER_REGION_SIZE, ProcessInnerRegion};
 use crate::libos::gpt::{
     ENTRY_COUNT, MoreGenericPTE, p1_index, p2_index, p3_index, p4_index, p5_index,
 };
@@ -385,7 +383,11 @@ impl<
 {
     /// Creates a new guest address space,
     /// alone with the shim kernel memory region mapped.
-    pub fn new(process_id: usize, gmt: GuestMappingType) -> AxResult<Self> {
+    pub fn new(
+        process_id: usize,
+        instance_inner_region: HostPhysicalRegionRef<H>,
+        gmt: GuestMappingType,
+    ) -> AxResult<Self> {
         info!("Generate GuestAddrSpace with {:?}", gmt);
 
         let mut ept_addrspace = AddrSpace::new_empty(
@@ -444,10 +446,8 @@ impl<
             false,
         )?;
 
-        // Allocate and map the instance inner region.
-        // The instance inner region is shared by all processes in the same instance, so use `allocate_ref` here.
-        let instance_inner_region =
-            HostPhysicalRegion::allocate_ref(INSTANCE_INNER_REGION_SIZE, Some(PAGE_SIZE_4K))?;
+        // Map the instance inner region.
+        // The instance inner region is shared by all processes in the same instance.
         ept_addrspace.map_linear(
             INSTANCE_INNER_REGION_BASE_GPA,
             instance_inner_region.base(),

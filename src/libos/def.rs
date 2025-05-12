@@ -6,7 +6,8 @@ use page_table_multiarch::PageSize;
 use axhal::mem::phys_to_virt;
 use std::{os::arceos::modules::axhal, vec::Vec};
 
-use axaddrspace::{GuestPhysAddr, GuestVirtAddr, HostPhysAddr, MappingFlags};
+use axaddrspace::npt::EPTPointer;
+use axaddrspace::{GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr, MappingFlags};
 
 use crate::vmm::{VCpuRef, VMRef};
 
@@ -52,36 +53,72 @@ pub const EPTP_LIST_LENGTH: usize = 512;
 /// The EPTP list structure,
 /// which size is strictly 4K.
 pub struct EPTPList {
-    eptp_list: [HostPhysAddr; EPTP_LIST_LENGTH],
+    eptp_list: [EPTPointer; EPTP_LIST_LENGTH],
 }
 
 static_assertions::const_assert_eq!(core::mem::size_of::<EPTPList>(), PAGE_SIZE_4K,);
 
 impl EPTPList {
+    /// Construct EPTP list from the given EPTP region in `HostVirtAddr`.
+    /// The address must be aligned to 4K.
+    /// The caller must ensure that the address is valid.
+    fn construct<'a>(eptp_list_base: HostVirtAddr) -> Option<&'a mut Self> {
+        assert!(eptp_list_base.is_aligned(PAGE_SIZE_4K));
+
+        unsafe { eptp_list_base.as_mut_ptr_of::<Self>().as_mut() }
+    }
+}
+
+impl EPTPList {
+    pub fn dump(&self) {
+        info!("Dumping EPTP list @ {:?}", self as *const _);
+        for (i, eptp) in self.eptp_list.iter().enumerate() {
+            if eptp.bits() != 0 {
+                info!("EPTP[{}]: {:x?}", i, eptp);
+            }
+        }
+    }
+
+    pub unsafe fn dump_region(region: HostVirtAddr) {
+        assert!(region.is_aligned(PAGE_SIZE_4K));
+
+        let eptp_list = Self::construct(region).expect("Failed to construct EPTP list");
+        eptp_list.dump();
+    }
+
+    pub unsafe fn copy_into_region(&self, target_region: HostVirtAddr) {
+        assert!(target_region.is_aligned(PAGE_SIZE_4K));
+
+        let eptp_list_ptr = target_region.as_mut_ptr_of::<Self>();
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                self as *const _ as *const u8,
+                eptp_list_ptr as *mut u8,
+                core::mem::size_of::<EPTPList>(),
+            );
+        }
+    }
+
     /// Get EPTP entry by the given index.
     /// If the entry is not set, return None.
     #[allow(unused)]
-    pub fn get(&self, index: usize) -> Option<HostPhysAddr> {
+    pub fn get(&self, index: usize) -> Option<EPTPointer> {
         assert!(index < EPTP_LIST_LENGTH);
 
         let eptp = self.eptp_list[index];
 
-        if eptp.as_usize() == 0 {
-            None
-        } else {
-            Some(eptp)
-        }
+        if eptp.bits() == 0 { None } else { Some(eptp) }
     }
 
     /// Set EPTP entry by the given index.
     /// If the entry is already set, return false.
     /// Return true if the entry is updated successfully.
-    pub fn set(&mut self, index: usize, eptp: HostPhysAddr) -> bool {
+    pub fn set(&mut self, index: usize, eptp: EPTPointer) -> bool {
         assert!(index < EPTP_LIST_LENGTH);
 
         let old_eptp = self.eptp_list[index];
 
-        if old_eptp.as_usize() != 0 {
+        if old_eptp.bits() != 0 {
             false
         } else {
             self.eptp_list[index] = eptp;
@@ -92,16 +129,16 @@ impl EPTPList {
     /// Clear EPTP entry by the given index.
     /// If the entry is already cleared, return None.
     /// Return the removed EPTP entry in `HostPhysAddr` if it is cleared successfully.
-    pub fn remove(&mut self, index: usize) -> Option<HostPhysAddr> {
+    pub fn remove(&mut self, index: usize) -> Option<EPTPointer> {
         assert!(index < EPTP_LIST_LENGTH);
 
         let old_eptp = self.eptp_list[index];
 
-        if old_eptp.as_usize() == 0 {
+        if old_eptp.bits() == 0 {
             return None;
         } else {
             let removed_eptp = self.eptp_list[index];
-            self.eptp_list[index] = HostPhysAddr::from_usize(0);
+            self.eptp_list[index] = EPTPointer::empty();
             Some(removed_eptp)
         }
     }
