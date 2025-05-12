@@ -24,7 +24,6 @@ qemu_args-riscv64 := \
 
 qemu_args-aarch64 := \
   -cpu cortex-a72 \
-  -machine virt,virtualization=on,gic-version=2 \
   -kernel $(OUT_BIN)
 
 qemu_args-y := -m $(MEM) -smp $(SMP) $(qemu_args-$(ARCH))
@@ -66,8 +65,12 @@ ifeq ($(GRAPHIC), n)
 endif 
 
 ifeq ($(ARCH), aarch64)
-  qemu_args-y += -machine virtualization=on,gic-version=2
-endif
+   ifeq ($(GICV3),y)
+     qemu_args-y += -machine gic-version=3
+   else
+     qemu_args-y += -machine gic-version=2
+   endif
+ endif
 
 ifeq ($(QEMU_LOG), y)
   qemu_args-y += -D qemu.log -d in_asm,int,mmu,pcall,cpu_reset,guest_errors
