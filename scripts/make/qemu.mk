@@ -66,9 +66,9 @@ endif
 
 ifeq ($(ARCH), aarch64)
    ifeq ($(GICV3),y)
-     qemu_args-y += -machine virt,virtualization=on gic-version=3
+     qemu_args-y += -machine virt,virtualization=on,gic-version=3
    else
-     qemu_args-y += -machine virt,virtualization=on gic-version=2
+     qemu_args-y += -machine virt,virtualization=on,gic-version=2
    endif
 endif
 
