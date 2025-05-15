@@ -171,6 +171,7 @@ impl<
             );
         }
 
+        process_inner_region.is_primary = false;
         process_inner_region.process_id = pid;
         forked_addrspace.map_linear(
             PROCESS_INNER_REGION_BASE_GPA,
@@ -524,6 +525,7 @@ impl<
 
         // Init the process inner region.
         let process_inner_region = guest_addrspace.get_process_inner_region_mut();
+        process_inner_region.is_primary = true;
         process_inner_region.process_id = process_id;
         process_inner_region.mm_region_granularity = region_granularity;
         process_inner_region.mm_frame_allocator.init_with_page_size(
@@ -540,14 +542,11 @@ impl<
         );
 
         // Alloc the page table root frame first.
-        let guest_pg_root = process_inner_region
-            .pt_frame_allocator
-            .alloc_pages(1, PAGE_SIZE_4K)
-            .map_err(|e| {
-                error!("Failed to allocate page table root frame: {:?}", e);
-                ax_err_type!(NoMemory, "Failed to allocate PT frame")
-            })?;
-        if GUEST_PT_ROOT_GPA.as_usize() != guest_pg_root {
+        let guest_pg_root = guest_addrspace.alloc_pt_frame().map_err(|e| {
+            error!("Failed to allocate page table root frame: {:?}", e);
+            ax_err_type!(NoMemory, "Failed to allocate PT frame")
+        })?;
+        if GUEST_PT_ROOT_GPA != guest_pg_root {
             error!(
                 "Guest page table root GPA: {:?} != {:?}, something wrong",
                 GUEST_PT_ROOT_GPA, guest_pg_root
@@ -923,6 +922,7 @@ impl<
                 mm_regions: _,
                 pt_regions: _,
             } => {
+                let ept_root = self.ept_addrspace.page_table_root();
                 let mm_allocator = self.mm_frame_allocator();
 
                 let allocated_frame_base = GuestPhysAddr::from_usize(
@@ -930,6 +930,14 @@ impl<
                         error!("Failed to allocate memory frame: {:?}", e);
                         ax_err_type!(NoMemory, "Failed to allocate memory frame")
                     })?,
+                );
+
+                debug!(
+                    "GAS[@{:?}]Allocating memory frame at {:?}, used/total:[{}/{}]",
+                    ept_root,
+                    allocated_frame_base,
+                    mm_allocator.used_pages(),
+                    mm_allocator.total_pages(),
                 );
 
                 self.check_memory_region()?;

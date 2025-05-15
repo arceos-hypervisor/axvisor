@@ -1,3 +1,4 @@
+use alloc::sync::Arc;
 use core::marker::PhantomData;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use std::os::arceos::modules::axhal::cpu::this_cpu_id;
@@ -18,8 +19,8 @@ use crate::libos::def::{EPTPList, InstanceSharedRegion};
 use crate::libos::hvc::InstanceCall;
 use crate::libos::instance::{InstanceRef, get_instances_by_id};
 use crate::task_ext::{TaskExt, TaskExtType};
-use crate::vmm::VCpuRef;
 use crate::vmm::config::get_instance_cpus_mask;
+use crate::vmm::{VCpu, VCpuRef};
 
 const KERNEL_STACK_SIZE: usize = 0x40000; // 256 KiB
 
@@ -247,9 +248,22 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
     let cpu_id = this_cpu_id();
 
     let curcpu = unsafe { LIBOS_PERCPU.current_ref_raw() };
+    let instance = curcpu.current_instance();
+
+    let ept_root_hpa = instance
+        .processes
+        .lock()
+        .iter()
+        .find(|(_, p)| p.pid() == curcpu.current_process_id())
+        .map(|(_, p)| p.ept_root())
+        .unwrap();
+
+    vcpu.setup_from_context(ept_root_hpa, instance.ctx.clone())
+        .expect("Failed to setup vcpu");
 
     info!(
-        "Instance task on Core[{}] running, VCPU id {}, Init process id {}",
+        "Instance[{}] task on Core[{}] running, VCPU id {}, Init process id {}",
+        curcpu.current_instance_id(),
         cpu_id,
         vcpu_id,
         curcpu.current_process_id()

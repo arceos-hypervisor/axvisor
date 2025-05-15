@@ -66,7 +66,7 @@ pub struct Instance<H: PagingHandler> {
     /// The initialized context of the instance's first process.
     /// It is used to initialize the vCPU context for the first process.
     /// See `init_gate_processes` for details.
-    ctx: HostContext,
+    pub ctx: HostContext,
 }
 
 impl<H: PagingHandler> Instance<H> {
@@ -420,7 +420,7 @@ impl<H: PagingHandler> Instance<H> {
         assert_eq!(
             processes.len(),
             1,
-            "Instance {}: init_gate_processes: processes should be 1",
+            "Instance {}: init_gate_processes: processes num should be 1",
             self.id()
         );
 
@@ -452,7 +452,7 @@ impl<H: PagingHandler> Instance<H> {
 
             // Init vCPU for each core.
             let vcpu = Arc::new(VCpu::new(cpu_id, 0, Some(1 << cpu_id), cpu_id)?);
-            vcpu.setup_from_context(gp_as.ept_root_hpa(), self.ctx.clone())?;
+            // vcpu.setup_from_context(gp_as.ept_root_hpa(), self.ctx.clone())?;
 
             // Alloc and map percpu instance shared region.
             let shared_region_base_hpa = H::alloc_frame().ok_or_else(|| ax_err_type!(NoMemory))?;
