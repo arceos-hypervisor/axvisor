@@ -28,9 +28,9 @@ dtb_load_addr = 0x1000_0000
 # load from memory
 image_location = "memory"
 # The file path of the kernel image.
-kernel_path = "/mnt/cicv/xh/arceos-hypervisor/rk3588_port/linux-aarch64.bin"
+kernel_path = "/path/to/linux-aarch64.bin"
 # The file path of the device tree blob (DTB).
-dtb_path = "/mnt/cicv/xh/arceos-hypervisor/rk3588_port/rk3588-smp2.dtb"
+dtb_path = "/path/to/dtb"
 
 # load from file system.
 # image_location = "fs".

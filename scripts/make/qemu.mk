@@ -66,11 +66,11 @@ endif
 
 ifeq ($(ARCH), aarch64)
    ifeq ($(GICV3),y)
-     qemu_args-y += -machine gic-version=3
+     qemu_args-y += -machine virt,virtualization=on gic-version=3
    else
-     qemu_args-y += -machine gic-version=2
+     qemu_args-y += -machine virt,virtualization=on gic-version=2
    endif
- endif
+endif
 
 ifeq ($(QEMU_LOG), y)
   qemu_args-y += -D qemu.log -d in_asm,int,mmu,pcall,cpu_reset,guest_errors
