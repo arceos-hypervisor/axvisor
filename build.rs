@@ -215,11 +215,13 @@ fn generate_guest_img_loading_functions(
 fn main() -> io::Result<()> {
     let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
 
+    let is_plat_dyn = std::env::var("CARGO_FEATURE_PLAT_DYN").is_ok();
+
     let platform = env::var("AX_PLATFORM").unwrap_or("".to_string());
     println!("cargo:rustc-cfg=platform=\"{}\"", platform);
 
-    if platform != "dummy" {
-        gen_linker_script(&arch, platform.as_str()).unwrap();
+    if platform != "dummy" || is_plat_dyn {
+        gen_linker_script(&arch, platform.as_str(), is_plat_dyn).unwrap();
     }
 
     let config_files = get_configs();
@@ -261,7 +263,7 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
-fn gen_linker_script(arch: &str, platform: &str) -> io::Result<()> {
+fn gen_linker_script(arch: &str, platform: &str, is_plat_dyn: bool) -> io::Result<()> {
     let fname = format!("linker_{}.lds", platform);
     let output_arch = if arch == "x86_64" {
         "i386:x86-64"
@@ -270,7 +272,16 @@ fn gen_linker_script(arch: &str, platform: &str) -> io::Result<()> {
     } else {
         arch
     };
-    let ld_content = std::fs::read_to_string("scripts/lds/linker.lds.S")?;
+
+    let src = if is_plat_dyn {
+        "scripts/lds/linker.dyn.lds.S"
+    } else {
+        "scripts/lds/linker.lds.S"
+    };
+
+    println!("use linker script: {src}");
+
+    let ld_content = std::fs::read_to_string(src)?;
     let ld_content = ld_content.replace("%ARCH%", output_arch);
     let ld_content = ld_content.replace(
         "%KERNEL_BASE%",
