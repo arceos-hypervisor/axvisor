@@ -23,7 +23,7 @@ use crate::libos::config::{
 };
 use crate::libos::def::{
     GUEST_MEM_REGION_BASE_GPA, GUEST_PT_ROOT_GPA, INSTANCE_INNER_REGION_BASE_GPA,
-    PROCESS_INNER_REGION_BASE_GPA, SHIM_BASE_GPA,
+    PROCESS_INNER_REGION_BASE_GPA, SHIM_BASE_GPA, USER_STACK_BASE, USER_STACK_SIZE,
 };
 use crate::libos::def::{
     GUEST_MEMORY_REGION_BASE_GVA, GUEST_PT_BASE_GVA, INSTANCE_INNER_REGION_BASE_GVA,
@@ -334,6 +334,94 @@ impl<
             }
         }
         Ok(true)
+    }
+
+    /// Load user ELF file into the guest address space.
+    /// Setup
+    ///
+    /// Returns the entry point of the ELF file.
+    pub fn setup_user_elf(&mut self, elf_data: &[u8]) -> AxResult {
+        use xmas_elf::program::{Flags, SegmentData, Type};
+        use xmas_elf::{ElfFile, header};
+
+        let elf = ElfFile::new(elf_data).map_err(|err_str| {
+            error!("Failed to parse ELF file: {}", err_str);
+            ax_err_type!(InvalidInput)
+        })?;
+
+        if elf.header.pt2.type_().as_type() != header::Type::Executable {
+            return ax_err!(InvalidInput, "ELF file is not executable");
+        }
+
+        fn get_mapping_flags(flags: Flags) -> MappingFlags {
+            let mut mapping_flags = MappingFlags::USER;
+            if flags.is_read() {
+                mapping_flags |= MappingFlags::READ;
+            }
+            if flags.is_write() {
+                mapping_flags |= MappingFlags::WRITE;
+            }
+            if flags.is_execute() {
+                mapping_flags |= MappingFlags::EXECUTE;
+            }
+            mapping_flags
+        }
+
+        for ph in elf.program_iter() {
+            if ph.get_type() != Ok(Type::Load) {
+                continue;
+            }
+            info!(
+                "Mapping user elf segment: type={:?}, flags={:?}, offset={:#x}, vaddr={:#x}, paddr={:#x}, file_size={:#x}, mem_size={:#x}",
+                ph.get_type(),
+                ph.flags(),
+                ph.offset(),
+                ph.virtual_addr(),
+                ph.physical_addr(),
+                ph.file_size(),
+                ph.mem_size()
+            );
+
+            let vaddr = GuestVirtAddr::from_usize(ph.virtual_addr() as usize);
+            // let offset = vaddr.align_offset_4k();
+            let area_start = vaddr.align_down_4k();
+            let area_end = GuestVirtAddr::from_usize((ph.virtual_addr() + ph.mem_size()) as usize)
+                .align_up_4k();
+            let ph_data = match ph.get_data(&elf).unwrap() {
+                SegmentData::Undefined(data) => data,
+                _ => {
+                    error!("failed to get ELF segment data");
+                    return ax_err!(InvalidInput);
+                }
+            };
+
+            self.guest_map_alloc(
+                area_start,
+                area_end.as_usize() - area_start.as_usize(),
+                get_mapping_flags(ph.flags()),
+                true,
+            )?;
+
+            self.copy_into_guest(
+                HostVirtAddr::from_ptr_of(ph_data.as_ptr()),
+                vaddr,
+                ph.mem_size() as usize,
+            )?;
+        }
+
+        // Setup shim process's stack region.
+        self.guest_map_alloc(
+            USER_STACK_BASE,
+            USER_STACK_SIZE,
+            MappingFlags::READ | MappingFlags::WRITE | MappingFlags::USER,
+            true,
+        )?;
+
+        self.get_process_inner_region_mut().stack_top =
+            USER_STACK_BASE.as_usize() + USER_STACK_SIZE;
+        self.get_process_inner_region_mut().entry = elf.header.pt2.entry_point() as usize;
+
+        Ok(())
     }
 }
 

@@ -16,6 +16,7 @@ use axvcpu::AxVcpuAccessGuestState;
 use axvm::HostContext;
 
 use crate::libos::config::SHIM_ENTRY;
+use crate::libos::config::get_gate_process_data;
 use crate::libos::def::{
     EPTP_LIST_REGION_SIZE, EPTPList, GP_EPT_LIST_REGION_BASE_GVA, GP_EPTP_LIST_REGION_BASE_GPA,
     GUEST_PT_ROOT_GPA, INSTANCE_INNER_REGION_SIZE, INSTANCE_SHARED_REGION_BASE_GPA,
@@ -91,11 +92,15 @@ impl<H: PagingHandler> Instance<H> {
         let eptp_list_region =
             HostPhysicalRegion::allocate(EPTP_LIST_REGION_SIZE, Some(PAGE_SIZE_4K))?;
 
-        let shim_addrspace = GuestAddrSpace::new(
+        let mut shim_addrspace = GuestAddrSpace::new(
             pid,
             instance_inner_region.clone(),
             GuestMappingType::CoarseGrainedSegmentation2M,
         )?;
+
+        // Load elf data for shim process.
+        let gate_process_data = get_gate_process_data();
+        shim_addrspace.setup_user_elf(gate_process_data)?;
 
         let shim_context =
             HostContext::construct_guest64(SHIM_ENTRY as u64, GUEST_PT_ROOT_GPA.as_usize() as u64);

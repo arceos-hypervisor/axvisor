@@ -253,21 +253,36 @@ fn gen_vm_configs() -> io::Result<()> {
 fn gen_libos_configs() -> io::Result<()> {
     let mut output_file = open_output_file("libos_configs.rs");
 
+    let shim_elf_path = "deps/shim/shim.elf";
+    let shim_bin_path = "deps/shim/shim.bin";
+    let gp_path = "deps/shim/gate_process.elf";
+
     writeln!(output_file, "pub fn get_shim_image() -> &'static [u8] {{")?;
+    writeln!(
+        output_file,
+        "    include_bytes!(\"{}\")",
+        Path::new(shim_bin_path).canonicalize()?.to_str().unwrap()
+    )?;
+    writeln!(output_file, "}}\n")?;
 
     writeln!(
         output_file,
-        "    include_bytes!(\"../../../../../../deps/shim/shim.bin\")"
+        "pub fn get_gate_process_data() -> &'static [u8] {{"
     )?;
-
+    writeln!(
+        output_file,
+        "    include_bytes!(\"{}\")",
+        Path::new(gp_path).canonicalize()?.to_str().unwrap()
+    )?;
     writeln!(output_file, "}}\n")?;
 
-    println!("cargo:rerun-if-changed=deps/shim/shim.elf");
+    println!("cargo:rerun-if-changed={}", shim_elf_path);
+    println!("cargo:rerun-if-changed=deps/shim/gate_process.elf");
 
     // Execute the readelf command to get the symbol values
     let output = Command::new("readelf")
         .arg("-s")
-        .arg("deps/shim/shim.elf")
+        .arg(shim_elf_path)
         .output()
         .expect("Failed to execute readelf command");
 

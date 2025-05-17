@@ -23,6 +23,7 @@ lazyinit = "0.2"
 timer_list = "0.1.0"
 bitmaps = { version = "3.2.1", default-features = false }
 static_assertions = "1.1.0"
+xmas-elf = "0.8"
 
 # System dependent modules provided by ArceOS.
 axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm", features = [

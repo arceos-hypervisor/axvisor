@@ -1,4 +1,3 @@
-use alloc::sync::Arc;
 use core::marker::PhantomData;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use std::os::arceos::modules::axhal::cpu::this_cpu_id;
@@ -19,8 +18,8 @@ use crate::libos::def::{EPTPList, InstanceSharedRegion};
 use crate::libos::hvc::InstanceCall;
 use crate::libos::instance::{InstanceRef, get_instances_by_id};
 use crate::task_ext::{TaskExt, TaskExtType};
+use crate::vmm::VCpuRef;
 use crate::vmm::config::get_instance_cpus_mask;
-use crate::vmm::{VCpu, VCpuRef};
 
 const KERNEL_STACK_SIZE: usize = 0x40000; // 256 KiB
 
