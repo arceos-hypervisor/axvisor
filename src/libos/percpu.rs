@@ -374,11 +374,25 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
                             "Instance[{}] run on Vcpu [{}] system down",
                             instance_id, vcpu_id
                         );
-                        instance_ref
-                            .remove_process(curcpu.current_ept_root())
-                            .unwrap_or_else(|err| {
-                                error!("Failed to remove process: {:?}", err);
-                            });
+
+                        match instance_id as usize {
+                            SHIM_INSTANCE_ID => {
+                                warn!(
+                                    "SHIM Instance[{}] run on Vcpu [{}] system down",
+                                    instance_id, vcpu_id
+                                );
+                                // DO NOT remove process for SHIM instance.
+                                break;
+                            }
+                            _ => {
+                                instance_ref
+                                    .remove_process(curcpu.current_ept_root())
+                                    .unwrap_or_else(|err| {
+                                        error!("Failed to remove process: {:?}", err);
+                                    });
+                            }
+                        }
+
                         curcpu.mark_idle();
                     }
                     AxVCpuExitReason::Nothing => {

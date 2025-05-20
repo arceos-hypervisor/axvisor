@@ -11,8 +11,8 @@ use equation_defs::*;
 use crate::vmm::{VCpuRef, VMRef};
 
 pub use equation_defs::{
-    EPTP_LIST_REGION_SIZE, INSTANCE_INNER_REGION_SIZE, PROCESS_INNER_REGION_SIZE,
-    InstancePerCPURegion, ProcessInnerRegion,
+    EPTP_LIST_REGION_SIZE, INSTANCE_INNER_REGION_SIZE, InstancePerCPURegion,
+    PROCESS_INNER_REGION_SIZE, ProcessInnerRegion,
 };
 
 pub const GUEST_MEM_REGION_BASE_GPA: GuestPhysAddr =

@@ -89,5 +89,3 @@ memory_set = { path = "./crates/memory_addr/memory_set" }
 page_table_entry = { path = "./crates/page_table_multiarch/page_table_entry" }
 page_table_multiarch = { path = "./crates/page_table_multiarch/page_table_multiarch" }
 bitmaps = { path = "./crates/bitmaps" }
-# zero = { path = "./crates/zero" }
-# xmas-elf = { path = "./crates/xmas-elf" }

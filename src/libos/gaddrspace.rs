@@ -20,8 +20,8 @@ use equation_defs::bitmap_allocator::PageAllocator;
 use equation_defs::{GuestMappingType, InstanceInnerRegion, MMFrameAllocator, PTFrameAllocator};
 
 use crate::libos::config::{
-    SHIM_EKERNEL, SHIM_ERODATA, SHIM_ETEXT, SHIM_SDATA, SHIM_SKERNEL, SHIM_SRODATA, SHIM_STEXT,
-    get_shim_image,
+    SHIM_EKERNEL, SHIM_ERODATA, SHIM_ETEXT, SHIM_MMIO_REGIONS, SHIM_PHYS_VIRT_OFFSET, SHIM_SDATA,
+    SHIM_SKERNEL, SHIM_SRODATA, SHIM_STEXT, get_shim_image,
 };
 use crate::libos::def::{
     GUEST_MEM_REGION_BASE_GPA, GUEST_PT_ROOT_GPA, INSTANCE_INNER_REGION_BASE_GPA,
@@ -680,12 +680,11 @@ impl<
             | GuestMappingType::CoarseGrainedSegmentation2M => {
                 // Map shim kernel sections.
                 info!("Map shim kernel sections");
-                let guest_virt2phys_offset = SHIM_SKERNEL - SHIM_BASE_GPA.as_usize();
                 // Text section.
                 guest_addrspace
                     .guest_map_region(
                         GuestVirtAddr::from_usize(SHIM_STEXT),
-                        |gva| SHIM_BASE_GPA.add(gva.sub(guest_virt2phys_offset).as_usize()),
+                        |gva| SHIM_BASE_GPA.add(gva.sub(SHIM_PHYS_VIRT_OFFSET).as_usize()),
                         SHIM_ETEXT - SHIM_STEXT,
                         MappingFlags::READ | MappingFlags::EXECUTE,
                         false,
@@ -696,7 +695,7 @@ impl<
                 guest_addrspace
                     .guest_map_region(
                         GuestVirtAddr::from_usize(SHIM_SRODATA),
-                        |gva| SHIM_BASE_GPA.add(gva.sub(guest_virt2phys_offset).as_usize()),
+                        |gva| SHIM_BASE_GPA.add(gva.sub(SHIM_PHYS_VIRT_OFFSET).as_usize()),
                         SHIM_ERODATA - SHIM_SRODATA,
                         MappingFlags::READ,
                         false,
@@ -707,7 +706,7 @@ impl<
                 guest_addrspace
                     .guest_map_region(
                         GuestVirtAddr::from_usize(SHIM_SDATA),
-                        |gva| SHIM_BASE_GPA.add(gva.sub(guest_virt2phys_offset).as_usize()),
+                        |gva| SHIM_BASE_GPA.add(gva.sub(SHIM_PHYS_VIRT_OFFSET).as_usize()),
                         SHIM_EKERNEL - SHIM_SDATA,
                         MappingFlags::READ | MappingFlags::WRITE,
                         // Ouch!!! since nimbos do not support huge page,
@@ -716,6 +715,27 @@ impl<
                         false,
                     )
                     .map_err(paging_err_to_ax_err)?;
+
+                for (base, size) in SHIM_MMIO_REGIONS {
+                    info!("Map shim mmio region: {:#x} {:#x}", base, size);
+                    guest_addrspace
+                        .guest_map_region(
+                            GuestVirtAddr::from_usize(base + SHIM_PHYS_VIRT_OFFSET),
+                            |gva| GuestPhysAddr::from_usize(gva.as_usize() - SHIM_PHYS_VIRT_OFFSET),
+                            *size,
+                            MappingFlags::READ | MappingFlags::WRITE | MappingFlags::DEVICE,
+                            false,
+                            false,
+                        )
+                        .map_err(paging_err_to_ax_err)?;
+                    guest_addrspace.ept_map_linear(
+                        GuestPhysAddr::from_usize(*base),
+                        HostPhysAddr::from_usize(*base),
+                        *size,
+                        MappingFlags::READ | MappingFlags::WRITE | MappingFlags::DEVICE,
+                        false,
+                    )?;
+                }
 
                 info!("Mapping shim course-grained memory region into high addr space");
 

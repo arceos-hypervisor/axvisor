@@ -8,6 +8,7 @@ mod gaddrspace;
 mod gpt;
 mod hvc;
 
+#[allow(unused)]
 mod config;
 
 pub use percpu::gpa_to_hpa;
