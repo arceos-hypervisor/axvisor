@@ -152,7 +152,7 @@ dependencies = [
 [[package]]
 name = "arceos_api"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#5539a0f5ef40824b86aec8561104fc3c25c214d6"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#8963b48d264230b995e74a65d955f0cf506fcca7"
 dependencies = [
  "axalloc",
  "axconfig 0.1.0 (git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D)",
@@ -243,7 +243,7 @@ dependencies = [
 [[package]]
 name = "axalloc"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#5539a0f5ef40824b86aec8561104fc3c25c214d6"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#8963b48d264230b995e74a65d955f0cf506fcca7"
 dependencies = [
  "allocator",
  "axerrno",
@@ -256,7 +256,7 @@ dependencies = [
 [[package]]
 name = "axconfig"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#5539a0f5ef40824b86aec8561104fc3c25c214d6"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#8963b48d264230b995e74a65d955f0cf506fcca7"
 dependencies = [
  "axconfig-gen-macros",
 ]
@@ -320,7 +320,7 @@ dependencies = [
 [[package]]
 name = "axdriver"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#5539a0f5ef40824b86aec8561104fc3c25c214d6"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#8963b48d264230b995e74a65d955f0cf506fcca7"
 dependencies = [
  "axalloc",
  "axconfig 0.1.0 (git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D)",
@@ -378,7 +378,7 @@ dependencies = [
 [[package]]
 name = "axfeat"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#5539a0f5ef40824b86aec8561104fc3c25c214d6"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#8963b48d264230b995e74a65d955f0cf506fcca7"
 dependencies = [
  "axalloc",
  "axdriver",
@@ -393,7 +393,7 @@ dependencies = [
 [[package]]
 name = "axfs"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#5539a0f5ef40824b86aec8561104fc3c25c214d6"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#8963b48d264230b995e74a65d955f0cf506fcca7"
 dependencies = [
  "axdriver",
  "axdriver_block",
@@ -447,7 +447,7 @@ dependencies = [
 [[package]]
 name = "axhal"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#5539a0f5ef40824b86aec8561104fc3c25c214d6"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#8963b48d264230b995e74a65d955f0cf506fcca7"
 dependencies = [
  "aarch64-cpu 10.0.0",
  "arm-gic-driver",
@@ -499,7 +499,7 @@ dependencies = [
 [[package]]
 name = "axlog"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#5539a0f5ef40824b86aec8561104fc3c25c214d6"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#8963b48d264230b995e74a65d955f0cf506fcca7"
 dependencies = [
  "cfg-if",
  "crate_interface",
@@ -510,7 +510,7 @@ dependencies = [
 [[package]]
 name = "axmm"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#5539a0f5ef40824b86aec8561104fc3c25c214d6"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#8963b48d264230b995e74a65d955f0cf506fcca7"
 dependencies = [
  "axalloc",
  "axerrno",
@@ -525,7 +525,7 @@ dependencies = [
 [[package]]
 name = "axns"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#5539a0f5ef40824b86aec8561104fc3c25c214d6"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#8963b48d264230b995e74a65d955f0cf506fcca7"
 dependencies = [
  "crate_interface",
  "lazyinit",
@@ -534,7 +534,7 @@ dependencies = [
 [[package]]
 name = "axruntime"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#5539a0f5ef40824b86aec8561104fc3c25c214d6"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#8963b48d264230b995e74a65d955f0cf506fcca7"
 dependencies = [
  "axalloc",
  "axconfig 0.1.0 (git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D)",
@@ -554,7 +554,7 @@ dependencies = [
 [[package]]
 name = "axstd"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#5539a0f5ef40824b86aec8561104fc3c25c214d6"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#8963b48d264230b995e74a65d955f0cf506fcca7"
 dependencies = [
  "arceos_api",
  "axerrno",
@@ -566,7 +566,7 @@ dependencies = [
 [[package]]
 name = "axsync"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#5539a0f5ef40824b86aec8561104fc3c25c214d6"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#8963b48d264230b995e74a65d955f0cf506fcca7"
 dependencies = [
  "axtask",
  "kspin",
@@ -575,7 +575,7 @@ dependencies = [
 [[package]]
 name = "axtask"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#5539a0f5ef40824b86aec8561104fc3c25c214d6"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D#8963b48d264230b995e74a65d955f0cf506fcca7"
 dependencies = [
  "axconfig 0.1.0 (git+https://github.com/arceos-hypervisor/arceos.git?branch=45-%E5%8A%A8%E6%80%81plat-make-%E8%84%9A%E6%9C%AC%E6%8E%A5%E5%8F%A3%E9%80%82%E9%85%8D)",
  "axhal",
@@ -1080,7 +1080,7 @@ dependencies = [
 [[package]]
 name = "kmem-region"
 version = "0.1.0"
-source = "git+https://github.com/rcore-os/somehal.git#328d5c27527bf9d9ca71c6d3d039dc9a3ce6187b"
+source = "git+https://github.com/rcore-os/somehal.git#59a4b3c6cd7a264e6ad7028e329d6d670a3789a6"
 dependencies = [
  "bitflags 2.9.1",
  "prettyplease",
@@ -1257,7 +1257,7 @@ checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 [[package]]
 name = "page-table-generic"
 version = "0.6.0"
-source = "git+https://github.com/rcore-os/somehal.git#328d5c27527bf9d9ca71c6d3d039dc9a3ce6187b"
+source = "git+https://github.com/rcore-os/somehal.git#59a4b3c6cd7a264e6ad7028e329d6d670a3789a6"
 dependencies = [
  "bitflags 2.9.1",
  "log",
@@ -1321,7 +1321,7 @@ dependencies = [
 [[package]]
 name = "pie-boot"
 version = "0.1.0"
-source = "git+https://github.com/rcore-os/somehal.git#328d5c27527bf9d9ca71c6d3d039dc9a3ce6187b"
+source = "git+https://github.com/rcore-os/somehal.git#59a4b3c6cd7a264e6ad7028e329d6d670a3789a6"
 dependencies = [
  "aarch64-cpu 10.0.0",
  "bitflags 2.9.1",
@@ -1391,9 +1391,9 @@ dependencies = [
 
 [[package]]
 name = "rdif-base"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "646f76de5c5a02b0cf2677f99d5216b9fc301d47dbac8d056f7e74f8c0e89008"
+checksum = "023bd968dcec1d1d01092fdf0e6473cd4fee4b3a4140e524d5952cf332882a36"
 
 [[package]]
 name = "rdif-intc"
@@ -1415,6 +1415,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rdif-systick"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca1bbe797e0fa2d18980278ef58546b1b37e1caea7b67ed160e6a622bbb34fde"
+dependencies = [
+ "rdif-base",
+]
+
+[[package]]
 name = "rdif-timer"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1425,15 +1434,16 @@ dependencies = [
 
 [[package]]
 name = "rdrive"
-version = "0.5.10"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d02af217fcd156e90715e8c01f66f5415aca4746cb4cf9a0763580fcfff789da"
+checksum = "d0cd839f8b7ea35b14e8e90af89df711b8a750def471795fcb5ca77d281a317f"
 dependencies = [
  "fdt-parser",
  "log",
  "rdif-base",
  "rdif-intc",
  "rdif-power",
+ "rdif-systick",
  "rdif-timer",
  "spin 0.10.0",
  "thiserror",
@@ -1743,7 +1753,7 @@ dependencies = [
 [[package]]
 name = "somehal"
 version = "0.1.0"
-source = "git+https://github.com/rcore-os/somehal.git#328d5c27527bf9d9ca71c6d3d039dc9a3ce6187b"
+source = "git+https://github.com/rcore-os/somehal.git#59a4b3c6cd7a264e6ad7028e329d6d670a3789a6"
 dependencies = [
  "aarch64-cpu 10.0.0",
  "acpi",
@@ -1778,7 +1788,7 @@ dependencies = [
 [[package]]
 name = "somehal-macros"
 version = "0.1.0"
-source = "git+https://github.com/rcore-os/somehal.git#328d5c27527bf9d9ca71c6d3d039dc9a3ce6187b"
+source = "git+https://github.com/rcore-os/somehal.git#59a4b3c6cd7a264e6ad7028e329d6d670a3789a6"
 dependencies = [
  "abi-singleton",
  "darling",
