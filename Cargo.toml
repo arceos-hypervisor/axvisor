@@ -23,7 +23,7 @@ lazyinit = "0.2"
 timer_list = "0.1.0"
 bitmaps = { version = "3.2.1", default-features = false }
 static_assertions = "1.1.0"
-xmas-elf = "0.8"
+xmas-elf = "0.10"
 
 # System dependent modules provided by ArceOS.
 axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm", features = [
@@ -89,3 +89,5 @@ memory_set = { path = "./crates/memory_addr/memory_set" }
 page_table_entry = { path = "./crates/page_table_multiarch/page_table_entry" }
 page_table_multiarch = { path = "./crates/page_table_multiarch/page_table_multiarch" }
 bitmaps = { path = "./crates/bitmaps" }
+# zero = { path = "./crates/zero" }
+# xmas-elf = { path = "./crates/xmas-elf" }

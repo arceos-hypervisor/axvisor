@@ -1,28 +1,30 @@
 use alloc::collections::btree_map::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::os::arceos::modules::axhal::paging::PagingHandlerImpl;
 use std::sync::Mutex;
 
-use axerrno::{AxResult, ax_err_type};
+use axerrno::{AxResult, ax_err, ax_err_type};
 use bitmaps::Bitmap;
-use memory_addr::{MemoryAddr, PAGE_SIZE_4K, is_aligned_4k};
+use memory_addr::{MemoryAddr, PAGE_SIZE_4K};
 use page_table_multiarch::{PageSize, PagingHandler};
 
 use axaddrspace::npt::EPTPointer;
 use axaddrspace::{GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr, MappingFlags};
 use axvcpu::AxVcpuAccessGuestState;
-use axvm::HostContext;
+use equation_defs::{
+    FIRST_PROCESS_ID, GuestMappingType, INSTANCE_PERCPU_REGION_SIZE, InstanceInnerRegion,
+    InstanceType, SHIM_INSTANCE_ID,
+};
 
-use crate::libos::config::SHIM_ENTRY;
 use crate::libos::config::get_gate_process_data;
 use crate::libos::def::{
     EPTP_LIST_REGION_SIZE, EPTPList, GP_EPT_LIST_REGION_BASE_GVA, GP_EPTP_LIST_REGION_BASE_GPA,
-    GUEST_PT_ROOT_GPA, INSTANCE_INNER_REGION_SIZE, INSTANCE_SHARED_REGION_BASE_GPA,
-    ProcessMemoryRegion, USER_STACK_BASE, USER_STACK_SIZE,
+    GP_INSTANCE_PERCPU_REGION_BASE_GPA, GP_INSTANCE_PERCPU_REGION_BASE_GVA,
+    INSTANCE_INNER_REGION_SIZE,
 };
-use crate::libos::gaddrspace::{GuestAddrSpace, GuestMappingType};
+use crate::libos::gaddrspace::{GuestAddrSpace, init_shim_kernel};
 use crate::libos::process::Process;
 use crate::libos::region::{HostPhysicalRegion, HostPhysicalRegionRef};
 use crate::vmm::VCpu;
@@ -34,45 +36,67 @@ use crate::vmm::config::{get_instance_cpus, get_instance_cpus_mask};
 /// theoretically, we can only have 511 processes in an instance.
 const MAX_PROCESS_NUM: usize = 512;
 
-// How to init gate instance
-// First, init addrspace on one core.
-// can we use remap pfn range???
-// the most simplist way is that axcli to extablish it's own mapping first, can we can copy from it's memory region.
-// Then we can reuse the `CMemoryRegion` and `ProcessMemoryRegion`.
-// Next, fork each gate process on each core.
+static INSTANCE_ID: AtomicUsize = AtomicUsize::new(SHIM_INSTANCE_ID);
 
 static INSTANCES: Mutex<BTreeMap<usize, InstanceRef>> = Mutex::new(BTreeMap::new());
 
 /// The reference type of a task.
 pub type InstanceRef = Arc<Instance<PagingHandlerImpl>>;
 
+fn get_instance_id() -> usize {
+    INSTANCE_ID.fetch_add(1, Ordering::Release)
+}
+
 pub struct Instance<H: PagingHandler> {
-    /// The ID of the instance.
-    id: usize,
+    /// The region for instance inner data, which is shared by all processes in the instance,
+    /// it stores the instance ID.
+    instance_inner_region: HostPhysicalRegionRef<H>,
     /// The bitmap of process IDs in the instance,
     /// - `true` means the PID is used.
     /// - `false` means the PID is free.
     pid_bitmap: Mutex<Bitmap<MAX_PROCESS_NUM>>,
     /// The list of processes in the instance.
     pub processes: Mutex<BTreeMap<HostPhysAddr, Process<H>>>,
-
-    /// The region for instance inner data, which is shared by all processes in the instance.
-    instance_inner_region: HostPhysicalRegionRef<H>,
     /// The region for EPTP list, which is shared by all processes in the instance.
     eptp_list_region: HostPhysicalRegion<H>,
     /// Dirty flag for EPTP list, if `true`, the EPTP list has been modified.
     /// This flag is used to indicate that the EPTP list needs to be updated in the vCPUs.
     eptp_list_dirty: AtomicBool,
+}
 
-    /// The initialized context of the instance's first process.
-    /// It is used to initialize the vCPU context for the first process.
-    /// See `init_gate_processes` for details.
-    pub ctx: HostContext,
+impl<H: PagingHandler> Instance<H> {
+    pub fn id(&self) -> usize {
+        self.instance_inner_region().instance_id as usize
+    }
+
+    pub fn instance_inner_region(&self) -> &InstanceInnerRegion {
+        unsafe {
+            self.instance_inner_region
+                .as_ptr_of::<InstanceInnerRegion>()
+                .as_ref()
+                .expect("Failed to get instance inner region")
+        }
+    }
+
+    #[allow(unused)]
+    fn instance_inner_region_mut(&self) -> &mut InstanceInnerRegion {
+        unsafe {
+            self.instance_inner_region
+                .as_mut_ptr_of::<InstanceInnerRegion>()
+                .as_mut()
+                .expect("Failed to get instance inner region")
+        }
+    }
 }
 
 impl<H: PagingHandler> Instance<H> {
     pub fn create_shim() -> AxResult<Arc<Self>> {
-        let id = 0;
+        let id = get_instance_id();
+
+        if id != SHIM_INSTANCE_ID {
+            return ax_err!(BadState, "Shim instance has been created");
+        }
+
         let pid = get_instance_cpus_mask().first_index().ok_or_else(|| {
             warn!("No CPU available for instance");
             ax_err_type!(InvalidInput, "No CPU available for instance")
@@ -85,12 +109,8 @@ impl<H: PagingHandler> Instance<H> {
         let instance_inner_region =
             HostPhysicalRegion::allocate_ref(INSTANCE_INNER_REGION_SIZE, Some(PAGE_SIZE_4K))?;
 
-        // Allocate the EPTP list region.
-        // The EPTP list region is shared by all processes in the same instance,
-        // But it does not need to be mapped in all processes's ept address space.
-        // So we can use `allocate` here.
-        let eptp_list_region =
-            HostPhysicalRegion::allocate(EPTP_LIST_REGION_SIZE, Some(PAGE_SIZE_4K))?;
+        // Init shim kernel, loading shim binary and setting up the `GLOBAL_SHIM_REGION`.
+        init_shim_kernel()?;
 
         let mut shim_addrspace = GuestAddrSpace::new(
             pid,
@@ -100,10 +120,8 @@ impl<H: PagingHandler> Instance<H> {
 
         // Load elf data for shim process.
         let gate_process_data = get_gate_process_data();
-        shim_addrspace.setup_user_elf(gate_process_data)?;
 
-        let shim_context =
-            HostContext::construct_guest64(SHIM_ENTRY as u64, GUEST_PT_ROOT_GPA.as_usize() as u64);
+        shim_addrspace.setup_user_elf(gate_process_data)?;
 
         let init_ept_root_hpa = shim_addrspace.ept_root_hpa();
 
@@ -112,150 +130,111 @@ impl<H: PagingHandler> Instance<H> {
             id, init_ept_root_hpa
         );
 
+        let instance_inner_region_mut = unsafe {
+            instance_inner_region
+                .as_mut_ptr_of::<InstanceInnerRegion>()
+                .as_mut()
+        }
+        .unwrap();
+        instance_inner_region_mut.instance_id = id as u64;
+
         let mut processes = BTreeMap::new();
         let init_process = Process::new(pid, shim_addrspace);
         // Other processes, including the gate processes, may be forked from this process.
         processes.insert(init_ept_root_hpa, init_process);
 
-        let eptp_list = unsafe { eptp_list_region.as_mut_ptr_of::<EPTPList>().as_mut() }
-            .expect("Failed to get EPTP list");
-        eptp_list.set(pid, EPTPointer::from_table_phys(init_ept_root_hpa));
+        // Shim instance does not need a specific EPTP list region,
+        // because the first (index 0) EPTP entry in each vCPU's EPTP list is always
+        // the gate process's EPTP.
+        // So we just allocate a dummy region for it.
+        let dummy_eptp_list_region =
+            HostPhysicalRegion::allocate(EPTP_LIST_REGION_SIZE, Some(PAGE_SIZE_4K))?;
 
-        let mut pid_bitmap = Bitmap::new();
         // Set the first process ID to `true` in the bitmap.
-        pid_bitmap.set(pid, true);
+        let mut pid_bitmap = Bitmap::mask(FIRST_PROCESS_ID);
         // Set the gate process ID to `true` in the bitmap.
-        pid_bitmap.set(0, true);
+        pid_bitmap.set(pid, true);
 
         Ok(Arc::new(Self {
-            id,
             pid_bitmap: Mutex::new(pid_bitmap),
             processes: Mutex::new(processes),
             instance_inner_region,
-            eptp_list_region,
+            eptp_list_region: dummy_eptp_list_region,
+            // Shim instance's EPTP list is always NOT dirty.
             eptp_list_dirty: AtomicBool::new(false),
-            ctx: shim_context,
         }))
     }
 
     /// Create a new instance alone with its first process.
     /// The first process is initialized by the ELF segments in `elf_regions`
     /// with a newly constructed `GuestAddrSpace`.
-    /// The `ctx` is used to initialize the vCPU context for the first process.
-    pub fn new(
-        id: usize,
-        elf_regions: Vec<ProcessMemoryRegion>,
-        mut ctx: HostContext,
+    pub fn create(
+        itype: InstanceType,
         mapping_type: GuestMappingType,
+        raw_file: Vec<u8>,
     ) -> AxResult<Arc<Self>> {
-        info!("Generate instance {}", id);
+        let id = get_instance_id();
+
+        if id == SHIM_INSTANCE_ID {
+            return ax_err!(BadState, "Shim instance should be created first");
+        }
+
+        info!("Generating {:?} instance {} {:?}", itype, id, mapping_type);
 
         // Allocate the instance inner region.
         // The instance inner region is shared by all processes in the same instance, so use `allocate_ref` here.
         let instance_inner_region =
             HostPhysicalRegion::allocate_ref(INSTANCE_INNER_REGION_SIZE, Some(PAGE_SIZE_4K))?;
 
-        let mut init_addrspace =
-            GuestAddrSpace::new(id, instance_inner_region.clone(), mapping_type)?;
-
-        // Parse and copy ELF segments to guest process's address space.
-        // Todo: distinguish shared regions.
-        for p_region in &elf_regions {
-            if !p_region.gva.is_aligned_4k() || !is_aligned_4k(p_region.size) {
-                warn!(
-                    "Process memory region [{:?} - {:?}] {:?} is not aligned to 4K, skipping",
-                    p_region.gva,
-                    p_region.gva + p_region.size,
-                    p_region.flags
-                );
-                continue;
-            }
-
-            for (p_gva, mapping) in &p_region.mappings {
-                trace!(
-                    "Processing instance memory region GVA [{:?} - {:?}] {:?}",
-                    p_region.gva,
-                    p_region.gva + p_region.size,
-                    p_region.flags
-                );
-
-                if let Some(mapping) = mapping {
-                    if mapping.hpa.is_none() {
-                        error!(
-                            "Process memory region GVA [{:?} - {:?}] {:?} GPA {:?} is not mapped by hypervisor, skipping",
-                            p_region.gva,
-                            p_region.gva + PAGE_SIZE_4K,
-                            mapping.gpa,
-                            p_region.flags
-                        );
-                        continue;
-                    }
-
-                    // Map as populated mapping to ensure that the memory mapping is established.
-                    init_addrspace.guest_map_alloc(
-                        *p_gva,
-                        mapping.page_size as usize,
-                        p_region.flags,
-                        true,
-                    )?;
-
-                    let host_region_hpa = mapping.hpa.unwrap();
-
-                    init_addrspace.copy_into_guest(
-                        H::phys_to_virt(host_region_hpa),
-                        *p_gva,
-                        mapping.page_size.into(),
-                    )?;
-                } else {
-                    warn!(
-                        "Process memory region [{:?} - {:?}] {:?} is not mapped by Linux, skipping",
-                        p_gva,
-                        p_region.gva + PAGE_SIZE_4K,
-                        p_region.flags
-                    );
-                }
-            }
+        let instance_inner_region_mut = unsafe {
+            instance_inner_region
+                .as_mut_ptr_of::<InstanceInnerRegion>()
+                .as_mut()
         }
+        .unwrap();
+        instance_inner_region_mut.instance_id = id as u64;
 
-        // Setup guest process's stack region.
-        init_addrspace.guest_map_alloc(
-            USER_STACK_BASE,
-            USER_STACK_SIZE,
-            MappingFlags::READ | MappingFlags::WRITE | MappingFlags::USER,
-            true,
+        let mut init_addrspace = GuestAddrSpace::new(
+            FIRST_PROCESS_ID,
+            instance_inner_region.clone(),
+            mapping_type,
         )?;
 
-        // Manipulate guest process's context.
-        // `ctx.rip` has been set in `create_instance` in hypercall execution.
-        // Todo: manipulate IDT and syscall entry point.
-        ctx.cr3 = GUEST_PT_ROOT_GPA.as_usize() as u64;
-        ctx.rsp = USER_STACK_BASE.add(USER_STACK_SIZE).as_usize() as u64;
+        match itype {
+            InstanceType::LibOS => {
+                // Load ELF data for libos process and setup libos process's stack region.
+                init_addrspace.setup_user_elf(raw_file.as_ref())?;
+            }
+            InstanceType::Kernel => {
+                unimplemented!()
+            }
+        };
 
         let init_ept_root_hpa = init_addrspace.ept_root_hpa();
 
         info!("Instance {}: init eptp at: {:?}", id, init_ept_root_hpa);
 
         let mut processes = BTreeMap::new();
-        let init_process = Process::new(0, init_addrspace);
+        let init_process = Process::new(FIRST_PROCESS_ID, init_addrspace);
         // Other processes, including the gate processes, may be forked from this process.
         processes.insert(init_ept_root_hpa, init_process);
 
         let eptp_list_region =
             HostPhysicalRegion::allocate(EPTP_LIST_REGION_SIZE, Some(PAGE_SIZE_4K))?;
+        let eptp_list = unsafe { eptp_list_region.as_mut_ptr_of::<EPTPList>().as_mut() }
+            .expect("Failed to get EPTP list");
+        eptp_list.set(
+            FIRST_PROCESS_ID,
+            EPTPointer::from_table_phys(init_ept_root_hpa),
+        );
 
         Ok(Arc::new(Self {
-            id,
-            pid_bitmap: Mutex::new(Bitmap::mask(1)),
+            pid_bitmap: Mutex::new(Bitmap::mask(FIRST_PROCESS_ID)),
             instance_inner_region,
             eptp_list_region,
             eptp_list_dirty: AtomicBool::new(false),
             processes: Mutex::new(processes),
-            ctx,
         }))
-    }
-
-    pub fn id(&self) -> usize {
-        self.id
     }
 
     pub fn alloc_pid(&self) -> Option<usize> {
@@ -387,7 +366,7 @@ impl<H: PagingHandler> Instance<H> {
 
         if self.processes.lock().is_empty() {
             // If there are no processes left, we can remove the instance.
-            remove_instance(self.id)?;
+            remove_instance(self.id())?;
         }
         Ok(())
     }
@@ -457,14 +436,27 @@ impl<H: PagingHandler> Instance<H> {
 
             // Init vCPU for each core.
             let vcpu = Arc::new(VCpu::new(cpu_id, 0, Some(1 << cpu_id), cpu_id)?);
-            // vcpu.setup_from_context(gp_as.ept_root_hpa(), self.ctx.clone())?;
 
-            // Alloc and map percpu instance shared region.
-            let shared_region_base_hpa = H::alloc_frame().ok_or_else(|| ax_err_type!(NoMemory))?;
+            // Alloc and map percpu instance region.
+            let percpu_region =
+                HostPhysicalRegion::allocate(INSTANCE_PERCPU_REGION_SIZE, Some(PAGE_SIZE_4K))?;
+            gp_as
+                .guest_map_region(
+                    GP_INSTANCE_PERCPU_REGION_BASE_GVA,
+                    |gva| {
+                        GP_EPTP_LIST_REGION_BASE_GPA
+                            .add(gva.sub_addr(GP_INSTANCE_PERCPU_REGION_BASE_GVA))
+                    },
+                    percpu_region.size(),
+                    MappingFlags::READ | MappingFlags::WRITE,
+                    false,
+                    false,
+                )
+                .map_err(super::gaddrspace::paging_err_to_ax_err)?;
             gp_as.ept_map_linear(
-                INSTANCE_SHARED_REGION_BASE_GPA,
-                shared_region_base_hpa,
-                PAGE_SIZE_4K,
+                GP_INSTANCE_PERCPU_REGION_BASE_GPA,
+                percpu_region.base(),
+                percpu_region.size(),
                 MappingFlags::READ | MappingFlags::WRITE,
                 false,
             )?;
@@ -481,7 +473,6 @@ impl<H: PagingHandler> Instance<H> {
                     false,
                 )
                 .map_err(super::gaddrspace::paging_err_to_ax_err)?;
-
             // GPA -> HPA
             let gp_eptp_list_base_hpa = vcpu.get_arch_vcpu().eptp_list_region();
             gp_as.ept_map_linear(
@@ -492,20 +483,13 @@ impl<H: PagingHandler> Instance<H> {
                 false,
             )?;
 
-            // Copy gate instance's EPTP list to the vCPU's EPTP list region.
+            // Init each vCPU's EPTP list region, set the first entry to the gate process's EPTP.
             let vcpu_eptp_list_region_hva = H::phys_to_virt(gp_eptp_list_base_hpa);
-            self.eptp_list_region.copy_to_slice(
-                unsafe {
-                    core::slice::from_raw_parts_mut(
-                        vcpu_eptp_list_region_hva.as_mut_ptr(),
-                        EPTP_LIST_REGION_SIZE,
-                    )
-                },
-                0,
-                EPTP_LIST_REGION_SIZE,
-            )?;
+            let vcpu_eptp_list_region = EPTPList::construct(vcpu_eptp_list_region_hva)
+                .expect("Failed to construct vcpu EPTP list");
+            vcpu_eptp_list_region.set_gate_entry(EPTPointer::from_table_phys(gp_as.ept_root_hpa()));
 
-            crate::libos::percpu::init_instance_percore_task(cpu_id, vcpu, shared_region_base_hpa);
+            crate::libos::percpu::init_instance_percore_task(cpu_id, vcpu, percpu_region);
         }
 
         Ok(())
@@ -529,34 +513,27 @@ impl<H: PagingHandler> Instance<H> {
 
 impl<H: PagingHandler> Drop for Instance<H> {
     fn drop(&mut self) {
-        info!("Destroy instance {}", self.id);
-        if self.id == 0 {
+        info!("Destroy instance {}", self.id());
+        if self.id() == 0 {
             warn!("You are dropping gate instance, you'd better know what you are doing!");
         }
     }
 }
 
 /// Create a new instance.
-/// This function will create a new instance and allocate a task for the vCPU.
+/// This function will create a new instance and setup its address space according
+/// to the instance type and binary/executable file.
+///
+/// This function will return the instance ID if the instance is created successfully.
 pub fn create_instance(
-    id: usize,
-    process_regions: Vec<ProcessMemoryRegion>,
-    ctx: HostContext,
+    itype: InstanceType,
     mapping_type: GuestMappingType,
-) -> AxResult {
-    if INSTANCES.lock().contains_key(&id) {
-        return Err(ax_err_type!(InvalidInput, "Instance ID already exists"));
-    }
-
-    let instance_ref = Instance::<PagingHandlerImpl>::new(id, process_regions, ctx, mapping_type)?;
-
-    INSTANCES.lock().insert(id, instance_ref.clone());
-
-    if id == 0 {
-        instance_ref.init_gate_processes()?;
-    }
-
-    Ok(())
+    raw_file: Vec<u8>,
+) -> AxResult<usize> {
+    let instance_ref = Instance::<PagingHandlerImpl>::create(itype, mapping_type, raw_file)?;
+    let iid = instance_ref.id();
+    INSTANCES.lock().insert(iid, instance_ref);
+    Ok(iid)
 }
 
 pub fn init_shim() -> AxResult {

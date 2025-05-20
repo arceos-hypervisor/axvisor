@@ -11,7 +11,7 @@ git clone git@github.com:arceos-hypervisor/axhvc.git
 git clone git@github.com:arceos-hypervisor/axvm.git --branch type15_hw
 git clone git@github.com:arceos-hypervisor/axvcpu.git --branch equation
 git clone git@github.com:EquationOS/bitmaps.git
-git clone git@github.com:EquationOS/equation_defs.git
+git clone git@github.com:EquationOS/equation_defs.git --branch equation
 git clone git@github.com:arceos-org/memory_addr.git --branch wip
 git clone git@github.com:arceos-org/page_table_multiarch.git --branch alloc_frames
 git clone git@github.com:arceos-hypervisor/x86_vcpu.git --branch equation

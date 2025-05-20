@@ -271,7 +271,7 @@ fn gen_libos_configs() -> io::Result<()> {
     )?;
     writeln!(
         output_file,
-        "    include_bytes!(\"{}\")",
+        "    include_bytes_align_as!(u64, \"{}\")",
         Path::new(gp_path).canonicalize()?.to_str().unwrap()
     )?;
     writeln!(output_file, "}}\n")?;

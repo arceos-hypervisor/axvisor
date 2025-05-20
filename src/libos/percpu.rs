@@ -7,19 +7,24 @@ use std::thread;
 
 use axaddrspace::npt::EPTPointer;
 use axaddrspace::{GuestPhysAddr, HostPhysAddr};
+use equation_defs::SHIM_INSTANCE_ID;
 use lazyinit::LazyInit;
 
 use axconfig::SMP;
 use axtask::{AxCpuMask, TaskInner};
 use axvcpu::{AxVCpuExitReason, AxVcpuAccessGuestState, VCpuState};
+use axvm::HostContext;
 use page_table_multiarch::{MappingFlags, PageSize, PagingHandler};
 
-use crate::libos::def::{EPTPList, InstanceSharedRegion};
+use crate::libos::config::SHIM_ENTRY;
+use crate::libos::def::{EPTPList, GUEST_PT_ROOT_GPA, InstancePerCPURegion};
 use crate::libos::hvc::InstanceCall;
 use crate::libos::instance::{InstanceRef, get_instances_by_id};
 use crate::task_ext::{TaskExt, TaskExtType};
 use crate::vmm::VCpuRef;
 use crate::vmm::config::get_instance_cpus_mask;
+
+use super::region::HostPhysicalRegion;
 
 const KERNEL_STACK_SIZE: usize = 0x40000; // 256 KiB
 
@@ -50,31 +55,29 @@ impl From<usize> for LibOSPerCpuStatus {
 pub(super) struct LibOSPerCpu<H: PagingHandler> {
     cpu_id: usize,
     vcpu: VCpuRef,
-    shared_region_base: HostPhysAddr,
+    percpu_region: HostPhysicalRegion<H>,
     cpu_eptp_list_region: HostPhysAddr,
     status: AtomicUsize,
     _phantom: PhantomData<H>,
 }
 
 impl<H: PagingHandler> LibOSPerCpu<H> {
-    pub fn shared_region(&self) -> &'static InstanceSharedRegion {
+    pub fn percpu_region(&self) -> &'static InstancePerCPURegion {
         unsafe {
-            H::phys_to_virt(self.shared_region_base)
-                .as_ptr()
-                .cast::<InstanceSharedRegion>()
+            self.percpu_region
+                .as_ptr_of::<InstancePerCPURegion>()
                 .as_ref()
-                .unwrap()
         }
+        .unwrap()
     }
 
-    pub fn shared_region_mut(&mut self) -> &'static mut InstanceSharedRegion {
+    pub fn percpu_region_mut(&mut self) -> &'static mut InstancePerCPURegion {
         unsafe {
-            H::phys_to_virt(self.shared_region_base)
-                .as_mut_ptr()
-                .cast::<InstanceSharedRegion>()
+            self.percpu_region
+                .as_mut_ptr_of::<InstancePerCPURegion>()
                 .as_mut()
-                .unwrap()
         }
+        .unwrap()
     }
 
     #[allow(unused)]
@@ -127,11 +130,11 @@ impl<H: PagingHandler> LibOSPerCpu<H> {
     }
 
     pub fn current_process_id(&self) -> usize {
-        self.shared_region().process_id as usize
+        self.percpu_region().process_id as usize
     }
 
     pub fn current_instance_id(&self) -> usize {
-        self.shared_region().instance_id as usize
+        self.percpu_region().instance_id as usize
     }
     pub fn current_instance(&self) -> InstanceRef {
         get_instances_by_id(self.current_instance_id() as usize).expect("Instance not found")
@@ -161,7 +164,11 @@ impl<H: PagingHandler> LibOSPerCpu<H> {
 
 impl<H: PagingHandler> Drop for LibOSPerCpu<H> {
     fn drop(&mut self) {
-        H::dealloc_frame(self.shared_region_base)
+        warn!(
+            "Dropping LibOSPerCpu for CPU {}, vcpu {}",
+            self.cpu_id,
+            self.vcpu.id()
+        );
     }
 }
 
@@ -176,7 +183,11 @@ fn current_libos_percpu() -> &'static LibOSPerCpu<PagingHandlerImpl> {
 #[percpu::def_percpu]
 static LIBOS_PERCPU: LazyInit<LibOSPerCpu<PagingHandlerImpl>> = LazyInit::new();
 
-pub fn init_instance_percore_task(cpu_id: usize, vcpu: VCpuRef, shared_region_base: HostPhysAddr) {
+pub fn init_instance_percore_task(
+    cpu_id: usize,
+    vcpu: VCpuRef,
+    percpu_region: HostPhysicalRegion<PagingHandlerImpl>,
+) {
     assert!(cpu_id < SMP, "Invalid CPU ID: {}", cpu_id);
     if !get_instance_cpus_mask().get(cpu_id) {
         warn!(
@@ -196,7 +207,7 @@ pub fn init_instance_percore_task(cpu_id: usize, vcpu: VCpuRef, shared_region_ba
         remote_percpu.init_once(LibOSPerCpu {
             cpu_id,
             vcpu: vcpu.clone(),
-            shared_region_base,
+            percpu_region,
             cpu_eptp_list_region: vcpu.get_arch_vcpu().eptp_list_region(),
             status: AtomicUsize::new(LibOSPerCpuStatus::Ready.into()),
             _phantom: PhantomData,
@@ -204,7 +215,7 @@ pub fn init_instance_percore_task(cpu_id: usize, vcpu: VCpuRef, shared_region_ba
     } else if remote_percpu.status.load(Ordering::SeqCst) == LibOSPerCpuStatus::Idle.into() {
         info!("Re-initializing LibOSPerCpu for CPU {}", cpu_id);
         remote_percpu.vcpu = vcpu.clone();
-        remote_percpu.shared_region_base = shared_region_base;
+        remote_percpu.percpu_region = percpu_region;
         remote_percpu.cpu_eptp_list_region = vcpu.get_arch_vcpu().eptp_list_region();
         remote_percpu
             .status
@@ -217,14 +228,15 @@ pub fn init_instance_percore_task(cpu_id: usize, vcpu: VCpuRef, shared_region_ba
         );
     }
 
-    remote_percpu.shared_region_mut().instance_id = 0;
-    remote_percpu.shared_region_mut().process_id = cpu_id as _;
+    remote_percpu.percpu_region_mut().instance_id = SHIM_INSTANCE_ID as _;
+    remote_percpu.percpu_region_mut().process_id = cpu_id as _;
+    remote_percpu.percpu_region_mut().cpu_id = cpu_id as _;
 
     info!(
         "LibOSPerCpu CPU[{}] initialized, vcpu {}, shared region {:?}, eptp list region {:?}",
         remote_percpu.cpu_id,
         remote_percpu.vcpu.id(),
-        remote_percpu.shared_region_base,
+        remote_percpu.percpu_region,
         remote_percpu.cpu_eptp_list_region
     );
 
@@ -257,7 +269,10 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
         .map(|(_, p)| p.ept_root())
         .unwrap();
 
-    vcpu.setup_from_context(ept_root_hpa, instance.ctx.clone())
+    let shim_context =
+        HostContext::construct_guest64(SHIM_ENTRY as u64, GUEST_PT_ROOT_GPA.as_usize() as u64);
+
+    vcpu.setup_from_context(ept_root_hpa, shim_context)
         .expect("Failed to setup vcpu");
 
     info!(
@@ -284,7 +299,7 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
 
         match vcpu.run() {
             Ok(exit_reason) => {
-                let instance_id = curcpu.shared_region().instance_id;
+                let instance_id = curcpu.percpu_region().instance_id;
 
                 let instance_ref = if let Some(instance) = get_instances_by_id(instance_id as usize)
                 {

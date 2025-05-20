@@ -14,6 +14,17 @@ pub(crate) struct HostPhysicalRegion<H: PagingHandler> {
     phontom: core::marker::PhantomData<H>,
 }
 
+impl<H: PagingHandler> core::fmt::Debug for HostPhysicalRegion<H> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "HostPhysicalRegion [{:?}-{:?}]",
+            self.base,
+            self.base.add(self.size)
+        )
+    }
+}
+
 pub(crate) type HostPhysicalRegionRef<H> = Arc<HostPhysicalRegion<H>>;
 
 impl<H: PagingHandler> HostPhysicalRegion<H> {
@@ -102,6 +113,7 @@ impl<H: PagingHandler> HostPhysicalRegion<H> {
         Ok(())
     }
 
+    #[allow(unused)]
     pub fn copy_to_slice(&self, dst: &mut [u8], offset: usize, size: usize) -> AxResult {
         if size > self.size - offset {
             return ax_err!(InvalidInput, "Copy size exceeds region size");

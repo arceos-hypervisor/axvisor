@@ -1,12 +1,10 @@
 use core::sync::atomic::{AtomicUsize, Ordering};
-use std::os::arceos;
-
-use arceos::modules::axhal;
 
 use axerrno::{AxResult, ax_err, ax_err_type};
 use axhvc::{HyperCallCode, HyperCallResult};
-use axvcpu::{AxArchVCpu, AxVcpuAccessGuestState};
+use axvcpu::AxVcpuAccessGuestState;
 
+use crate::libos::def::get_instance_file_from_shared_pages;
 use crate::vmm::{VCpuRef, VMRef};
 
 pub struct HyperCall {
@@ -79,7 +77,6 @@ impl HyperCall {
                 self.args[2],
                 self.args[3],
                 self.args[4],
-                self.args[5],
             ),
             _ => {
                 unimplemented!();
@@ -132,41 +129,29 @@ impl HyperCall {
 
     fn create_instance(
         &self,
-        id: u64,
-        memory_region_cnt: u64,
-        memory_cfg_pages_base_gva: u64,
-        memory_cfg_pages_count: u64,
-        entry: u64,
+        instance_type: u64,
         mapping_type: u64,
+        file_size: u64,
+        shared_pages_base_gva: u64,
+        shared_pages_num: u64,
     ) -> HyperCallResult {
         info!(
-            "HCreateInstance iid:{} mm_cnt:{} base_gva:{:#x} pages_cnt: {} entry {:#x}",
-            id, memory_region_cnt, memory_cfg_pages_base_gva, memory_cfg_pages_count, entry
+            "HCreateInstance type {}, mapping type {}, file size {} Bytes, shared_pages_base_gva {:#x} shared_pages_num {}",
+            instance_type, mapping_type, file_size, shared_pages_base_gva, shared_pages_num
         );
 
-        let process_regions = crate::libos::def::process_elf_memory_regions(
-            memory_region_cnt as _,
-            memory_cfg_pages_base_gva as _,
-            memory_cfg_pages_count as _,
+        let instance_file = get_instance_file_from_shared_pages(
+            file_size as _,
+            shared_pages_base_gva as _,
+            shared_pages_num as _,
             &self.vcpu,
             &self.vm,
         )?;
 
-        // Currently we just construct user process context from current vcpu context.
-        // It can be regarded as a duplicate of the context of current Linux process which trigger the `HCreateInstance` hypercall.
-        let mut ctx = axhal::get_linux_context_list()[axhal::cpu::this_cpu_id() as usize].clone();
-        self.vcpu.get_arch_vcpu().load_context(&mut ctx)?;
-
-        // Set the entry point (`rip`) of the new process as entry parsed from the ELF file.
-        ctx.rip = entry as u64;
-
         crate::libos::instance::create_instance(
-            id as usize,
-            process_regions,
-            ctx,
+            instance_type.into(),
             mapping_type.into(),
-        )?;
-
-        Ok(0)
+            instance_file,
+        )
     }
 }
