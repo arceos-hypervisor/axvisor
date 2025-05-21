@@ -75,13 +75,13 @@ impl AxVCpuHal for AxVCpuHalImpl {
     #[cfg(target_arch = "aarch64")]
     fn irq_hanlder() {
         let irq_num = axhal::irq::fetch_irq();
-        debug!("IRQ handler {irq_num}");
+        // debug!("IRQ handler {irq_num}");
         axhal::irq::handler_irq(irq_num);
     }
 }
 
 #[percpu::def_percpu]
-static mut AXVM_PER_CPU: AxVMPerCpu<AxVCpuHalImpl> = AxVMPerCpu::<AxVCpuHalImpl>::new_uninit();
+static AXVM_PER_CPU: AxVMPerCpu<AxVCpuHalImpl> = AxVMPerCpu::<AxVCpuHalImpl>::new_uninit();
 
 /// Init hardware virtualization support in each core.
 pub(crate) fn enable_virtualization() {
@@ -90,38 +90,44 @@ pub(crate) fn enable_virtualization() {
 
     use std::thread;
 
-    use arceos::api::config;
     use arceos::api::task::{AxCpuMask, ax_set_current_affinity};
-    use arceos::modules::axhal::cpu::this_cpu_id;
+    use arceos::modules::axhal::cpu::{cpu_count, this_cpu_id};
 
     static CORES: AtomicUsize = AtomicUsize::new(0);
 
-    for cpu_id in 0..config::SMP {
-        thread::spawn(move || {
-            // Initialize cpu affinity here.
-            assert!(
-                ax_set_current_affinity(AxCpuMask::one_shot(cpu_id)).is_ok(),
-                "Initialize CPU affinity failed!"
-            );
+    let cpu_count = cpu_count();
 
-            vmm::init_timer_percpu();
+    debug!("Enable virtualization for {} cores...", cpu_count);
 
-            let percpu = unsafe { AXVM_PER_CPU.current_ref_mut_raw() };
-            percpu
-                .init(this_cpu_id())
-                .expect("Failed to initialize percpu state");
-            percpu
-                .hardware_enable()
-                .expect("Failed to enable virtualization");
+    for cpu_id in 0..cpu_count {
+        thread::Builder::new()
+            .name(format!("cpu {cpu_id} enable hv"))
+            .spawn(move || {
+                // Initialize cpu affinity here.
+                assert!(
+                    ax_set_current_affinity(AxCpuMask::one_shot(cpu_id)).is_ok(),
+                    "Initialize CPU affinity failed!"
+                );
 
-            info!("Hardware virtualization support enabled on core {}", cpu_id);
+                vmm::init_timer_percpu();
 
-            let _ = CORES.fetch_add(1, Ordering::Release);
-        });
+                let percpu = unsafe { AXVM_PER_CPU.current_ref_mut_raw() };
+                percpu
+                    .init(this_cpu_id())
+                    .expect("Failed to initialize percpu state");
+                percpu
+                    .hardware_enable()
+                    .expect("Failed to enable virtualization");
+
+                info!("Hardware virtualization support enabled on core {}", cpu_id);
+
+                let _ = CORES.fetch_add(1, Ordering::Release);
+            })
+            .unwrap();
     }
 
     // Wait for all cores to enable virtualization.
-    while CORES.load(Ordering::Acquire) != config::SMP {
+    while CORES.load(Ordering::Acquire) != cpu_count {
         // Use `yield_now` instead of `core::hint::spin_loop` to avoid deadlock.
         thread::yield_now();
     }
