@@ -1,7 +1,7 @@
 use std::os::arceos::api::time::ax_wall_time;
 use std::println;
 
-const LOGO: [&'static str; 2] = [
+const LOGO: [&str; 2] = [
     r#"
        d8888            888     888  d8b
       d88888            888     888  Y8P
