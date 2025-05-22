@@ -5,6 +5,7 @@ ZIP_FILE = tools/rockchip.zip
 
 check-download-rockchip:
 ifeq ("$(wildcard $(MKIMG_FILE))","")
+	mkdir -p tools
 	@if [ ! -f "$(ZIP_FILE)" ]; then \
 		echo "Downloading from $(GITHUB_URL)..."; \
 		wget -O $(ZIP_FILE) $(GITHUB_URL); \
