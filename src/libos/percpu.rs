@@ -7,7 +7,7 @@ use std::thread;
 
 use axaddrspace::npt::EPTPointer;
 use axaddrspace::{GuestPhysAddr, HostPhysAddr};
-use equation_defs::SHIM_INSTANCE_ID;
+use axerrno::{AxResult, ax_err, ax_err_type};
 use lazyinit::LazyInit;
 
 use axconfig::SMP;
@@ -17,14 +17,15 @@ use axvm::HostContext;
 use page_table_multiarch::{MappingFlags, PageSize, PagingHandler};
 
 use crate::libos::config::SHIM_ENTRY;
-use crate::libos::def::{EPTPList, GUEST_PT_ROOT_GPA, InstancePerCPURegion};
+use crate::libos::def::{EPTPList, GUEST_PT_ROOT_GPA, PerCPURegion};
 use crate::libos::hvc::InstanceCall;
 use crate::libos::instance::{InstanceRef, get_instances_by_id};
+use crate::libos::region::HostPhysicalRegion;
 use crate::task_ext::{TaskExt, TaskExtType};
 use crate::vmm::VCpuRef;
 use crate::vmm::config::get_instance_cpus_mask;
-
-use super::region::HostPhysicalRegion;
+use equation_defs::task::EqTask;
+use equation_defs::{FIRST_PROCESS_ID, SHIM_INSTANCE_ID};
 
 const KERNEL_STACK_SIZE: usize = 0x40000; // 256 KiB
 
@@ -62,22 +63,12 @@ pub(super) struct LibOSPerCpu<H: PagingHandler> {
 }
 
 impl<H: PagingHandler> LibOSPerCpu<H> {
-    pub fn percpu_region(&self) -> &'static InstancePerCPURegion {
-        unsafe {
-            self.percpu_region
-                .as_ptr_of::<InstancePerCPURegion>()
-                .as_ref()
-        }
-        .unwrap()
+    pub fn percpu_region(&self) -> &'static PerCPURegion {
+        unsafe { self.percpu_region.as_ptr_of::<PerCPURegion>().as_ref() }.unwrap()
     }
 
-    pub fn percpu_region_mut(&mut self) -> &'static mut InstancePerCPURegion {
-        unsafe {
-            self.percpu_region
-                .as_mut_ptr_of::<InstancePerCPURegion>()
-                .as_mut()
-        }
-        .unwrap()
+    pub fn percpu_region_mut(&mut self) -> &'static mut PerCPURegion {
+        unsafe { self.percpu_region.as_mut_ptr_of::<PerCPURegion>().as_mut() }.unwrap()
     }
 
     #[allow(unused)]
@@ -416,4 +407,58 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
             error!("Vcpu[{}] unbind error: {:?}", vcpu_id, err);
         })
         .unwrap();
+}
+
+/// Insert a new instance (alone with its first process) to the ready_queue of the CPU with the least number of running tasks.
+/// Return the target CPU ID where the instance is inserted.
+pub fn insert_instance(instance_id: usize) -> AxResult<usize> {
+    // Find the cpu with the lowest running task number.
+    let mut target_cpu_id = 0;
+    let mut min_task_num = usize::MAX;
+    for cpu in get_instance_cpus_mask().into_iter() {
+        let remote_percpu = unsafe { LIBOS_PERCPU.remote_ref_mut_raw(cpu) };
+        if !remote_percpu.is_inited() {
+            warn!("PerCPU data for CPU {} not initialized", cpu);
+            continue;
+        }
+        let task_num = remote_percpu.percpu_region().run_queue.get_task_num();
+        if min_task_num > task_num {
+            min_task_num = task_num;
+            target_cpu_id = cpu;
+        }
+    }
+
+    // Since we'll at least reserve one CPU for the host OS,
+    // the target CPU should not be 0.
+    if target_cpu_id == 0 {
+        error!("No available CPU for instance {}", instance_id);
+        return ax_err!(NotFound, "No available CPU for instance");
+    }
+
+    debug!("Insert instance {} to CPU {}", instance_id, target_cpu_id);
+    let target_cpu = unsafe { LIBOS_PERCPU.remote_ref_mut_raw(target_cpu_id) };
+
+    target_cpu
+        .percpu_region_mut()
+        .ready_queue
+        .insert(EqTask {
+            instance_id,
+            process_id: FIRST_PROCESS_ID,
+            task_id: FIRST_PROCESS_ID,
+        })
+        .map_err(|task| {
+            error!(
+                "Failed to insert instance {} to CPU {}: {:?}",
+                instance_id, target_cpu_id, task
+            );
+            ax_err_type!(ResourceBusy, "Failed to insert instance")
+        })?;
+
+    debug!(
+        "After insert, CPU {} ready queue\n{:?}",
+        target_cpu_id,
+        target_cpu.percpu_region().ready_queue,
+    );
+
+    Ok(target_cpu_id)
 }
