@@ -30,7 +30,7 @@ axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm
     "alloc",
     "paging",
     # "fs",
-    # "irq",
+    "irq",
     "hv",
     "multitask",
     # "sched_rr",

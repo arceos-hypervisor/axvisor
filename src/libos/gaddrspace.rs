@@ -434,8 +434,9 @@ impl<
             true,
         )?;
 
-        self.process_inner_region_mut().stack_top = USER_STACK_BASE.as_usize() + USER_STACK_SIZE;
-        self.process_inner_region_mut().entry = elf.header.pt2.entry_point() as usize;
+        self.process_inner_region_mut().user_stack_top =
+            USER_STACK_BASE.as_usize() + USER_STACK_SIZE;
+        self.process_inner_region_mut().user_entry = elf.header.pt2.entry_point() as usize;
 
         Ok(())
     }

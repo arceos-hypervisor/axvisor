@@ -533,6 +533,12 @@ pub fn create_instance(
     let instance_ref = Instance::<PagingHandlerImpl>::create(itype, mapping_type, raw_file)?;
     let iid = instance_ref.id();
     INSTANCES.lock().insert(iid, instance_ref);
+
+    // Just for test.
+    // Todo: delete this.
+    use std::os::arceos::modules::axhal::irq::{IPI_IRQ_NUM, send_ipi_one};
+    send_ipi_one(3, IPI_IRQ_NUM);
+
     Ok(iid)
 }
 
