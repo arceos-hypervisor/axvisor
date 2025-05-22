@@ -151,6 +151,7 @@ include scripts/make/config.mk
 include scripts/make/build.mk
 include scripts/make/qemu.mk
 include scripts/make/test.mk
+include scripts/make/rockchip.mk
 ifeq ($(PLAT_NAME), aarch64-raspi4)
   include scripts/make/raspi4.mk
 else ifeq ($(PLAT_NAME), aarch64-bsta1000b-virt-hv)
@@ -177,6 +178,8 @@ justrun:
 
 debug: build
 	$(call run_qemu_debug)
+
+rockchip: 
 
 gdb:
 	$(GDB) $(OUT_ELF) \
