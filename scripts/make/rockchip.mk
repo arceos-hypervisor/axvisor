@@ -1,21 +1,11 @@
-GITHUB_URL = https://github.com/arceos-hypervisor/platform_tools/releases/download/latest/rockchip.zip
-
-MKIMG_FILE = tools/rockchip/mk_boot_img.py
-ZIP_FILE = tools/rockchip.zip
-
-check-download-rockchip:
-ifeq ("$(wildcard $(MKIMG_FILE))","")
-	mkdir -p tools
-	@if [ ! -f "$(ZIP_FILE)" ]; then \
-		echo "Downloading from $(GITHUB_URL)..."; \
-		wget -O $(ZIP_FILE) $(GITHUB_URL); \
+rockchip: build
+    # Check if tmp/extboot.img exists
+	@if [ ! -f tmp/extboot.img ]; then \
+		echo "Error: tmp/extboot.img does not exist." >&2; \
+		exit 1; \
 	fi
-	@echo "Unzipping..."
-	@unzip -o $(ZIP_FILE) -d tools
-endif
-
-rockchip: check-download-rockchip build
-	# todo: add bsp select
-	$(MKIMG_FILE) --bsp rk356x/rk3568-firefly-roc-pc-se --kernel $(OUT_BIN) --dst  $(OUT_DIR)/tmp
-	@echo 'Built the FIT-uImage boot.img'
-	sudo upgrade_tool di -boot  tmp/boot.img
+	
+	@echo 'Making extboot.img'
+	./tool/extboot.sh --kernel axvisor_aarch64-qemu-virt-hv.bin --img tmp/extboot.img
+	sudo upgrade_tool di -boot  tmp/extboot.img
+	sudo upgrade_tool rd
