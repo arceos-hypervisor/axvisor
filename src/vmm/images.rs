@@ -149,6 +149,20 @@ mod fs {
                 return ax_err!(NotFound, "DTB load addr is missed");
             }
         };
+
+        #[cfg(target_arch = "aarch64")]
+        {
+            for mem_region in &config.kernel.memory_regions {
+                debug!(
+                    "flush all guest cache GPA: 0x{:x}, Size: 0x{:x}",
+                    mem_region.gpa, mem_region.size
+                );
+                unsafe {
+                    cache_clean_invalidate_d(mem_region.gpa, mem_region.size);
+                }
+            }
+        }
+
         Ok(())
     }
 
