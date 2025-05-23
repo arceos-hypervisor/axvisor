@@ -2,6 +2,8 @@ use alloc::collections::btree_map::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicBool, Ordering};
+use equation_defs::context::TaskContext;
+use equation_defs::task::EqTask;
 use lazyinit::LazyInit;
 use std::os::arceos::modules::axhal::paging::PagingHandlerImpl;
 use std::sync::Mutex;
@@ -199,7 +201,7 @@ impl<H: PagingHandler> Instance<H> {
         itype: InstanceType,
         mapping_type: GuestMappingType,
         raw_file: Vec<u8>,
-    ) -> AxResult<Arc<Self>> {
+    ) -> AxResult<(Arc<Self>, TaskContext)> {
         let id = get_instance_id()?;
 
         if id == SHIM_INSTANCE_ID {
@@ -241,6 +243,8 @@ impl<H: PagingHandler> Instance<H> {
 
         info!("Instance {}: init eptp at: {:?}", id, init_ept_root_hpa);
 
+        let task_context = init_addrspace.process_inner_region_mut().kcontext;
+
         let mut processes = BTreeMap::new();
         let init_process = Process::new(FIRST_PROCESS_ID, init_addrspace);
         // Other processes, including the gate processes, may be forked from this process.
@@ -263,13 +267,16 @@ impl<H: PagingHandler> Instance<H> {
             EPTPointer::from_table_phys(init_ept_root_hpa),
         );
 
-        Ok(Arc::new(Self {
-            pid_bitmap: Mutex::new(Bitmap::mask(FIRST_PROCESS_ID)),
-            instance_inner_region,
-            eptp_list_region,
-            eptp_list_dirty: AtomicBool::new(false),
-            processes: Mutex::new(processes),
-        }))
+        Ok((
+            Arc::new(Self {
+                pid_bitmap: Mutex::new(Bitmap::mask(FIRST_PROCESS_ID)),
+                instance_inner_region,
+                eptp_list_region,
+                eptp_list_dirty: AtomicBool::new(false),
+                processes: Mutex::new(processes),
+            }),
+            task_context,
+        ))
     }
 
     pub fn alloc_pid(&self) -> Option<usize> {
@@ -599,13 +606,18 @@ pub fn create_instance(
     mapping_type: GuestMappingType,
     raw_file: Vec<u8>,
 ) -> AxResult<usize> {
-    let instance_ref = Instance::<PagingHandlerImpl>::create(itype, mapping_type, raw_file)?;
+    let (instance_ref, task_context) =
+        Instance::<PagingHandlerImpl>::create(itype, mapping_type, raw_file)?;
     let iid = instance_ref.id();
     INSTANCES.lock().insert(iid, instance_ref);
 
-    let target_core = crate::libos::percpu::insert_instance(iid)?;
-    // Just for test.
-    // Todo: delete this.
+    let target_core = crate::libos::percpu::insert_instance(EqTask {
+        instance_id: iid,
+        process_id: FIRST_PROCESS_ID,
+        task_id: FIRST_PROCESS_ID,
+        context: task_context,
+    })?;
+
     use std::os::arceos::modules::axhal::irq::{IPI_IRQ_NUM, send_ipi_one};
     send_ipi_one(target_core, IPI_IRQ_NUM);
 

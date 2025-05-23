@@ -21,7 +21,7 @@ use equation_defs::{GuestMappingType, InstanceInnerRegion, MMFrameAllocator, PTF
 
 use crate::libos::config::{
     SHIM_EKERNEL, SHIM_ERODATA, SHIM_ETEXT, SHIM_MMIO_REGIONS, SHIM_PHYS_VIRT_OFFSET, SHIM_SDATA,
-    SHIM_SKERNEL, SHIM_SRODATA, SHIM_STEXT, get_shim_image,
+    SHIM_SKERNEL, SHIM_SRODATA, SHIM_STEXT, SHIM_USER_ENTRY, get_shim_image,
 };
 use crate::libos::def::{
     GUEST_MEM_REGION_BASE_GPA, GUEST_PT_ROOT_GPA, INSTANCE_INNER_REGION_BASE_GPA,
@@ -643,6 +643,8 @@ impl<
             GUEST_PT_ROOT_GPA.as_usize(),
             PAGE_SIZE_2M,
         );
+        // Init process's context frame.
+        process_inner_region.init_kernel_stack_frame(SHIM_USER_ENTRY);
 
         // Alloc the page table root frame first.
         let guest_pg_root = guest_addrspace.alloc_pt_frame().map_err(|e| {

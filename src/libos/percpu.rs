@@ -19,7 +19,7 @@ use page_table_multiarch::{MappingFlags, PageSize, PagingHandler};
 use crate::libos::config::SHIM_ENTRY;
 use crate::libos::def::{EPTPList, GUEST_PT_ROOT_GPA, PerCPURegion};
 use crate::libos::hvc::InstanceCall;
-use crate::libos::instance::{InstanceRef, get_instances_by_id};
+use crate::libos::instance::{self, InstanceRef, get_instances_by_id};
 use crate::libos::region::HostPhysicalRegion;
 use crate::task_ext::{TaskExt, TaskExtType};
 use crate::vmm::VCpuRef;
@@ -121,12 +121,13 @@ impl<H: PagingHandler> LibOSPerCpu<H> {
     }
 
     pub fn current_process_id(&self) -> usize {
-        self.percpu_region().process_id as usize
+        self.percpu_region().process_id()
     }
 
     pub fn current_instance_id(&self) -> usize {
-        self.percpu_region().instance_id as usize
+        self.percpu_region().instance_id()
     }
+
     pub fn current_instance(&self) -> InstanceRef {
         get_instances_by_id(self.current_instance_id() as usize).expect("Instance not found")
     }
@@ -219,8 +220,8 @@ pub fn init_instance_percore_task(
         );
     }
 
-    remote_percpu.percpu_region_mut().instance_id = SHIM_INSTANCE_ID as _;
-    remote_percpu.percpu_region_mut().process_id = cpu_id as _;
+    remote_percpu.percpu_region_mut().current_task.instance_id = SHIM_INSTANCE_ID as _;
+    remote_percpu.percpu_region_mut().current_task.process_id = cpu_id as _;
     remote_percpu.percpu_region_mut().cpu_id = cpu_id as _;
 
     info!(
@@ -290,7 +291,7 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
 
         match vcpu.run() {
             Ok(exit_reason) => {
-                let instance_id = curcpu.percpu_region().instance_id;
+                let instance_id = curcpu.percpu_region().instance_id();
 
                 let instance_ref = if let Some(instance) = get_instances_by_id(instance_id as usize)
                 {
@@ -411,7 +412,9 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
 
 /// Insert a new instance (alone with its first process) to the ready_queue of the CPU with the least number of running tasks.
 /// Return the target CPU ID where the instance is inserted.
-pub fn insert_instance(instance_id: usize) -> AxResult<usize> {
+pub fn insert_instance(first_task: EqTask) -> AxResult<usize> {
+    let instance_id = first_task.instance_id;
+
     // Find the cpu with the lowest running task number.
     let mut target_cpu_id = 0;
     let mut min_task_num = usize::MAX;
@@ -441,11 +444,7 @@ pub fn insert_instance(instance_id: usize) -> AxResult<usize> {
     target_cpu
         .percpu_region_mut()
         .ready_queue
-        .insert(EqTask {
-            instance_id,
-            process_id: FIRST_PROCESS_ID,
-            task_id: FIRST_PROCESS_ID,
-        })
+        .insert(first_task)
         .map_err(|task| {
             error!(
                 "Failed to insert instance {} to CPU {}: {:?}",

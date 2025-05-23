@@ -311,6 +311,8 @@ fn gen_libos_configs() -> io::Result<()> {
     let mut skernel_value = None;
     let mut ekernel_value = None;
 
+    let mut shim_user_entry = None;
+
     for line in stdout.lines() {
         if line.contains(" _start") {
             entry_value = line
@@ -352,6 +354,11 @@ fn gen_libos_configs() -> io::Result<()> {
                 .split_whitespace()
                 .nth(1)
                 .and_then(|v| usize::from_str_radix(v, 16).ok());
+        } else if line.contains(" equation_user_run") {
+            shim_user_entry = line
+                .split_whitespace()
+                .nth(1)
+                .and_then(|v| usize::from_str_radix(v, 16).ok());
         }
 
         if entry_value.is_some()
@@ -362,6 +369,7 @@ fn gen_libos_configs() -> io::Result<()> {
             && erodata_value.is_some()
             && sdata_value.is_some()
             && ekernel_value.is_some()
+            && shim_user_entry.is_some()
         {
             break;
         }
@@ -376,6 +384,7 @@ fn gen_libos_configs() -> io::Result<()> {
     let erodata = erodata_value.expect("Failed to find erodata symbol");
     let sdata = sdata_value.expect("Failed to find sdata symbol");
     let ekernel = ekernel_value.expect("Failed to find ekernel symbol");
+    let user_entry = shim_user_entry.expect("Failed to find user_entry symbol");
 
     writeln!(output_file, "pub const SHIM_ENTRY: usize = {:#x};", entry)?;
     writeln!(
@@ -400,6 +409,12 @@ fn gen_libos_configs() -> io::Result<()> {
         output_file,
         "pub const SHIM_EKERNEL: usize = {:#x};",
         ekernel
+    )?;
+
+    writeln!(
+        output_file,
+        "pub const SHIM_USER_ENTRY: usize = {:#x};",
+        user_entry
     )?;
 
     // Read and append the contents of deps/shim/shim/src/platform/config.rs,
