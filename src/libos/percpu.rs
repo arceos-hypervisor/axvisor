@@ -19,13 +19,13 @@ use page_table_multiarch::{MappingFlags, PageSize, PagingHandler};
 use crate::libos::config::SHIM_ENTRY;
 use crate::libos::def::{EPTPList, GUEST_PT_ROOT_GPA, PerCPURegion};
 use crate::libos::hvc::InstanceCall;
-use crate::libos::instance::{self, InstanceRef, get_instances_by_id};
+use crate::libos::instance::{InstanceRef, get_instances_by_id};
 use crate::libos::region::HostPhysicalRegion;
 use crate::task_ext::{TaskExt, TaskExtType};
 use crate::vmm::VCpuRef;
 use crate::vmm::config::get_instance_cpus_mask;
+use equation_defs::SHIM_INSTANCE_ID;
 use equation_defs::task::EqTask;
-use equation_defs::{FIRST_PROCESS_ID, SHIM_INSTANCE_ID};
 
 const KERNEL_STACK_SIZE: usize = 0x40000; // 256 KiB
 
@@ -221,7 +221,11 @@ pub fn init_instance_percore_task(
     }
 
     remote_percpu.percpu_region_mut().current_task.instance_id = SHIM_INSTANCE_ID as _;
-    remote_percpu.percpu_region_mut().current_task.process_id = cpu_id as _;
+    // Set shim/gate process ID to 0 in all CPUs.
+    // Because the first (index 0) entry in EPTP list is reserved for gate process.
+    remote_percpu.percpu_region_mut().current_task.process_id = 0;
+    // Set shim task ID as cpu_id for no reason...
+    remote_percpu.percpu_region_mut().current_task.task_id = cpu_id;
     remote_percpu.percpu_region_mut().cpu_id = cpu_id as _;
 
     info!(
@@ -257,7 +261,7 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
         .processes
         .lock()
         .iter()
-        .find(|(_, p)| p.pid() == curcpu.current_process_id())
+        .find(|(_, p)| p.pid() == curcpu.cpu_id)
         .map(|(_, p)| p.ept_root())
         .unwrap();
 

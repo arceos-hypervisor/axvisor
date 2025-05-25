@@ -243,7 +243,15 @@ impl<H: PagingHandler> Instance<H> {
 
         info!("Instance {}: init eptp at: {:?}", id, init_ept_root_hpa);
 
-        let task_context = init_addrspace.process_inner_region_mut().kcontext;
+        let (rsp_gva, kstack_top_gva) = init_addrspace
+            .process_inner_region_mut()
+            .kernel_context_rsp_stack_top_gva();
+
+        let task_context = TaskContext {
+            kstack_top: HostVirtAddr::from_usize(kstack_top_gva),
+            rsp: rsp_gva as _,
+            fs_base: 0,
+        };
 
         let mut processes = BTreeMap::new();
         let init_process = Process::new(FIRST_PROCESS_ID, init_addrspace);

@@ -646,6 +646,8 @@ impl<
         // Init process's context frame.
         process_inner_region.init_kernel_stack_frame(SHIM_USER_ENTRY);
 
+        process_inner_region.dump_kernel_context_frame();
+
         // Alloc the page table root frame first.
         let guest_pg_root = guest_addrspace.alloc_pt_frame().map_err(|e| {
             error!("Failed to allocate page table root frame: {:?}", e);
