@@ -75,7 +75,11 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
 
 impl<'a, H: PagingHandler> InstanceCall<'a, H> {
     fn debug(&self) -> HyperCallResult {
-        info!("HDebug {:#x?}", self.args);
+        info!(
+            "{:?} HDebug {:#x?}",
+            self.pcpu.percpu_region().current_task,
+            self.args
+        );
 
         self.vcpu.get_arch_vcpu().dump();
 
