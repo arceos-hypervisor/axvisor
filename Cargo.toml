@@ -24,7 +24,7 @@ timer_list = "0.1.0"
 
 # System dependent modules provided by ArceOS.
 # axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm", features = [
-axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "45-动态plat-make-脚本接口适配", features = [
+axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", tag="0.1.0-dyn", features = [
     "alloc",
     "paging",
     # "fs",
