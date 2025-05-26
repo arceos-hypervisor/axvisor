@@ -12,7 +12,7 @@ cpu_num = 1
 # The physical CPU ids.
 phys_cpu_ids = [0x100]
 # Guest vm physical cpu sets.
-phys_cpu_sets = [2]
+phys_cpu_sets = [1]
 
 #
 # Vm kernel configs
