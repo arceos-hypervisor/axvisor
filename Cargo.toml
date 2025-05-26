@@ -24,7 +24,7 @@ timer_list = "0.1.0"
 
 # System dependent modules provided by ArceOS.
 # axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm", features = [
-axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", tag="0.1.0-dyn", features = [
+axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", tag="v0.1.1-dyn", features = [
     "alloc",
     "paging",
     # "fs",
@@ -46,7 +46,7 @@ memory_addr = "0.3"
 page_table_entry = { version = "0.5", features = ["arm-el2"] }
 page_table_multiarch = "0.5"
 # percpu = { version = "0.2.0", features = ["arm-el2"] }
-percpu = { git = "https://github.com/ZR233/percpu" }
+percpu = { git = "https://github.com/arceos-hypervisor/percpu.git" , branch = "custom-base"  }
 
 
 [build-dependencies]
@@ -56,6 +56,5 @@ prettyplease = "0.2"
 quote = "1.0"
 syn = "2.0"
 
-
 [patch.crates-io]
-percpu = { git = "https://github.com/ZR233/percpu" }
+percpu = { git = "https://github.com/arceos-hypervisor/percpu.git" , branch = "custom-base"  }
