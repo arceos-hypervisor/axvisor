@@ -6,8 +6,6 @@ use axerrno::AxResult;
 use axvm::config::AxVMCrateConfig;
 use memory_addr::PhysAddr;
 
-#[cfg(target_arch = "aarch64")]
-use crate::utils::cache::cache_clean_invalidate_d;
 use crate::vmm::VMRef;
 use crate::vmm::config::config;
 
@@ -25,15 +23,10 @@ pub fn load_vm_images(config: AxVMCrateConfig, vm: VMRef) -> AxResult {
     Ok(())
 }
 
-fn flush_vm_images(_ls: &[LoadRange]) {
-    #[cfg(target_arch = "aarch64")]
-    flush_vm_images_aarch64(_ls);
-}
-
-fn flush_vm_images_aarch64(ls: &[LoadRange]) {
+fn flush_vm_images(ls: &[LoadRange]) {
     for l in ls {
         unsafe {
-            cache_clean_invalidate_d(l.start.as_usize(), l.size);
+            crate::utils::cache::cache_clean_invalidate_d(l.start.as_usize(), l.size);
         }
     }
 }
