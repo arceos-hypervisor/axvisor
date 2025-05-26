@@ -30,8 +30,7 @@ pub const PERCPU_EPTP_LIST_REGION_GPA: GuestPhysAddr =
 pub const GP_ALL_EPTP_LIST_REGIN_GPA: GuestPhysAddr =
     GuestPhysAddr::from_usize(GP_ALL_EPTP_LIST_REGION_PA);
 
-pub const GP_INSTANCE_PERCPU_REGION_BASE_GPA: GuestPhysAddr =
-    GuestPhysAddr::from_usize(GP_INSTANCE_PERCPU_REGION_BASE_PA);
+pub const PERCPU_REGION_BASE_GPA: GuestPhysAddr = GuestPhysAddr::from_usize(PERCPU_REGION_BASE_PA);
 
 pub const GUEST_MEMORY_REGION_BASE_GVA: GuestVirtAddr =
     GuestVirtAddr::from_usize(GUEST_MEMORY_REGION_BASE_VA);

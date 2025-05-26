@@ -17,7 +17,10 @@ use page_table_multiarch::{
 use axaddrspace::npt::{EPTEntry, EPTMetadata};
 use axaddrspace::{AddrSpace, GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr};
 use equation_defs::bitmap_allocator::PageAllocator;
-use equation_defs::{GuestMappingType, InstanceInnerRegion, MMFrameAllocator, PTFrameAllocator};
+use equation_defs::{
+    GuestMappingType, InstanceInnerRegion, MAX_CPUS_NUM, MMFrameAllocator, PERCPU_REGION_SIZE,
+    PTFrameAllocator,
+};
 
 use crate::libos::config::{
     SHIM_EKERNEL, SHIM_ERODATA, SHIM_ETEXT, SHIM_MMIO_REGIONS, SHIM_PHYS_VIRT_OFFSET, SHIM_SDATA,
@@ -25,7 +28,8 @@ use crate::libos::config::{
 };
 use crate::libos::def::{
     GUEST_MEM_REGION_BASE_GPA, GUEST_PT_ROOT_GPA, INSTANCE_INNER_REGION_BASE_GPA,
-    PROCESS_INNER_REGION_BASE_GPA, SHIM_BASE_GPA, USER_STACK_BASE, USER_STACK_SIZE,
+    PERCPU_REGION_BASE_GPA, PERCPU_REGION_BASE_GVA, PROCESS_INNER_REGION_BASE_GPA, SHIM_BASE_GPA,
+    USER_STACK_BASE, USER_STACK_SIZE,
 };
 use crate::libos::def::{
     GUEST_MEMORY_REGION_BASE_GVA, GUEST_PT_BASE_GVA, INSTANCE_INNER_REGION_BASE_GVA,
@@ -502,6 +506,7 @@ impl<
     pub fn new(
         process_id: usize,
         instance_inner_region: HostPhysicalRegionRef<H>,
+        percpu_region_base: HostPhysAddr,
         gmt: GuestMappingType,
     ) -> AxResult<Self> {
         info!("Generate GuestAddrSpace with {:?}", gmt);
@@ -557,6 +562,15 @@ impl<
             INSTANCE_INNER_REGION_BASE_GPA,
             instance_inner_region.base(),
             instance_inner_region.size(),
+            MappingFlags::READ | MappingFlags::WRITE,
+            false,
+        )?;
+
+        // Map the per CPU region.
+        ept_addrspace.map_linear(
+            PERCPU_REGION_BASE_GPA,
+            percpu_region_base,
+            PERCPU_REGION_SIZE * MAX_CPUS_NUM,
             MappingFlags::READ | MappingFlags::WRITE,
             false,
         )?;
@@ -630,6 +644,7 @@ impl<
         let process_inner_region = guest_addrspace.process_inner_region_mut();
         process_inner_region.is_primary = true;
         process_inner_region.process_id = process_id;
+        process_inner_region.cpu_id = process_id;
         process_inner_region.mm_region_granularity = region_granularity;
         process_inner_region.mm_frame_allocator.init_with_page_size(
             PAGE_SIZE_4K,
@@ -791,6 +806,22 @@ impl<
                                 .add(gva.sub(PROCESS_INNER_REGION_BASE_GVA.as_usize()).as_usize())
                         },
                         process_inner_region_size_aligned,
+                        MappingFlags::READ | MappingFlags::WRITE | MappingFlags::USER,
+                        false,
+                        false,
+                    )
+                    .map_err(paging_err_to_ax_err)?;
+
+                // Map the per CPU region.
+                info!("Mapping per CPU region");
+                guest_addrspace
+                    .guest_map_region(
+                        PERCPU_REGION_BASE_GVA,
+                        |gva| {
+                            PERCPU_REGION_BASE_GPA
+                                .add(gva.sub(PERCPU_REGION_BASE_GVA.as_usize()).as_usize())
+                        },
+                        PERCPU_REGION_SIZE * MAX_CPUS_NUM,
                         MappingFlags::READ | MappingFlags::WRITE | MappingFlags::USER,
                         false,
                         false,

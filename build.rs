@@ -354,7 +354,7 @@ fn gen_libos_configs() -> io::Result<()> {
                 .split_whitespace()
                 .nth(1)
                 .and_then(|v| usize::from_str_radix(v, 16).ok());
-        } else if line.contains(" equation_user_run") {
+        } else if line.contains(" equation_user_entry") {
             shim_user_entry = line
                 .split_whitespace()
                 .nth(1)

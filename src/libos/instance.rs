@@ -17,15 +17,14 @@ use axaddrspace::npt::EPTPointer;
 use axaddrspace::{GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr, MappingFlags};
 use axvcpu::AxVcpuAccessGuestState;
 use equation_defs::{
-    FIRST_PROCESS_ID, GuestMappingType, INSTANCE_PERCPU_REGION_SIZE, InstanceInnerRegion,
-    InstanceType, MAX_INSTANCES_NUM, SHIM_INSTANCE_ID,
+    FIRST_PROCESS_ID, GuestMappingType, InstanceInnerRegion, InstanceType, MAX_CPUS_NUM,
+    MAX_INSTANCES_NUM, PERCPU_REGION_SIZE, SHIM_INSTANCE_ID,
 };
 
 use crate::libos::config::get_gate_process_data;
 use crate::libos::def::{
     EPTP_LIST_REGION_SIZE, EPTPList, GP_ALL_EPTP_LIST_REGIN_GPA, GP_ALL_EPTP_LIST_REGION_GVA,
-    GP_INSTANCE_PERCPU_REGION_BASE_GPA, GP_PERCPU_EPT_LIST_REGION_GVA, INSTANCE_INNER_REGION_SIZE,
-    PERCPU_EPTP_LIST_REGION_GPA, PERCPU_REGION_BASE_GVA,
+    GP_PERCPU_EPT_LIST_REGION_GVA, INSTANCE_INNER_REGION_SIZE, PERCPU_EPTP_LIST_REGION_GPA,
 };
 use crate::libos::gaddrspace::{GuestAddrSpace, init_shim_kernel};
 use crate::libos::process::Process;
@@ -40,9 +39,11 @@ use crate::vmm::config::{get_instance_cpus, get_instance_cpus_mask};
 const MAX_PROCESS_NUM: usize = 512;
 
 static INSTANCE_ID_MAP: Mutex<Bitmap<MAX_INSTANCES_NUM>> = Mutex::new(Bitmap::new());
+static INSTANCES: Mutex<BTreeMap<usize, InstanceRef>> = Mutex::new(BTreeMap::new());
+
 static INSTANCES_EPTP_LIST_REGIONS: LazyInit<HostPhysicalRegion<PagingHandlerImpl>> =
     LazyInit::new();
-static INSTANCES: Mutex<BTreeMap<usize, InstanceRef>> = Mutex::new(BTreeMap::new());
+static PERCPU_REGIONS: LazyInit<HostPhysicalRegion<PagingHandlerImpl>> = LazyInit::new();
 
 /// The reference type of a task.
 pub type InstanceRef = Arc<Instance<PagingHandlerImpl>>;
@@ -126,6 +127,17 @@ impl<H: PagingHandler> Instance<H> {
             EPTP_LIST_REGION_SIZE * MAX_INSTANCES_NUM,
             Some(PAGE_SIZE_4K),
         )?);
+        // Init per CPU regions.
+        PERCPU_REGIONS.init_once(HostPhysicalRegion::allocate(
+            PERCPU_REGION_SIZE * MAX_CPUS_NUM,
+            Some(PAGE_SIZE_4K),
+        )?);
+
+        warn!(
+            "PERCPU_REGIONS range [{:?}, {:?}]",
+            PERCPU_REGIONS.base(),
+            PERCPU_REGIONS.base() + PERCPU_REGIONS.size()
+        );
 
         let pid = get_instance_cpus_mask().first_index().ok_or_else(|| {
             warn!("No CPU available for instance");
@@ -145,6 +157,7 @@ impl<H: PagingHandler> Instance<H> {
         let mut shim_addrspace = GuestAddrSpace::new(
             pid,
             instance_inner_region.clone(),
+            PERCPU_REGIONS.base(),
             GuestMappingType::CoarseGrainedSegmentation2M,
         )?;
 
@@ -226,6 +239,7 @@ impl<H: PagingHandler> Instance<H> {
         let mut init_addrspace = GuestAddrSpace::new(
             FIRST_PROCESS_ID,
             instance_inner_region.clone(),
+            PERCPU_REGIONS.base(),
             mapping_type,
         )?;
 
@@ -492,28 +506,13 @@ impl<H: PagingHandler> Instance<H> {
             // Init vCPU for each core.
             let vcpu = Arc::new(VCpu::new(cpu_id, 0, Some(1 << cpu_id), cpu_id)?);
 
-            // Alloc and map percpu instance region.
-            let percpu_region =
-                HostPhysicalRegion::allocate(INSTANCE_PERCPU_REGION_SIZE, Some(PAGE_SIZE_4K))?;
-            gp_as
-                .guest_map_region(
-                    PERCPU_REGION_BASE_GVA,
-                    |gva| {
-                        GP_INSTANCE_PERCPU_REGION_BASE_GPA.add(gva.sub_addr(PERCPU_REGION_BASE_GVA))
-                    },
-                    percpu_region.size(),
-                    MappingFlags::READ | MappingFlags::WRITE,
-                    false,
-                    false,
-                )
-                .map_err(super::gaddrspace::paging_err_to_ax_err)?;
-            gp_as.ept_map_linear(
-                GP_INSTANCE_PERCPU_REGION_BASE_GPA,
-                percpu_region.base(),
-                percpu_region.size(),
-                MappingFlags::READ | MappingFlags::WRITE,
-                false,
-            )?;
+            // The PerCPU region is allocated once globaly and mapped to each guest address space,
+            // each vCPU will have its own region based on the CPU ID.
+            let percpu_region = PERCPU_REGIONS
+                .get()
+                .expect("PERCPU_REGIONS uninitialized")
+                .base()
+                .add(cpu_id * PERCPU_REGION_SIZE);
 
             // Map the percpu EPTP list region for gate process.
             // GVA -> GPA

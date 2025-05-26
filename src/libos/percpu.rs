@@ -20,7 +20,6 @@ use crate::libos::config::SHIM_ENTRY;
 use crate::libos::def::{EPTPList, GUEST_PT_ROOT_GPA, PerCPURegion};
 use crate::libos::hvc::InstanceCall;
 use crate::libos::instance::{InstanceRef, get_instances_by_id};
-use crate::libos::region::HostPhysicalRegion;
 use crate::task_ext::{TaskExt, TaskExtType};
 use crate::vmm::VCpuRef;
 use crate::vmm::config::get_instance_cpus_mask;
@@ -56,7 +55,7 @@ impl From<usize> for LibOSPerCpuStatus {
 pub(super) struct LibOSPerCpu<H: PagingHandler> {
     cpu_id: usize,
     vcpu: VCpuRef,
-    percpu_region: HostPhysicalRegion<H>,
+    percpu_region: HostPhysAddr,
     cpu_eptp_list_region: HostPhysAddr,
     status: AtomicUsize,
     _phantom: PhantomData<H>,
@@ -64,11 +63,21 @@ pub(super) struct LibOSPerCpu<H: PagingHandler> {
 
 impl<H: PagingHandler> LibOSPerCpu<H> {
     pub fn percpu_region(&self) -> &'static PerCPURegion {
-        unsafe { self.percpu_region.as_ptr_of::<PerCPURegion>().as_ref() }.unwrap()
+        unsafe {
+            H::phys_to_virt(self.percpu_region)
+                .as_ptr_of::<PerCPURegion>()
+                .as_ref()
+        }
+        .unwrap()
     }
 
     pub fn percpu_region_mut(&mut self) -> &'static mut PerCPURegion {
-        unsafe { self.percpu_region.as_mut_ptr_of::<PerCPURegion>().as_mut() }.unwrap()
+        unsafe {
+            H::phys_to_virt(self.percpu_region)
+                .as_mut_ptr_of::<PerCPURegion>()
+                .as_mut()
+        }
+        .unwrap()
     }
 
     #[allow(unused)]
@@ -175,11 +184,7 @@ fn current_libos_percpu() -> &'static LibOSPerCpu<PagingHandlerImpl> {
 #[percpu::def_percpu]
 static LIBOS_PERCPU: LazyInit<LibOSPerCpu<PagingHandlerImpl>> = LazyInit::new();
 
-pub fn init_instance_percore_task(
-    cpu_id: usize,
-    vcpu: VCpuRef,
-    percpu_region: HostPhysicalRegion<PagingHandlerImpl>,
-) {
+pub fn init_instance_percore_task(cpu_id: usize, vcpu: VCpuRef, percpu_region: HostPhysAddr) {
     assert!(cpu_id < SMP, "Invalid CPU ID: {}", cpu_id);
     if !get_instance_cpus_mask().get(cpu_id) {
         warn!(
@@ -229,9 +234,10 @@ pub fn init_instance_percore_task(
     remote_percpu.percpu_region_mut().cpu_id = cpu_id as _;
 
     info!(
-        "LibOSPerCpu CPU[{}] initialized, vcpu {}, shared region {:?}, eptp list region {:?}",
+        "LibOSPerCpu CPU[{}] initialized, vcpu {}, percpu region[{}] @{:?}, eptp list region {:?}",
         remote_percpu.cpu_id,
         remote_percpu.vcpu.id(),
+        remote_percpu.percpu_region().cpu_id,
         remote_percpu.percpu_region,
         remote_percpu.cpu_eptp_list_region
     );
