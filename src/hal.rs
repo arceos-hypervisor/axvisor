@@ -141,7 +141,10 @@ mod memory_api_impl {
         <AxMmHalImpl as AxMmHal>::alloc_frame()
     }
 
-    extern fn alloc_contiguous_frames(num_frames: usize, frame_align_pow2: usize) -> Option<HostPhysAddr> {
+    extern fn alloc_contiguous_frames(
+        num_frames: usize,
+        frame_align_pow2: usize,
+    ) -> Option<HostPhysAddr> {
         arceos::modules::axalloc::global_allocator()
             .alloc_pages(num_frames, PAGE_SIZE_4K << frame_align_pow2)
             .map(|vaddr| <AxMmHalImpl as AxMmHal>::virt_to_phys(vaddr.into()))
@@ -150,6 +153,10 @@ mod memory_api_impl {
 
     extern fn dealloc_frame(paddr: HostPhysAddr) {
         <AxMmHalImpl as AxMmHal>::dealloc_frame(paddr)
+    }
+
+    extern fn dealloc_contiguous_frames(paddr: HostPhysAddr, num_frames: usize) {
+        arceos::modules::axalloc::global_allocator().dealloc_pages(paddr.as_usize(), num_frames);
     }
 
     extern fn phys_to_virt(paddr: HostPhysAddr) -> HostVirtAddr {
