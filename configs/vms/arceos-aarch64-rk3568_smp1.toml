@@ -1,0 +1,75 @@
+# Vm base info configs
+#
+[base]
+# Guest vm id.
+id = 1
+# Guest vm name.
+name = "arceos"
+# Virtualization type.
+vm_type = 1
+# The number of virtual CPUs.
+cpu_num = 1
+# The physical CPU ids.
+phys_cpu_ids = [0x100]
+# Guest vm physical cpu sets.
+phys_cpu_sets = [1]
+
+#
+# Vm kernel configs
+#
+[kernel]
+# The entry point of the kernel image.
+entry_point = 0x7008_0000
+# The location of image: "memory" | "fs".
+# Load from file system.
+image_location = "fs"
+# The load address of the kernel image.
+kernel_load_addr = 0x7008_0000
+## The file path of the kernel image.
+kernel_path = "/guest/arceos-aarch64-rk3568_smp1.bin"
+## The file path of the device tree blob (DTB).
+dtb_path = "/guest/arceos-aarch64-rk3568_smp1.dtb"
+dtb_load_addr = 0x7000_0000
+# Memory regions with format (`base_paddr`, `size`, `flags`, `map_type`).
+# For `map_type`, 0 means `MAP_ALLOC`, 1 means `MAP_IDENTICAL`.
+memory_regions = [
+   # [0x1000_0000, 0x800_0000, 0x7, 0], 
+    [0x7000_0000, 0x1000_0000, 0x7, 1], # System RAM 1G MAP_IDENTICAL
+    # [0x1_f000_0000, 0x1000_0000 , 0x7, 1], # System RAM 1G MAP_IDENTICAL
+  # [0x600_0000, 0x240_0000, 0x7, 1], # System RAM MAP_IDENTICAL
+  #  [0x1_f000_0000, 0x1000_0000, 0x7, 1], # System RAM MAP_IDENTICAL
+]
+
+#
+# Device specifications
+#
+[devices]
+# Emu_devices.
+# Name Base-Ipa Ipa_len Alloc-Irq Emu-Type EmuConfig.
+emu_devices = []
+
+# Pass-through devices.
+# Name Base-Ipa Base-Pa Length Alloc-Irq.
+passthrough_devices = [
+    [
+        "UART2",
+        0xfe66_0000,
+        0xfe66_0000,
+        0x10000,
+        0x1,
+    ],
+    [
+        "gic-v3",
+        0xfd40_0000,
+        0xfd40_0000,
+        0x10000,
+        0x1,
+    ],
+    [
+        "gic-v3-its",
+        0xfd44_0000,
+        0xfd44_0000,
+        0x100000,
+        0x1,
+    ],
+]
