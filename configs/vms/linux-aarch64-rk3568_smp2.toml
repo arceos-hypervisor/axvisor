@@ -28,7 +28,7 @@ kernel_load_addr = 0x8008_0000
 ## The file path of the kernel image.
 kernel_path = "/guest/Image"
 ## The file path of the device tree blob (DTB).
-dtb_path = "/guest/linux_smp2.dtb"
+dtb_path = "/guest/linux-aarch64-rk3568_smp2.dtb"
 dtb_load_addr = 0x8000_0000
 # Memory regions with format (`base_paddr`, `size`, `flags`, `map_type`).
 # For `map_type`, 0 means `MAP_ALLOC`, 1 means `MAP_IDENTICAL`.
