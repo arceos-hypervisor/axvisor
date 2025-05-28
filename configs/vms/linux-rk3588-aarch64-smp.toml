@@ -19,18 +19,18 @@ phys_cpu_sets = [1, 2, 4, 8]
 #
 [kernel]
 # The entry point of the kernel image.
-entry_point = 0x1008_0000
+entry_point = 0x1020_0000
 # The load address of the kernel image.
-kernel_load_addr = 0x1008_0000
+kernel_load_addr = 0x1020_0000
 # The load address of the device tree blob (DTB).
 dtb_load_addr = 0x1000_0000
 # The location of image: "memory" | "fs".
 # load from memory
 image_location = "memory"
 # The file path of the kernel image.
-kernel_path = "/path/to/linux-aarch64.bin"
+kernel_path = "Image-5.10.198"
 # The file path of the device tree blob (DTB).
-dtb_path = "/path/to/dtb"
+dtb_path = "aio-3588jd4.dtb"
 
 # load from file system.
 # image_location = "fs".
