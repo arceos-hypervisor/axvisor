@@ -1,5 +1,5 @@
 # Architecture and platform resolving
-
+PLATFORM_DYN_LIST := aarch64-dyn
 PLAT_CONFIG_DIR := configs/platforms
 
 ifeq ($(PLATFORM),)
@@ -18,6 +18,17 @@ else
   # `PLATFORM` is specified, override the `ARCH` variables
   builtin_platforms := $(patsubst $(PLAT_CONFIG_DIR)/%.toml,%,$(wildcard $(PLAT_CONFIG_DIR)/*))
   ifneq ($(filter $(PLATFORM),$(builtin_platforms)),)
+    # builtin platform
+    _arch := $(word 1,$(subst -, ,$(PLATFORM)))
+    PLAT_NAME := $(PLATFORM)
+    PLAT_CONFIG := configs/platforms/$(PLAT_NAME).toml
+    ifneq ($(filter $(PLATFORM),$(PLATFORM_DYN_LIST)),)
+      $(info Using $(_arch) dyn platform)
+      PLATFORM_IS_DYN := 1
+      override FEATURES := $(shell echo $(FEATURES) | tr ',' ' ')
+      override FEATURES += plat-dyn
+    endif
+  else  ifneq ($(filter $(PLATFORM),$(builtin_platforms)),)
     # builtin platform
     _arch := $(word 1,$(subst -, ,$(PLATFORM)))
     PLAT_NAME := $(PLATFORM)

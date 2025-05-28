@@ -215,9 +215,8 @@ fn generate_guest_img_loading_functions(
 fn main() -> io::Result<()> {
     let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
 
-    let is_plat_dyn = std::env::var("CARGO_FEATURE_PLAT_DYN").is_ok();
-
     let platform = env::var("AX_PLATFORM").unwrap_or("".to_string());
+    let is_plat_dyn = platform.contains("-dyn");
     println!("cargo:rustc-cfg=platform=\"{}\"", platform);
 
     if platform != "dummy" || is_plat_dyn {

@@ -1,0 +1,14 @@
+# Architecture identifier.
+arch = "aarch64"                    # str
+# Platform identifier.
+platform = "aarch64-dyn"      # str
+
+#
+# Platform configs
+#
+[plat]
+# Platform family.
+family = "aarch64-dyn" # str
+
+# Not used.
+kernel-base-vaddr = "0x0"     # uint

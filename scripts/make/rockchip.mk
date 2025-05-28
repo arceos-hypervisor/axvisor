@@ -6,6 +6,6 @@ rockchip: build
 	fi
 	
 	@echo 'Making extboot.img'
-	./tool/extboot.sh --kernel axvisor_aarch64-qemu-virt-hv.bin --img tmp/extboot.img
+	./tool/extboot.sh --kernel $(OUT_BIN) --img tmp/extboot.img
 	sudo upgrade_tool di -boot  tmp/extboot.img
 	sudo upgrade_tool rd

@@ -84,10 +84,11 @@ else
   APP_TYPE := c
 endif
 
-# Feature parsing
-include scripts/make/features.mk
 # Platform resolving
 include scripts/make/platform.mk
+# Feature parsing
+include scripts/make/features.mk
+
 
 # Target
 ifeq ($(ARCH), x86_64)
