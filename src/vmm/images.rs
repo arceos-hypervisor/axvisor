@@ -61,40 +61,6 @@ fn load_vm_images_from_memory(config: AxVMCrateConfig, vm: VMRef) -> AxResult<Ve
 
     // Load DTB image
     if let Some(buffer) = vm_imags.dtb {
-        // extern crate fdt_rs;
-
-        // use fdt_rs::base::*;
-        // use fdt_rs::prelude::*;
-        // // Initialize the devtree using an &[u8] array.
-        // let devtree = unsafe {
-        //     // Get the actual size of the device tree after reading its header.
-        //     let size = DevTree::read_totalsize(buffer).unwrap();
-        //     let buf = &buffer[..size];
-
-        //     // Create the device tree handle
-        //     DevTree::new(buf).unwrap()
-        // };
-
-        // let mut node_iter = devtree.nodes();
-        // while let Some(node) = node_iter.next().unwrap() {
-        //     warn!("DTB {}", node.name().unwrap());
-        // }
-
-        use fdt_parser::Fdt;
-
-        let fdt = Fdt::from_bytes(buffer)
-            .expect("Failed to parse DTB image, perhaps the DTB is invalid or corrupted");
-
-        for nodes in fdt.all_nodes() {
-            warn!("DTB node: {:?}", nodes.name());
-        }
-
-        for mem in fdt.memory() {
-            for region in mem.regions() {
-                warn!("DTB memory region: {:?}", region);
-            }
-        }
-
         load_ranges.append(
             &mut load_vm_image_from_memory(
                 buffer,

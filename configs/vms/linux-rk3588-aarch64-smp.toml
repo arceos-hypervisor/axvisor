@@ -28,9 +28,9 @@ dtb_load_addr = 0x1000_0000
 # load from memory
 image_location = "memory"
 # The file path of the kernel image.
-kernel_path = "Image-5.10.198"
+kernel_path = "Image-5.10.198.bin"
 # The file path of the device tree blob (DTB).
-dtb_path = "aio-3588jd4.dtb"
+dtb_path = "aio-rk3588-jd4.dtb"
 
 # load from file system.
 # image_location = "fs".

@@ -1,3 +1,28 @@
+## Setup TFTP Server
+
+```bash
+sudo apt-get install tftpd-hpa tftp-hpa
+sudo chmod 777 /srv/tftp
+```
+
+judge if TFTP works
+
+```bash
+echo "TFTP Server Test" > /srv/tftp/testfile.txt
+tftp localhost
+tftp> get testfile.txt
+tftp> quit
+cat testfile.txt 
+```
+
+You should see `TFTP Server Test` on your screen.
+
+## Compile device tree
+
+```bash
+dtc -o aio-rk3588-jd4.dtb -O dtb -I dts aio-rk3588-jd4.dts
+```
+
 ## Compile AxVisor
 
 * compile
@@ -20,7 +45,7 @@ cp axvisor_aarch64-rk3588j.img /srv/tftp/axvisor
 
 ```bash
 # 这是 tftp 服务器所在的主机 ip
-setenv serverip 192.168.50.18
+setenv serverip 192.168.50.97
 # 这是 rk3588 所在设备的 ip (Firefly Linux 自己 DHCP 拿到的地址)
 setenv ipaddr 192.168.50.8 
 # 使用 tftp 加载镜像到指定内存地址并 boot

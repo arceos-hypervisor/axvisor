@@ -152,10 +152,16 @@ dependencies = [
 [[package]]
 name = "arceos_api"
 version = "0.1.0"
+<<<<<<< HEAD
 source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.6-dyn#207f5bf2992dd919bfc08154b077ae92ecd4f9f2"
 dependencies = [
  "axalloc",
  "axconfig 0.1.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.6-dyn)",
+=======
+dependencies = [
+ "axalloc",
+ "axconfig 0.1.0",
+>>>>>>> 7f15074 ([feat] introduce dtb parsing during vm config setup)
  "axdriver",
  "axerrno",
  "axfeat",
@@ -185,7 +191,6 @@ dependencies = [
 [[package]]
 name = "arm_gicv2"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arm_gicv2#eee14941d490719f6689e82f9a87caea6767bdc3"
 dependencies = [
  "tock-registers 0.8.1",
 ]
@@ -202,7 +207,6 @@ dependencies = [
 [[package]]
 name = "arm_vcpu"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arm_vcpu.git#4dd7e5df7949336a11936c50b99ab1c608871060"
 dependencies = [
  "aarch64-cpu 9.4.0",
  "aarch64_sysreg",
@@ -236,7 +240,6 @@ checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
 [[package]]
 name = "axaddrspace"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/axaddrspace.git#2ed4d076e01f966710bd6480131abd3a9ffb8930"
 dependencies = [
  "axerrno",
  "bit_field",
@@ -254,7 +257,10 @@ dependencies = [
 [[package]]
 name = "axalloc"
 version = "0.1.0"
+<<<<<<< HEAD
 source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.6-dyn#207f5bf2992dd919bfc08154b077ae92ecd4f9f2"
+=======
+>>>>>>> 7f15074 ([feat] introduce dtb parsing during vm config setup)
 dependencies = [
  "allocator",
  "axerrno",
@@ -267,7 +273,10 @@ dependencies = [
 [[package]]
 name = "axconfig"
 version = "0.1.0"
+<<<<<<< HEAD
 source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.6-dyn#207f5bf2992dd919bfc08154b077ae92ecd4f9f2"
+=======
+>>>>>>> 7f15074 ([feat] introduce dtb parsing during vm config setup)
 dependencies = [
  "axconfig-gen-macros",
 ]
@@ -275,7 +284,11 @@ dependencies = [
 [[package]]
 name = "axconfig"
 version = "0.1.0"
+<<<<<<< HEAD
 source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=vmm#cd93ea7bed96511ad57d07f1106006cfe86ec1ab"
+=======
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=vmm#20d52d36d2eeb05edd7240c0e0b0cf17993c38bc"
+>>>>>>> 7f15074 ([feat] introduce dtb parsing during vm config setup)
 dependencies = [
  "axconfig-gen-macros",
 ]
@@ -305,7 +318,6 @@ dependencies = [
 [[package]]
 name = "axdevice"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/axdevice.git#8652ce80b2c53310fb7b0f8ac275f2dfcfbb1338"
 dependencies = [
  "axaddrspace",
  "axdevice_base",
@@ -319,7 +331,6 @@ dependencies = [
 [[package]]
 name = "axdevice_base"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/axdevice_crates.git#28d49f147793997a9db1ebb75a34295cde2a107d"
 dependencies = [
  "axaddrspace",
  "axerrno",
@@ -331,10 +342,16 @@ dependencies = [
 [[package]]
 name = "axdriver"
 version = "0.1.0"
+<<<<<<< HEAD
 source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.6-dyn#207f5bf2992dd919bfc08154b077ae92ecd4f9f2"
 dependencies = [
  "axalloc",
  "axconfig 0.1.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.6-dyn)",
+=======
+dependencies = [
+ "axalloc",
+ "axconfig 0.1.0",
+>>>>>>> 7f15074 ([feat] introduce dtb parsing during vm config setup)
  "axdriver_base",
  "axdriver_block",
  "axdriver_pci",
@@ -389,7 +406,10 @@ dependencies = [
 [[package]]
 name = "axfeat"
 version = "0.1.0"
+<<<<<<< HEAD
 source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.6-dyn#207f5bf2992dd919bfc08154b077ae92ecd4f9f2"
+=======
+>>>>>>> 7f15074 ([feat] introduce dtb parsing during vm config setup)
 dependencies = [
  "axalloc",
  "axdriver",
@@ -404,7 +424,10 @@ dependencies = [
 [[package]]
 name = "axfs"
 version = "0.1.0"
+<<<<<<< HEAD
 source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.6-dyn#207f5bf2992dd919bfc08154b077ae92ecd4f9f2"
+=======
+>>>>>>> 7f15074 ([feat] introduce dtb parsing during vm config setup)
 dependencies = [
  "axdriver",
  "axdriver_block",
@@ -458,15 +481,22 @@ dependencies = [
 [[package]]
 name = "axhal"
 version = "0.1.0"
+<<<<<<< HEAD
 source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.6-dyn#207f5bf2992dd919bfc08154b077ae92ecd4f9f2"
+=======
+>>>>>>> 7f15074 ([feat] introduce dtb parsing during vm config setup)
 dependencies = [
  "aarch64-cpu 10.0.0",
  "arm-gic-driver",
  "arm_gicv2",
  "arm_pl011",
  "axalloc",
+<<<<<<< HEAD
  "axconfig 0.1.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.6-dyn)",
  "axerrno",
+=======
+ "axconfig 0.1.0",
+>>>>>>> 7f15074 ([feat] introduce dtb parsing during vm config setup)
  "axlog",
  "axplat-dyn",
  "bitflags 2.9.1",
@@ -510,7 +540,10 @@ dependencies = [
 [[package]]
 name = "axlog"
 version = "0.1.0"
+<<<<<<< HEAD
 source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.6-dyn#207f5bf2992dd919bfc08154b077ae92ecd4f9f2"
+=======
+>>>>>>> 7f15074 ([feat] introduce dtb parsing during vm config setup)
 dependencies = [
  "cfg-if",
  "crate_interface",
@@ -521,9 +554,15 @@ dependencies = [
 [[package]]
 name = "axmm"
 version = "0.1.0"
+<<<<<<< HEAD
 source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.6-dyn#207f5bf2992dd919bfc08154b077ae92ecd4f9f2"
 dependencies = [
  "axalloc",
+=======
+dependencies = [
+ "axalloc",
+ "axconfig 0.1.0",
+>>>>>>> 7f15074 ([feat] introduce dtb parsing during vm config setup)
  "axerrno",
  "axhal",
  "kspin",
@@ -536,7 +575,10 @@ dependencies = [
 [[package]]
 name = "axns"
 version = "0.1.0"
+<<<<<<< HEAD
 source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.6-dyn#207f5bf2992dd919bfc08154b077ae92ecd4f9f2"
+=======
+>>>>>>> 7f15074 ([feat] introduce dtb parsing during vm config setup)
 dependencies = [
  "crate_interface",
  "lazyinit",
@@ -545,6 +587,7 @@ dependencies = [
 [[package]]
 name = "axplat-dyn"
 version = "0.1.0"
+<<<<<<< HEAD
 source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.6-dyn#207f5bf2992dd919bfc08154b077ae92ecd4f9f2"
 dependencies = [
  "axalloc",
@@ -559,6 +602,11 @@ source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.6-dyn#207
 dependencies = [
  "axalloc",
  "axconfig 0.1.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.6-dyn)",
+=======
+dependencies = [
+ "axalloc",
+ "axconfig 0.1.0",
+>>>>>>> 7f15074 ([feat] introduce dtb parsing during vm config setup)
  "axdriver",
  "axfs",
  "axhal",
@@ -575,7 +623,10 @@ dependencies = [
 [[package]]
 name = "axstd"
 version = "0.1.0"
+<<<<<<< HEAD
 source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.6-dyn#207f5bf2992dd919bfc08154b077ae92ecd4f9f2"
+=======
+>>>>>>> 7f15074 ([feat] introduce dtb parsing during vm config setup)
 dependencies = [
  "arceos_api",
  "axerrno",
@@ -587,7 +638,10 @@ dependencies = [
 [[package]]
 name = "axsync"
 version = "0.1.0"
+<<<<<<< HEAD
 source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.6-dyn#207f5bf2992dd919bfc08154b077ae92ecd4f9f2"
+=======
+>>>>>>> 7f15074 ([feat] introduce dtb parsing during vm config setup)
 dependencies = [
  "axtask",
  "kspin",
@@ -596,9 +650,14 @@ dependencies = [
 [[package]]
 name = "axtask"
 version = "0.1.0"
+<<<<<<< HEAD
 source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.6-dyn#207f5bf2992dd919bfc08154b077ae92ecd4f9f2"
 dependencies = [
  "axconfig 0.1.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.6-dyn)",
+=======
+dependencies = [
+ "axconfig 0.1.0",
+>>>>>>> 7f15074 ([feat] introduce dtb parsing during vm config setup)
  "axhal",
  "cfg-if",
  "cpumask",
@@ -616,7 +675,10 @@ dependencies = [
 [[package]]
 name = "axvcpu"
 version = "0.1.0"
+<<<<<<< HEAD
 source = "git+https://github.com/arceos-hypervisor/axvcpu.git#a5ad8267ec082b232d043714705fde1e9ce2dd22"
+=======
+>>>>>>> 7f15074 ([feat] introduce dtb parsing during vm config setup)
 dependencies = [
  "axaddrspace",
  "axerrno",
@@ -656,7 +718,6 @@ dependencies = [
 [[package]]
 name = "axvm"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/axvm.git#69b48a93cedb031a78f59d6219bd323d12e96a71"
 dependencies = [
  "arm_vcpu",
  "axaddrspace",
@@ -2379,3 +2440,7 @@ dependencies = [
  "quote",
  "syn 2.0.102",
 ]
+
+[[patch.unused]]
+name = "arm_vgic"
+version = "0.0.0"
