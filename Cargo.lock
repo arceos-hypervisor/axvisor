@@ -202,7 +202,7 @@ dependencies = [
 [[package]]
 name = "arm_vcpu"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arm_vcpu.git#1e107bc68bedb82c387eedb423d08c84ff9ea09e"
+source = "git+https://github.com/arceos-hypervisor/arm_vcpu.git#4dd7e5df7949336a11936c50b99ab1c608871060"
 dependencies = [
  "aarch64-cpu 9.4.0",
  "aarch64_sysreg",
@@ -637,6 +637,7 @@ dependencies = [
  "bitflags 2.9.1",
  "cfg-if",
  "crate_interface",
+ "fdt-parser",
  "kspin",
  "lazyinit",
  "log",

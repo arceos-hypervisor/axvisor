@@ -49,6 +49,8 @@ page_table_multiarch = "0.5"
 percpu = { git = "https://github.com/arceos-hypervisor/percpu.git", branch = "custom-base" }
 
 
+fdt-parser = "0.4"
+
 [build-dependencies]
 toml = { git = "https://github.com/arceos-hypervisor/toml.git", branch = "no_std" }
 axconfig = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm" }
