@@ -153,11 +153,11 @@ mod fs {
         info!("Loading VM images from filesystem");
         let mut load_ranges = Vec::new();
         // Load kernel image.
-        load_vm_image(
+        load_ranges.append(&mut load_vm_image(
             config.kernel.kernel_path,
             GuestPhysAddr::from(config.kernel.kernel_load_addr),
             vm.clone(),
-        )?;
+        )?);
         // Load BIOS image if needed.
         if let Some(bios_path) = config.kernel.bios_path {
             if let Some(bios_load_addr) = config.kernel.bios_load_addr {
