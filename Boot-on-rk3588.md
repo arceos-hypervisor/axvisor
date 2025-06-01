@@ -23,7 +23,19 @@ You should see `TFTP Server Test` on your screen.
 dtc -o aio-rk3588-jd4.dtb -O dtb -I dts aio-rk3588-jd4.dts
 ```
 
+## Prepare Linux kernel bianry
+
+```bash
+scp xxx@192.168.xxx.xxx:/home/xxx/firefly_rk3588_SDK/kernel/arch/arm64/boot/Image configs/vms/Image.bin
+```
+
 ## Compile AxVisor
+
+* get deps
+```bash
+./tool/dev_env.py
+cd crates/arceos && git checkout rk3588_jd4
+```
 
 * compile
 
