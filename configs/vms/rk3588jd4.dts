@@ -9539,7 +9539,7 @@
 
 	chosen {
 		linux,initrd-end = <0x00 0xaac72ae>;
-		bootargs = "storagemedia=emmc androidboot.storagemedia=emmc androidboot.mode=normal  storagenode=/mmc@fe2e0000 androidboot.verifiedbootstate=orange ro rootwait earlycon=uart8250,mmio32,0xfeb50000 console=ttyFIQ0 irqchip.gicv3_pseudo_nmi=0 root=PARTLABEL=rootfs rootfstype=ext4 overlayroot=device:dev=PARTLABEL=userdata,fstype=ext4,mkfs=1 coherent_pool=1m systemd.gpt_auto=0 cgroup_enable=memory swapaccount=1 net.ifnames=0 rcupdate.rcu_expedited=0 comm-05/28/2025 androidboot.fwver=ddr-v1.15-d5483af87d,spl-v1.13,bl31-v1.44,bl32-v1.15,uboot--boot";
+		bootargs = "storagemedia=emmc androidboot.storagemedia=emmc androidboot.mode=normal  storagenode=/mmc@fe2e0000 androidboot.verifiedbootstate=orange ro rootwait earlycon=uart8250,mmio32,0xfeb50000 console=ttyFIQ0 irqchip.gicv3_pseudo_nmi=0 root=PARTLABEL=rootfs rootfstype=ext4 overlayroot=device:dev=PARTLABEL=userdata,fstype=ext4,mkfs=1 coherent_pool=1m systemd.gpt_auto=0 cgroup_enable=memory swapaccount=1 net.ifnames=0 rcupdate.rcu_expedited=1 rcu_nocbs=all comm-05/28/2025 androidboot.fwver=ddr-v1.15-d5483af87d,spl-v1.13,bl31-v1.44,bl32-v1.15,uboot--boot";
 		linux,initrd-start = <0x00 0xa200000>;
 		phandle = <0x48d>;
 	};
@@ -10347,70 +10347,306 @@
 		#address-cells = <0x01>;
 		#size-cells = <0x00>;
 
-		cpu@0 {
-			device_type = "cpu";
-			compatible = "arm,cortex-a55";
-			reg = <0x00>;
-			enable-method = "psci";
-			clocks = <0x0e 0x00>;
-			cpu-idle-states = <0x10>;
-			operating-points-v2 = <0x0f>;
-			capacity-dmips-mhz = <0x212>;
-
-			cpu-supply = <0x12>;
-			mem-supply = <0x12>;
-			dynamic-power-coefficient = <0x64>;
-
-			i-cache-line-size = <0x40>;
-			i-cache-size = <0x8000>;
-			i-cache-sets = <0x80>;
-
-			d-cache-line-size = <0x40>;
-			d-cache-size = <0x8000>;
-			d-cache-sets = <0x80>;
-
-			next-level-cache = <0x11>;
-			#cooling-cells = <0x02>;
-			phandle = <0x06>;
-		};
-
-		l2-cache-l0 {
+		l2-cache-b0 {
+			cache-size = <0x80000>;
+			cache-sets = <0x400>;
 			compatible = "cache";
-			cache-size = <0x20000>;
-			cache-sets = <0x200>;
 			cache-line-size = <0x40>;
 			next-level-cache = <0x1e>;
-			phandle = <0x11>;
+			phandle = <0x17>;
 		};
 
-		l3-cache {
+		l2-cache-l3 {
+			cache-size = <0x20000>;
+			cache-sets = <0x200>;
 			compatible = "cache";
-			cache-size = <0x300000>;
-			cache-sets = <0x1000>;
 			cache-line-size = <0x40>;
-			phandle = <0x1e>;
+			next-level-cache = <0x1e>;
+			phandle = <0x15>;
+		};
+
+		cpu@300 {
+			d-cache-line-size = <0x40>;
+			capacity-dmips-mhz = <0x212>;
+			clocks = <0x0e 0x00>;
+			i-cache-line-size = <0x40>;
+			cpu-idle-states = <0x10>;
+			device_type = "cpu";
+			compatible = "arm,cortex-a55";
+			d-cache-size = <0x8000>;
+			next-level-cache = <0x15>;
+			i-cache-size = <0x8000>;
+			reg = <0x300>;
+			enable-method = "psci";
+			phandle = <0x09>;
+			d-cache-sets = <0x80>;
+			operating-points-v2 = <0x0f>;
+			i-cache-sets = <0x80>;
+		};
+
+		l2-cache-l1 {
+			cache-size = <0x20000>;
+			cache-sets = <0x200>;
+			compatible = "cache";
+			cache-line-size = <0x40>;
+			next-level-cache = <0x1e>;
+			phandle = <0x13>;
+		};
+
+		cpu@600 {
+			d-cache-line-size = <0x40>;
+			capacity-dmips-mhz = <0x400>;
+			cpu-supply = <0x1c>;
+			clocks = <0x0e 0x03>;
+			i-cache-line-size = <0x40>;
+			cpu-idle-states = <0x10>;
+			device_type = "cpu";
+			compatible = "arm,cortex-a76";
+			dynamic-power-coefficient = <0x12c>;
+			d-cache-size = <0x10000>;
+			next-level-cache = <0x1b>;
+			i-cache-size = <0x10000>;
+			mem-supply = <0x1c>;
+			reg = <0x600>;
+			enable-method = "psci";
+			phandle = <0x0c>;
+			d-cache-sets = <0x100>;
+			operating-points-v2 = <0x1a>;
+			i-cache-sets = <0x100>;
+			#cooling-cells = <0x02>;
+		};
+
+		l2-cache-b3 {
+			cache-size = <0x80000>;
+			cache-sets = <0x400>;
+			compatible = "cache";
+			cache-line-size = <0x40>;
+			next-level-cache = <0x1e>;
+			phandle = <0x1d>;
 		};
 
 		idle-states {
 			entry-method = "psci";
 
 			cpu-sleep {
-				compatible = "arm,idle-state";
 				entry-latency-us = <0x64>;
-				exit-latency-us = <0x78>;
-				min-residency-us = <0x3e8>;
 				local-timer-stop;
+				exit-latency-us = <0x78>;
 				arm,psci-suspend-param = <0x10000>;
+				compatible = "arm,idle-state";
 				phandle = <0x10>;
+				min-residency-us = <0x3e8>;
 			};
 		};
 
 		cpu-map {
+
+			cluster2 {
+
+				core1 {
+					cpu = <0x0d>;
+				};
+
+				core0 {
+					cpu = <0x0c>;
+				};
+			};
+
 			cluster0 {
+
+				core3 {
+					cpu = <0x09>;
+				};
+
+				core1 {
+					cpu = <0x07>;
+				};
+
+				core2 {
+					cpu = <0x08>;
+				};
+
 				core0 {
 					cpu = <0x06>;
 				};
 			};
+
+			cluster1 {
+
+				core1 {
+					cpu = <0x0b>;
+				};
+
+				core0 {
+					cpu = <0x0a>;
+				};
+			};
+		};
+
+		l3-cache {
+			cache-size = <0x300000>;
+			cache-sets = <0x1000>;
+			compatible = "cache";
+			cache-line-size = <0x40>;
+			phandle = <0x1e>;
+		};
+
+		cpu@200 {
+			d-cache-line-size = <0x40>;
+			capacity-dmips-mhz = <0x212>;
+			clocks = <0x0e 0x00>;
+			i-cache-line-size = <0x40>;
+			cpu-idle-states = <0x10>;
+			device_type = "cpu";
+			compatible = "arm,cortex-a55";
+			d-cache-size = <0x8000>;
+			next-level-cache = <0x14>;
+			i-cache-size = <0x8000>;
+			reg = <0x200>;
+			enable-method = "psci";
+			phandle = <0x08>;
+			d-cache-sets = <0x80>;
+			operating-points-v2 = <0x0f>;
+			i-cache-sets = <0x80>;
+		};
+
+		l2-cache-b1 {
+			cache-size = <0x80000>;
+			cache-sets = <0x400>;
+			compatible = "cache";
+			cache-line-size = <0x40>;
+			next-level-cache = <0x1e>;
+			phandle = <0x19>;
+		};
+
+		cpu@500 {
+			d-cache-line-size = <0x40>;
+			capacity-dmips-mhz = <0x400>;
+			clocks = <0x0e 0x02>;
+			i-cache-line-size = <0x40>;
+			cpu-idle-states = <0x10>;
+			device_type = "cpu";
+			compatible = "arm,cortex-a76";
+			d-cache-size = <0x10000>;
+			next-level-cache = <0x19>;
+			i-cache-size = <0x10000>;
+			reg = <0x500>;
+			enable-method = "psci";
+			phandle = <0x0b>;
+			d-cache-sets = <0x100>;
+			operating-points-v2 = <0x16>;
+			i-cache-sets = <0x100>;
+		};
+
+		cpu@0 {
+			d-cache-line-size = <0x40>;
+			capacity-dmips-mhz = <0x212>;
+			cpu-supply = <0x12>;
+			clocks = <0x0e 0x00>;
+			i-cache-line-size = <0x40>;
+			cpu-idle-states = <0x10>;
+			device_type = "cpu";
+			compatible = "arm,cortex-a55";
+			dynamic-power-coefficient = <0x64>;
+			d-cache-size = <0x8000>;
+			next-level-cache = <0x11>;
+			i-cache-size = <0x8000>;
+			mem-supply = <0x12>;
+			reg = <0x00>;
+			enable-method = "psci";
+			phandle = <0x06>;
+			d-cache-sets = <0x80>;
+			operating-points-v2 = <0x0f>;
+			i-cache-sets = <0x80>;
+			#cooling-cells = <0x02>;
+		};
+
+		l2-cache-l2 {
+			cache-size = <0x20000>;
+			cache-sets = <0x200>;
+			compatible = "cache";
+			cache-line-size = <0x40>;
+			next-level-cache = <0x1e>;
+			phandle = <0x14>;
+		};
+
+		l2-cache-l0 {
+			cache-size = <0x20000>;
+			cache-sets = <0x200>;
+			compatible = "cache";
+			cache-line-size = <0x40>;
+			next-level-cache = <0x1e>;
+			phandle = <0x11>;
+		};
+
+		cpu@100 {
+			d-cache-line-size = <0x40>;
+			capacity-dmips-mhz = <0x212>;
+			clocks = <0x0e 0x00>;
+			i-cache-line-size = <0x40>;
+			cpu-idle-states = <0x10>;
+			device_type = "cpu";
+			compatible = "arm,cortex-a55";
+			d-cache-size = <0x8000>;
+			next-level-cache = <0x13>;
+			i-cache-size = <0x8000>;
+			reg = <0x100>;
+			enable-method = "psci";
+			phandle = <0x07>;
+			d-cache-sets = <0x80>;
+			operating-points-v2 = <0x0f>;
+			i-cache-sets = <0x80>;
+		};
+
+		cpu@400 {
+			d-cache-line-size = <0x40>;
+			capacity-dmips-mhz = <0x400>;
+			cpu-supply = <0x18>;
+			clocks = <0x0e 0x02>;
+			i-cache-line-size = <0x40>;
+			cpu-idle-states = <0x10>;
+			device_type = "cpu";
+			compatible = "arm,cortex-a76";
+			dynamic-power-coefficient = <0x12c>;
+			d-cache-size = <0x10000>;
+			next-level-cache = <0x17>;
+			i-cache-size = <0x10000>;
+			mem-supply = <0x18>;
+			reg = <0x400>;
+			enable-method = "psci";
+			phandle = <0x0a>;
+			d-cache-sets = <0x100>;
+			operating-points-v2 = <0x16>;
+			i-cache-sets = <0x100>;
+			#cooling-cells = <0x02>;
+		};
+
+		l2-cache-b2 {
+			cache-size = <0x80000>;
+			cache-sets = <0x400>;
+			compatible = "cache";
+			cache-line-size = <0x40>;
+			next-level-cache = <0x1e>;
+			phandle = <0x1b>;
+		};
+
+		cpu@700 {
+			d-cache-line-size = <0x40>;
+			capacity-dmips-mhz = <0x400>;
+			clocks = <0x0e 0x03>;
+			i-cache-line-size = <0x40>;
+			cpu-idle-states = <0x10>;
+			device_type = "cpu";
+			compatible = "arm,cortex-a76";
+			d-cache-size = <0x10000>;
+			next-level-cache = <0x1d>;
+			i-cache-size = <0x10000>;
+			reg = <0x700>;
+			enable-method = "psci";
+			phandle = <0x0d>;
+			d-cache-sets = <0x100>;
+			operating-points-v2 = <0x1a>;
+			i-cache-sets = <0x100>;
 		};
 	};
 
@@ -12735,7 +12971,7 @@
 
 	memory {
 		device_type = "memory";
-		reg = <0x00 0x9400000 0x00 0xe6c00000 0x01 0x00 0x01 0x00 0x02 0xf0000000 0x00 0x10000000 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00>;
+		reg = <0x00 0x200000 0x00 0x8200000 0x00 0x9400000 0x00 0xe6c00000 0x01 0x00 0x01 0x00 0x02 0xf0000000 0x00 0x10000000 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00>;
 	};
 
 	jpege-core@fdba4000 {

@@ -87,8 +87,8 @@ pub fn parse_vm_dtb(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
         if let Some(status) = node.status() {
             if status == Status::Disabled {
                 // Skip disabled nodes
-                warn!("Skipping disabled DTB node: {}", name);
-                continue;
+                trace!("DTB node: {} is disabled", name);
+                // continue;
             }
         }
 
@@ -96,7 +96,7 @@ pub fn parse_vm_dtb(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
             for reg in regs {
                 if reg.address < 0x1000 {
                     // Skip registers with address less than 0x10000.
-                    warn!(
+                    trace!(
                         "Skipping DTB node {} with register address {:#x} < 0x10000",
                         node.name(),
                         reg.address
@@ -108,7 +108,7 @@ pub fn parse_vm_dtb(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
                     let start = reg.address as usize;
                     let end = start + size as usize;
                     if vm_cfg.contains_memory_range(&(start..end)) {
-                        warn!(
+                        trace!(
                             "Skipping DTB node {} with register address {:#x} and size {:#x} as it overlaps with existing memory regions",
                             node.name(),
                             reg.address,
@@ -124,7 +124,7 @@ pub fn parse_vm_dtb(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
                         length: size as _,
                         irq_id: 0,
                     };
-                    info!("Adding {:x?}", pt_dev);
+                    trace!("Adding {:x?}", pt_dev);
                     vm_cfg.add_pass_through_device(pt_dev);
                 }
             }

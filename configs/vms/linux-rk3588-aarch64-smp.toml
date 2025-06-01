@@ -28,7 +28,7 @@ dtb_load_addr = 0x1000_0000
 # load from memory
 image_location = "memory"
 # The file path of the kernel image.
-kernel_path = "Image-5.10.198.bin"
+kernel_path = "Image.bin"
 # The file path of the device tree blob (DTB).
 dtb_path = "aio-rk3588-jd4.dtb"
 
@@ -50,7 +50,7 @@ dtb_path = "aio-rk3588-jd4.dtb"
 # For `map_type`, 0 means `MAP_ALLOC`, 1 means `MAP_IDENTICAL`.
 memory_regions = [
     # [0x0, 0x10_f000, 0x7, 1],        # passthrough uncahed MAP_IDENTICAL
-    [0x940_0000, 0xe6c00000, 0x7, 1], # ram 3G MAP_IDENTICAL
+    # [0x940_0000, 0xe6c00000, 0x7, 1], # ram 3G MAP_IDENTICAL
     # [0x4000_0000, 0x4000_0000, 0x7, 1], # ram 1G MAP_IDENTICAL
 ]
 
@@ -64,98 +64,4 @@ emu_devices = []
 
 # Pass-through devices.
 # Name Base-Ipa Base-Pa Length Alloc-Irq.
-passthrough_devices = [
-    [
-        "ramoops",
-        0x11_0000,
-        0x11_0000,
-        0xf_0000,
-        0x17,
-    ],
-    [
-        "sram",
-        0x10_f000,
-        0x10_f000,
-        0x1000,
-        0x17,
-    ],
-    [
-        "gpu",
-        0xfb00_0000,
-        0xfb00_0000,
-        0x20_0000,
-        0x17,
-    ],
-    [
-        "uart8250 UART",
-        0xfd00_0000,
-        0xfd00_0000,
-        0x200_0000,
-        0x17,
-    ],
-    [
-        "usb",
-        0xfc00_0000,
-        0xfc00_0000,
-        0x100_0000,
-        0x17,
-    ],
-    [
-        "uncached",
-        0x0,
-        0x0,
-        0x10_f000,
-        0x17,
-    ],
-    # [
-    #     "gicr",
-    #     0xfe68_0000,
-    #     0xfe68_0000,
-    #     0x10_0000,
-    #     0x1,
-    # ],
-    # [
-    #     "uncached",
-    #     0xf300_0000,
-    #     0xf300_0000,
-    #     0x100_0000,
-    #     0x17,
-    # ],
-    # [
-    #     "uncached",
-    #     0xf400_0000,
-    #     0xf400_0000,
-    #     0x100_0000,
-    #     0x17,
-    # ],
-    # [
-    #     "uncached",
-    #     0xa_4100_0000,
-    #     0xa_4100_0000,
-    #     0x40_0000,
-    #     0x17,
-    # ],
-    # [
-    #     "uncached",
-    #     0xa_40c0_0000,
-    #     0xa_40c0_0000,
-    #     0x40_0000,
-    #     0x17,
-    # ],
-    #     [
-    #     "uncached",
-    #     0x920_0000,
-    #     0x920_0000,
-    #     0x20_0000,
-    #     0x17,
-    # ],
-]
-
-
-#  [0xfe600000, 0x10000], # gic-v3 gicd
-#     [0xfe680000, 0x10_0000], # gic-v3 gicr
-
-    # [0xa41000000, 0x400000],
-    # [0xa40c00000, 0x400000],
-    # [0xf4000000,0x1000000],
-    # [0xf3000000,0x1000000],
+passthrough_devices = []

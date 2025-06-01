@@ -29,11 +29,10 @@ dtc -o aio-rk3588-jd4.dtb -O dtb -I dts aio-rk3588-jd4.dts
 
 ```bash
 make ARCH=aarch64 PLATFORM=configs/platforms/aarch64-rk3588j-hv.toml defconfig
-make ARCH=aarch64 PLATFORM=configs/platforms/aarch64-rk3588j-hv.toml image
-make ARCH=aarch64 PLATFORM=configs/platforms/aarch64-rk3588j-hv.toml VM_CONFIGS=configs/vms/linux-rk3588-aarch64-smp.toml image
+make ARCH=aarch64 PLATFORM=configs/platforms/aarch64-rk3588j-hv.toml VM_CONFIGS=configs/vms/linux-rk3588-aarch64-smp.toml LOG=debug GICV3=y upload
 ```
 
-* copy to tftp dir
+* copy to tftp dir (make xxx upload will copy the image to `/srv/tftp/axvisor` automatically)
 
 ```bash
 cp axvisor_aarch64-rk3588j.img /srv/tftp/axvisor
@@ -49,6 +48,7 @@ setenv serverip 192.168.50.97
 # 这是 rk3588 所在设备的 ip (Firefly Linux 自己 DHCP 拿到的地址)
 setenv ipaddr 192.168.50.8 
 # 使用 tftp 加载镜像到指定内存地址并 boot
-tftp 0x00480000 ${serverip}:axvisor;tftp 0x10000000 ${serverip}:rk3588_dtb.bin;bootm 0x00480000 - 0x10000000;
+setenv serverip 192.168.50.97;setenv ipaddr 192.168.50.8;tftp 0x00480000 ${serverip}:axvisor;tftp 0x10000000 ${serverip}:rk3588_dtb.bin;bootm 0x00480000 - 0x10000000;
 ```
+tftp 0x00480000 ${serverip}:Image.bin;tftp 0x10000000 ${serverip}:rk3588_dtb.bin;bootm 0x00480000 - 0x10000000;
 
