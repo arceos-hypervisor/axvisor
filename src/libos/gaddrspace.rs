@@ -18,8 +18,7 @@ use axaddrspace::npt::{EPTEntry, EPTMetadata};
 use axaddrspace::{AddrSpace, GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr};
 use equation_defs::bitmap_allocator::PageAllocator;
 use equation_defs::{
-    GuestMappingType, InstanceInnerRegion, MAX_CPUS_NUM, MMFrameAllocator, PERCPU_REGION_SIZE,
-    PTFrameAllocator,
+    GuestMappingType, INSTANCE_REGION_SIZE, InstanceRegion, MMFrameAllocator, PTFrameAllocator,
 };
 
 use crate::libos::config::{
@@ -28,8 +27,7 @@ use crate::libos::config::{
 };
 use crate::libos::def::{
     GUEST_MEM_REGION_BASE_GPA, GUEST_PT_ROOT_GPA, INSTANCE_INNER_REGION_BASE_GPA,
-    PERCPU_REGION_BASE_GPA, PERCPU_REGION_BASE_GVA, PROCESS_INNER_REGION_BASE_GPA, SHIM_BASE_GPA,
-    USER_STACK_BASE, USER_STACK_SIZE,
+    PROCESS_INNER_REGION_BASE_GPA, SHIM_BASE_GPA, USER_STACK_BASE, USER_STACK_SIZE,
 };
 use crate::libos::def::{
     GUEST_MEMORY_REGION_BASE_GVA, GUEST_PT_BASE_GVA, INSTANCE_INNER_REGION_BASE_GVA,
@@ -80,7 +78,6 @@ pub(super) fn init_shim_kernel() -> AxResult {
 
     let shim_binary = get_shim_image();
     let shim_binary_size = align_up_4k(shim_binary.len());
-
     let shim_memory_size = if !is_aligned_4k(SHIM_EKERNEL - SHIM_SKERNEL) {
         warn!(
             "SHIM_MEM_SIZE {} is not aligned to 4K",
@@ -117,8 +114,8 @@ pub struct GuestAddrSpace<
     /// memory allocation information, see `get_process_inner_region()`.
     process_inner_region: HostPhysicalRegion<H>,
     /// Instance inner region, shared by all processes in the same instance.
-    /// This region is used to store instance information.
-    instance_inner_region: HostPhysicalRegionRef<H>,
+    /// This region is used to store instance information, perCPU run queue, etc.
+    instance_region_base: HostPhysAddr,
 
     // Below are used for guest addrspace.
     gva_range: AddrRange<GuestVirtAddr>,
@@ -199,8 +196,8 @@ impl<
         // Do not allocate a new instance inner region, since it is shared by all processes in the same instance.
         forked_addrspace.map_linear(
             INSTANCE_INNER_REGION_BASE_GPA,
-            self.instance_inner_region.base(),
-            self.instance_inner_region.size(),
+            self.instance_region_base,
+            INSTANCE_REGION_SIZE,
             MappingFlags::READ | MappingFlags::WRITE,
             false,
         )?;
@@ -276,7 +273,7 @@ impl<
         Ok(Self {
             ept_addrspace: forked_addrspace,
             process_inner_region: forked_process_inner_region,
-            instance_inner_region: self.instance_inner_region.clone(),
+            instance_region_base: self.instance_region_base,
             gva_range: self.gva_range.clone(),
             guest_mapping: forked_guest_mapping,
             gva_areas: self.gva_areas.clone(),
@@ -485,8 +482,8 @@ impl<
 
     pub fn instance_id(&self) -> usize {
         unsafe {
-            self.instance_inner_region
-                .as_ptr_of::<InstanceInnerRegion>()
+            H::phys_to_virt(self.instance_region_base)
+                .as_ptr_of::<InstanceRegion>()
                 .as_ref()
         }
         .unwrap()
@@ -505,8 +502,7 @@ impl<
     /// alone with the shim kernel memory region mapped.
     pub fn new(
         process_id: usize,
-        instance_inner_region: HostPhysicalRegionRef<H>,
-        percpu_region_base: HostPhysAddr,
+        instance_region_base: HostPhysAddr,
         gmt: GuestMappingType,
     ) -> AxResult<Self> {
         info!("Generate GuestAddrSpace with {:?}", gmt);
@@ -560,17 +556,8 @@ impl<
         // The instance inner region is shared by all processes in the same instance.
         ept_addrspace.map_linear(
             INSTANCE_INNER_REGION_BASE_GPA,
-            instance_inner_region.base(),
-            instance_inner_region.size(),
-            MappingFlags::READ | MappingFlags::WRITE,
-            false,
-        )?;
-
-        // Map the per CPU region.
-        ept_addrspace.map_linear(
-            PERCPU_REGION_BASE_GPA,
-            percpu_region_base,
-            PERCPU_REGION_SIZE * MAX_CPUS_NUM,
+            instance_region_base,
+            INSTANCE_REGION_SIZE,
             MappingFlags::READ | MappingFlags::WRITE,
             false,
         )?;
@@ -629,7 +616,7 @@ impl<
         let mut guest_addrspace = Self {
             ept_addrspace,
             process_inner_region,
-            instance_inner_region,
+            instance_region_base,
             guest_mapping,
             gva_range: AddrRange::from_start_size(
                 GuestVirtAddr::from_usize(0),
@@ -789,7 +776,10 @@ impl<
                 guest_addrspace
                     .guest_map_region(
                         INSTANCE_INNER_REGION_BASE_GVA,
-                        |_gva| INSTANCE_INNER_REGION_BASE_GPA,
+                        |gva| {
+                            INSTANCE_INNER_REGION_BASE_GPA
+                                .add(gva.sub_addr(INSTANCE_INNER_REGION_BASE_GVA))
+                        },
                         PAGE_SIZE_4K,
                         MappingFlags::READ | MappingFlags::WRITE,
                         false,
@@ -803,25 +793,9 @@ impl<
                         PROCESS_INNER_REGION_BASE_GVA,
                         |gva| {
                             PROCESS_INNER_REGION_BASE_GPA
-                                .add(gva.sub(PROCESS_INNER_REGION_BASE_GVA.as_usize()).as_usize())
+                                .add(gva.sub_addr(PROCESS_INNER_REGION_BASE_GVA))
                         },
                         process_inner_region_size_aligned,
-                        MappingFlags::READ | MappingFlags::WRITE | MappingFlags::USER,
-                        false,
-                        false,
-                    )
-                    .map_err(paging_err_to_ax_err)?;
-
-                // Map the per CPU region.
-                info!("Mapping per CPU region");
-                guest_addrspace
-                    .guest_map_region(
-                        PERCPU_REGION_BASE_GVA,
-                        |gva| {
-                            PERCPU_REGION_BASE_GPA
-                                .add(gva.sub(PERCPU_REGION_BASE_GVA.as_usize()).as_usize())
-                        },
-                        PERCPU_REGION_SIZE * MAX_CPUS_NUM,
                         MappingFlags::READ | MappingFlags::WRITE | MappingFlags::USER,
                         false,
                         false,

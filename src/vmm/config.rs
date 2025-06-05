@@ -124,6 +124,13 @@ pub fn init_host_vm() {
             map_type: VmMemMappingType::MapIentical,
         });
     }
+    // I DO NOT know why Linux in x14sbi want to access this 
+    host_vm_cfg.append_memory_region(VmMemConfig {
+        gpa: 0xe0000,
+        size: 0x10000,
+        flags: (MappingFlags::READ | MappingFlags::WRITE | MappingFlags::DEVICE).bits(),
+        map_type: VmMemMappingType::MapIentical,
+    });
 
     // Create VM.
     let vm =

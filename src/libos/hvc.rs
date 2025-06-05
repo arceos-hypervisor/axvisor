@@ -8,12 +8,12 @@ use axvcpu::AxVcpuAccessGuestState;
 use page_table_multiarch::PagingHandler;
 
 use crate::libos::instance::InstanceRef;
-use crate::libos::percpu::LibOSPerCpu;
+use crate::libos::percpu::EqOSPerCpu;
 use crate::vmm::VCpuRef;
 
 pub struct InstanceCall<'a, H: PagingHandler> {
     vcpu: VCpuRef,
-    pcpu: &'a LibOSPerCpu<H>,
+    pcpu: &'a EqOSPerCpu<H>,
     instance: InstanceRef,
     code: HyperCallCode,
     args: [u64; 6],
@@ -22,7 +22,7 @@ pub struct InstanceCall<'a, H: PagingHandler> {
 impl<'a, H: PagingHandler> InstanceCall<'a, H> {
     pub fn new(
         vcpu: VCpuRef,
-        percpu: &'a LibOSPerCpu<H>,
+        percpu: &'a EqOSPerCpu<H>,
         instance: InstanceRef,
         code: u64,
         args: [u64; 6],
@@ -76,8 +76,8 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
 impl<'a, H: PagingHandler> InstanceCall<'a, H> {
     fn debug(&self) -> HyperCallResult {
         info!(
-            "{:?} HDebug {:#x?}",
-            self.pcpu.percpu_region().current_task,
+            "CPU {} HDebug {:#x?}",
+            self.pcpu.percpu_region().cpu_id,
             self.args
         );
 
@@ -108,7 +108,7 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
 
         let new_pid = self.instance.handle_clone(self.pcpu.current_ept_root())?;
         if self.instance.eptp_list_dirty() {
-            LibOSPerCpu::<H>::sync_eptp_list_region_on_all_vcpus(
+            EqOSPerCpu::<H>::sync_eptp_list_region_on_all_vcpus(
                 self.instance.id(),
                 self.instance.get_eptp_list(),
             );

@@ -11,7 +11,7 @@ use equation_defs::*;
 use crate::vmm::{VCpuRef, VMRef};
 
 pub use equation_defs::{
-    EPTP_LIST_REGION_SIZE, INSTANCE_INNER_REGION_SIZE, PROCESS_INNER_REGION_SIZE, PerCPURegion,
+    EPTP_LIST_REGION_SIZE, INSTANCE_REGION_SIZE, PROCESS_INNER_REGION_SIZE, PerCPURegion,
     ProcessInnerRegion,
 };
 
@@ -29,6 +29,8 @@ pub const PERCPU_EPTP_LIST_REGION_GPA: GuestPhysAddr =
 
 pub const GP_ALL_EPTP_LIST_REGIN_GPA: GuestPhysAddr =
     GuestPhysAddr::from_usize(GP_ALL_EPTP_LIST_REGION_PA);
+pub const GP_ALL_INSTANCE_PERCPU_REGION_GPA: GuestPhysAddr =
+    GuestPhysAddr::from_usize(GP_ALL_INSTANCE_PERCPU_REGION_PA);
 
 pub const PERCPU_REGION_BASE_GPA: GuestPhysAddr = GuestPhysAddr::from_usize(PERCPU_REGION_BASE_PA);
 
@@ -47,6 +49,8 @@ pub const GP_ALL_EPTP_LIST_REGION_GVA: GuestVirtAddr =
     GuestVirtAddr::from_usize(GP_ALL_EPTP_LIST_REGION_VA as usize);
 pub const GP_PERCPU_EPT_LIST_REGION_GVA: GuestVirtAddr =
     GuestVirtAddr::from_usize(GP_PERCPU_EPTP_LIST_REGION_VA as usize);
+pub const GP_ALL_INSTANCE_PERCPU_REGION_GVA: GuestVirtAddr =
+	GuestVirtAddr::from_usize(GP_ALL_INSTANCE_PERCPU_REGION_VA as usize);
 
 /// Guest Process stack size.
 pub const USER_STACK_SIZE: usize = 4096 * 4; // 16K

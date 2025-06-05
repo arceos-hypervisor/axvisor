@@ -1,5 +1,6 @@
 ```
-./scripts/dev_deps.sh
+cd scripts
+./dev_deps.sh
 ```
 
 ## Getting Started

@@ -7,7 +7,6 @@ use std::thread;
 
 use axaddrspace::npt::EPTPointer;
 use axaddrspace::{GuestPhysAddr, HostPhysAddr};
-use axerrno::{AxResult, ax_err, ax_err_type};
 use lazyinit::LazyInit;
 
 use axconfig::SMP;
@@ -24,35 +23,34 @@ use crate::task_ext::{TaskExt, TaskExtType};
 use crate::vmm::VCpuRef;
 use crate::vmm::config::get_instance_cpus_mask;
 use equation_defs::SHIM_INSTANCE_ID;
-use equation_defs::task::EqTask;
 
 const KERNEL_STACK_SIZE: usize = 0x40000; // 256 KiB
 
 #[derive(Debug, Clone, Copy)]
-enum LibOSPerCpuStatus {
+enum EqPerCpuStatus {
     Ready = 0,
     Running = 1,
     Idle = 2,
 }
 
-impl Into<usize> for LibOSPerCpuStatus {
+impl Into<usize> for EqPerCpuStatus {
     fn into(self) -> usize {
         self as usize
     }
 }
 
-impl From<usize> for LibOSPerCpuStatus {
+impl From<usize> for EqPerCpuStatus {
     fn from(value: usize) -> Self {
         match value {
-            0 => LibOSPerCpuStatus::Ready,
-            1 => LibOSPerCpuStatus::Running,
-            2 => LibOSPerCpuStatus::Idle,
-            _ => panic!("Invalid LibOSPerCpuStatus value: {}", value),
+            0 => EqPerCpuStatus::Ready,
+            1 => EqPerCpuStatus::Running,
+            2 => EqPerCpuStatus::Idle,
+            _ => panic!("Invalid EqPerCpuStatus value: {}", value),
         }
     }
 }
 
-pub(super) struct LibOSPerCpu<H: PagingHandler> {
+pub(super) struct EqOSPerCpu<H: PagingHandler> {
     cpu_id: usize,
     vcpu: VCpuRef,
     percpu_region: HostPhysAddr,
@@ -61,7 +59,7 @@ pub(super) struct LibOSPerCpu<H: PagingHandler> {
     _phantom: PhantomData<H>,
 }
 
-impl<H: PagingHandler> LibOSPerCpu<H> {
+impl<H: PagingHandler> EqOSPerCpu<H> {
     pub fn percpu_region(&self) -> &'static PerCPURegion {
         unsafe {
             H::phys_to_virt(self.percpu_region)
@@ -130,7 +128,8 @@ impl<H: PagingHandler> LibOSPerCpu<H> {
     }
 
     pub fn current_process_id(&self) -> usize {
-        self.percpu_region().process_id()
+        // self.percpu_region().process_id()
+        0
     }
 
     pub fn current_instance_id(&self) -> usize {
@@ -159,11 +158,11 @@ impl<H: PagingHandler> LibOSPerCpu<H> {
 
     pub fn mark_idle(&self) {
         self.status
-            .store(LibOSPerCpuStatus::Idle.into(), Ordering::SeqCst);
+            .store(EqPerCpuStatus::Idle.into(), Ordering::SeqCst);
     }
 }
 
-impl<H: PagingHandler> Drop for LibOSPerCpu<H> {
+impl<H: PagingHandler> Drop for EqOSPerCpu<H> {
     fn drop(&mut self) {
         warn!(
             "Dropping LibOSPerCpu for CPU {}, vcpu {}",
@@ -177,12 +176,12 @@ pub fn gpa_to_hpa(gpa: GuestPhysAddr) -> Option<(HostPhysAddr, MappingFlags, Pag
     current_libos_percpu().guest_phys_to_host_phys(gpa)
 }
 
-fn current_libos_percpu() -> &'static LibOSPerCpu<PagingHandlerImpl> {
+fn current_libos_percpu() -> &'static EqOSPerCpu<PagingHandlerImpl> {
     unsafe { LIBOS_PERCPU.current_ref_raw() }
 }
 
 #[percpu::def_percpu]
-static LIBOS_PERCPU: LazyInit<LibOSPerCpu<PagingHandlerImpl>> = LazyInit::new();
+static LIBOS_PERCPU: LazyInit<EqOSPerCpu<PagingHandlerImpl>> = LazyInit::new();
 
 pub fn init_instance_percore_task(cpu_id: usize, vcpu: VCpuRef, percpu_region: HostPhysAddr) {
     assert!(cpu_id < SMP, "Invalid CPU ID: {}", cpu_id);
@@ -201,36 +200,36 @@ pub fn init_instance_percore_task(cpu_id: usize, vcpu: VCpuRef, percpu_region: H
     let remote_percpu = unsafe { LIBOS_PERCPU.remote_ref_mut_raw(cpu_id) };
 
     if !remote_percpu.is_inited() {
-        remote_percpu.init_once(LibOSPerCpu {
+        remote_percpu.init_once(EqOSPerCpu {
             cpu_id,
             vcpu: vcpu.clone(),
             percpu_region,
             cpu_eptp_list_region: vcpu.get_arch_vcpu().eptp_list_region(),
-            status: AtomicUsize::new(LibOSPerCpuStatus::Ready.into()),
+            status: AtomicUsize::new(EqPerCpuStatus::Ready.into()),
             _phantom: PhantomData,
         });
-    } else if remote_percpu.status.load(Ordering::SeqCst) == LibOSPerCpuStatus::Idle.into() {
+    } else if remote_percpu.status.load(Ordering::SeqCst) == EqPerCpuStatus::Idle.into() {
         info!("Re-initializing LibOSPerCpu for CPU {}", cpu_id);
         remote_percpu.vcpu = vcpu.clone();
         remote_percpu.percpu_region = percpu_region;
         remote_percpu.cpu_eptp_list_region = vcpu.get_arch_vcpu().eptp_list_region();
         remote_percpu
             .status
-            .store(LibOSPerCpuStatus::Ready.into(), Ordering::SeqCst);
+            .store(EqPerCpuStatus::Ready.into(), Ordering::SeqCst);
     } else {
         warn!(
             "PerCPU data for CPU {} bad status {:?}",
             cpu_id,
-            Into::<LibOSPerCpuStatus>::into(remote_percpu.status.load(Ordering::SeqCst))
+            Into::<EqPerCpuStatus>::into(remote_percpu.status.load(Ordering::SeqCst))
         );
     }
 
-    remote_percpu.percpu_region_mut().current_task.instance_id = SHIM_INSTANCE_ID as _;
-    // Set shim/gate process ID to 0 in all CPUs.
-    // Because the first (index 0) entry in EPTP list is reserved for gate process.
-    remote_percpu.percpu_region_mut().current_task.process_id = 0;
-    // Set shim task ID as cpu_id for no reason...
-    remote_percpu.percpu_region_mut().current_task.task_id = cpu_id;
+    // remote_percpu.percpu_region_mut().current_task.instance_id = SHIM_INSTANCE_ID as _;
+    // // Set shim/gate process ID to 0 in all CPUs.
+    // // Because the first (index 0) entry in EPTP list is reserved for gate process.
+    // remote_percpu.percpu_region_mut().current_task.process_id = 0;
+    // // Set shim task ID as cpu_id for no reason...
+    // remote_percpu.percpu_region_mut().current_task.task_id = cpu_id;
     remote_percpu.percpu_region_mut().cpu_id = cpu_id as _;
 
     info!(
@@ -295,7 +294,7 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
         })
         .unwrap();
     loop {
-        if curcpu.status.load(Ordering::SeqCst) == LibOSPerCpuStatus::Idle.into() {
+        if curcpu.status.load(Ordering::SeqCst) == EqPerCpuStatus::Idle.into() {
             thread::exit(0);
         }
 
@@ -418,56 +417,4 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
             error!("Vcpu[{}] unbind error: {:?}", vcpu_id, err);
         })
         .unwrap();
-}
-
-/// Insert a new instance (alone with its first process) to the ready_queue of the CPU with the least number of running tasks.
-/// Return the target CPU ID where the instance is inserted.
-pub fn insert_instance(first_task: EqTask) -> AxResult<usize> {
-    let instance_id = first_task.instance_id;
-
-    // Find the cpu with the lowest running task number.
-    let mut target_cpu_id = 0;
-    let mut min_task_num = usize::MAX;
-    for cpu in get_instance_cpus_mask().into_iter() {
-        let remote_percpu = unsafe { LIBOS_PERCPU.remote_ref_mut_raw(cpu) };
-        if !remote_percpu.is_inited() {
-            warn!("PerCPU data for CPU {} not initialized", cpu);
-            continue;
-        }
-        let task_num = remote_percpu.percpu_region().run_queue.get_task_num();
-        if min_task_num > task_num {
-            min_task_num = task_num;
-            target_cpu_id = cpu;
-        }
-    }
-
-    // Since we'll at least reserve one CPU for the host OS,
-    // the target CPU should not be 0.
-    if target_cpu_id == 0 {
-        error!("No available CPU for instance {}", instance_id);
-        return ax_err!(NotFound, "No available CPU for instance");
-    }
-
-    debug!("Insert instance {} to CPU {}", instance_id, target_cpu_id);
-    let target_cpu = unsafe { LIBOS_PERCPU.remote_ref_mut_raw(target_cpu_id) };
-
-    target_cpu
-        .percpu_region_mut()
-        .ready_queue
-        .insert(first_task)
-        .map_err(|task| {
-            error!(
-                "Failed to insert instance {} to CPU {}: {:?}",
-                instance_id, target_cpu_id, task
-            );
-            ax_err_type!(ResourceBusy, "Failed to insert instance")
-        })?;
-
-    debug!(
-        "After insert, CPU {} ready queue\n{:?}",
-        target_cpu_id,
-        target_cpu.percpu_region().ready_queue,
-    );
-
-    Ok(target_cpu_id)
 }
