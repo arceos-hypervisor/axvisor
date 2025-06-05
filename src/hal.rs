@@ -247,4 +247,21 @@ mod arch_api_impl {
         use axstd::os::arceos::modules::axhal::irq::MyVgic;
         MyVgic::get_gicd().lock().get_iidr()
     }
+
+    #[cfg(target_arch = "aarch64")]
+    extern fn get_host_gicd_base() -> memory_addr::PhysAddr {
+        unimplemented!()
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    extern fn get_host_gicr_base() -> memory_addr::PhysAddr {
+        unimplemented!()
+    }
+}
+
+#[axvisor_api::api_mod_impl(axvisor_api::host)]
+mod host_api_impl {
+    extern fn get_host_cpu_num() -> usize {
+        std::os::arceos::modules::axconfig::SMP
+    }
 }
