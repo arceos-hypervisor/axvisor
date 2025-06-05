@@ -88,9 +88,9 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
 name = "anstream"
-version = "0.6.18"
+version = "0.6.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8acc5369981196006228e28809f761875c0327210a891e941f4c683b3a99529b"
+checksum = "301af1932e46185686725e0fad2f8f2aa7da69dd70bf6ecc44d6b703844a3933"
 dependencies = [
  "anstyle",
  "anstyle-parse",
@@ -103,33 +103,33 @@ dependencies = [
 
 [[package]]
 name = "anstyle"
-version = "1.0.10"
+version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55cc3b69f167a1ef2e161439aa98aed94e6028e5f9a59be9a6ffb47aef1651f9"
+checksum = "862ed96ca487e809f1c8e5a8447f6ee2cf102f846893800b20cebdf541fc6bbd"
 
 [[package]]
 name = "anstyle-parse"
-version = "0.2.6"
+version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b2d16507662817a6a20a9ea92df6652ee4f94f914589377d69f3b21bc5798a9"
+checksum = "4e7644824f0aa2c7b9384579234ef10eb7efb6a0deb83f9630a49594dd9c15c2"
 dependencies = [
  "utf8parse",
 ]
 
 [[package]]
 name = "anstyle-query"
-version = "1.1.2"
+version = "1.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79947af37f4177cfead1110013d678905c37501914fba0efea834c3fe9a8d60c"
+checksum = "6c8bdeb6047d8983be085bab0ba1472e6dc604e7041dbf6fcd5e71523014fae9"
 dependencies = [
  "windows-sys",
 ]
 
 [[package]]
 name = "anstyle-wincon"
-version = "3.0.8"
+version = "3.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6680de5231bd6ee4c6191b8a1325daa282b415391ec9d3a37bd34f2060dc73fa"
+checksum = "403f75924867bb1033c59fbf0797484329750cfbe3c4325cd33127941fabc882"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
@@ -152,10 +152,10 @@ dependencies = [
 [[package]]
 name = "arceos_api"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.1-dyn#022eabbb8458cc06571115a3a341106482c387d0"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.2-dyn#8dfa0bcb4eb83e597069d85e0b483878a39f5747"
 dependencies = [
  "axalloc",
- "axconfig 0.1.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.1-dyn)",
+ "axconfig 0.1.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.2-dyn)",
  "axdriver",
  "axerrno",
  "axfeat",
@@ -254,7 +254,7 @@ dependencies = [
 [[package]]
 name = "axalloc"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.1-dyn#022eabbb8458cc06571115a3a341106482c387d0"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.2-dyn#8dfa0bcb4eb83e597069d85e0b483878a39f5747"
 dependencies = [
  "allocator",
  "axerrno",
@@ -267,7 +267,7 @@ dependencies = [
 [[package]]
 name = "axconfig"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.1-dyn#022eabbb8458cc06571115a3a341106482c387d0"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.2-dyn#8dfa0bcb4eb83e597069d85e0b483878a39f5747"
 dependencies = [
  "axconfig-gen-macros",
 ]
@@ -331,10 +331,10 @@ dependencies = [
 [[package]]
 name = "axdriver"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.1-dyn#022eabbb8458cc06571115a3a341106482c387d0"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.2-dyn#8dfa0bcb4eb83e597069d85e0b483878a39f5747"
 dependencies = [
  "axalloc",
- "axconfig 0.1.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.1-dyn)",
+ "axconfig 0.1.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.2-dyn)",
  "axdriver_base",
  "axdriver_block",
  "axdriver_pci",
@@ -389,7 +389,7 @@ dependencies = [
 [[package]]
 name = "axfeat"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.1-dyn#022eabbb8458cc06571115a3a341106482c387d0"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.2-dyn#8dfa0bcb4eb83e597069d85e0b483878a39f5747"
 dependencies = [
  "axalloc",
  "axdriver",
@@ -404,7 +404,7 @@ dependencies = [
 [[package]]
 name = "axfs"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.1-dyn#022eabbb8458cc06571115a3a341106482c387d0"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.2-dyn#8dfa0bcb4eb83e597069d85e0b483878a39f5747"
 dependencies = [
  "axdriver",
  "axdriver_block",
@@ -458,14 +458,14 @@ dependencies = [
 [[package]]
 name = "axhal"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.1-dyn#022eabbb8458cc06571115a3a341106482c387d0"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.2-dyn#8dfa0bcb4eb83e597069d85e0b483878a39f5747"
 dependencies = [
  "aarch64-cpu 10.0.0",
  "arm-gic-driver",
  "arm_gicv2",
  "arm_pl011",
  "axalloc",
- "axconfig 0.1.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.1-dyn)",
+ "axconfig 0.1.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.2-dyn)",
  "axerrno",
  "axlog",
  "axplat-dyn",
@@ -510,7 +510,7 @@ dependencies = [
 [[package]]
 name = "axlog"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.1-dyn#022eabbb8458cc06571115a3a341106482c387d0"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.2-dyn#8dfa0bcb4eb83e597069d85e0b483878a39f5747"
 dependencies = [
  "cfg-if",
  "crate_interface",
@@ -521,7 +521,7 @@ dependencies = [
 [[package]]
 name = "axmm"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.1-dyn#022eabbb8458cc06571115a3a341106482c387d0"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.2-dyn#8dfa0bcb4eb83e597069d85e0b483878a39f5747"
 dependencies = [
  "axalloc",
  "axerrno",
@@ -536,7 +536,7 @@ dependencies = [
 [[package]]
 name = "axns"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.1-dyn#022eabbb8458cc06571115a3a341106482c387d0"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.2-dyn#8dfa0bcb4eb83e597069d85e0b483878a39f5747"
 dependencies = [
  "crate_interface",
  "lazyinit",
@@ -545,7 +545,7 @@ dependencies = [
 [[package]]
 name = "axplat-dyn"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.1-dyn#022eabbb8458cc06571115a3a341106482c387d0"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.2-dyn#8dfa0bcb4eb83e597069d85e0b483878a39f5747"
 dependencies = [
  "axalloc",
  "percpu",
@@ -555,10 +555,10 @@ dependencies = [
 [[package]]
 name = "axruntime"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.1-dyn#022eabbb8458cc06571115a3a341106482c387d0"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.2-dyn#8dfa0bcb4eb83e597069d85e0b483878a39f5747"
 dependencies = [
  "axalloc",
- "axconfig 0.1.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.1-dyn)",
+ "axconfig 0.1.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.2-dyn)",
  "axdriver",
  "axfs",
  "axhal",
@@ -575,7 +575,7 @@ dependencies = [
 [[package]]
 name = "axstd"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.1-dyn#022eabbb8458cc06571115a3a341106482c387d0"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.2-dyn#8dfa0bcb4eb83e597069d85e0b483878a39f5747"
 dependencies = [
  "arceos_api",
  "axerrno",
@@ -587,7 +587,7 @@ dependencies = [
 [[package]]
 name = "axsync"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.1-dyn#022eabbb8458cc06571115a3a341106482c387d0"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.2-dyn#8dfa0bcb4eb83e597069d85e0b483878a39f5747"
 dependencies = [
  "axtask",
  "kspin",
@@ -596,9 +596,9 @@ dependencies = [
 [[package]]
 name = "axtask"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.1-dyn#022eabbb8458cc06571115a3a341106482c387d0"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.2-dyn#8dfa0bcb4eb83e597069d85e0b483878a39f5747"
 dependencies = [
- "axconfig 0.1.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.1-dyn)",
+ "axconfig 0.1.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.2-dyn)",
  "axhal",
  "cfg-if",
  "cpumask",
@@ -812,9 +812,9 @@ checksum = "f46ad14479a25103f283c0f10005961cf086d8dc42205bb44c46ac563475dca6"
 
 [[package]]
 name = "colorchoice"
-version = "1.0.3"
+version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b63caa9aa9397e2d9480a9b13673856c78d8ac123288526c37d7839f2a86990"
+checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
 
 [[package]]
 name = "const-default"
@@ -1234,9 +1234,9 @@ dependencies = [
 
 [[package]]
 name = "lock_api"
-version = "0.4.12"
+version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07af8b9cdd281b7915f413fa73f29ebd5d55d0d3f0155584dade1ff18cea1b17"
+checksum = "96936507f153605bddfcda068dd804796c84324ed2510809e5b2a624c81da765"
 dependencies = [
  "autocfg",
  "scopeguard",
@@ -1444,9 +1444,9 @@ checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 
 [[package]]
 name = "prettyplease"
-version = "0.2.32"
+version = "0.2.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "664ec5419c51e34154eec046ebcba56312d5a2fc3b09a06da188e1ad21afadf6"
+checksum = "9dee91521343f4c5c6a63edd65e54f31f5c92fe8978c40a4282f8372194c6a7d"
 dependencies = [
  "proc-macro2",
  "syn 2.0.101",
