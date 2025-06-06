@@ -79,7 +79,7 @@ pub fn parse_vm_dtb(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
     for node in fdt.all_nodes() {
         trace!("DTB node: {:?}", node.name());
         let name = node.name();
-        if name == "memory" {
+        if name.starts_with("memory") {
             // Skip the memory node, as we handle memory regions separately.
             continue;
         }
