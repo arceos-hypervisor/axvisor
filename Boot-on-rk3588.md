@@ -12,7 +12,7 @@ echo "TFTP Server Test" > /srv/tftp/testfile.txt
 tftp localhost
 tftp> get testfile.txt
 tftp> quit
-cat testfile.txt 
+cat testfile.txt
 ```
 
 You should see `TFTP Server Test` on your screen.
@@ -27,6 +27,7 @@ dtc -o aio-rk3588-jd4.dtb -O dtb -I dts aio-rk3588-jd4.dts
 
 ```bash
 scp xxx@192.168.xxx.xxx:/home/xxx/firefly_rk3588_SDK/kernel/arch/arm64/boot/Image configs/vms/Image.bin
+scp xxx@192.168.xxx.xxx:/home/xxx/firefly_rk3588_SDK/kernel/ramdisk.img configs/vms/ramdisk.img
 ```
 
 ## Compile AxVisor
@@ -58,7 +59,7 @@ cp axvisor_aarch64-rk3588j.img /srv/tftp/axvisor
 # 这是 tftp 服务器所在的主机 ip
 setenv serverip 192.168.50.97
 # 这是 rk3588 所在设备的 ip (Firefly Linux 自己 DHCP 拿到的地址)
-setenv ipaddr 192.168.50.8 
+setenv ipaddr 192.168.50.8
 # 使用 tftp 加载镜像到指定内存地址并 boot
 setenv serverip 192.168.50.97;setenv ipaddr 192.168.50.8;tftp 0x00480000 ${serverip}:axvisor;tftp 0x10000000 ${serverip}:rk3588_dtb.bin;bootm 0x00480000 - 0x10000000;
 ```

@@ -24,6 +24,8 @@ entry_point = 0x1020_0000
 kernel_load_addr = 0x1020_0000
 # The load address of the device tree blob (DTB).
 dtb_load_addr = 0x1000_0000
+# The load address of the ramdisk image.
+ramdisk_load_addr = 0x0a20_0000
 # The location of image: "memory" | "fs".
 # load from memory
 image_location = "memory"
@@ -31,6 +33,9 @@ image_location = "memory"
 kernel_path = "Image.bin"
 # The file path of the device tree blob (DTB).
 dtb_path = "aio-rk3588-jd4.dtb"
+# The file path of the ramdisk image.
+ramdisk_path = "ramdisk.img"
+
 
 # load from file system.
 # image_location = "fs".
