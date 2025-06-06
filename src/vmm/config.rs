@@ -22,6 +22,110 @@ pub mod config {
     include!(concat!(env!("OUT_DIR"), "/vm_configs.rs"));
 }
 
+pub fn get_vm_dtb(vm_cfg: &AxVMConfig) -> Option<&'static [u8]> {
+    let vm_imags = config::get_memory_images()
+        .iter()
+        .find(|&v| v.id == vm_cfg.id())
+        .expect("VM images is missed, Perhaps add `VM_CONFIGS=PATH/CONFIGS/FILE` command.");
+    vm_imags.dtb
+}
+
+pub fn parse_vm_dtb(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
+    use fdt_parser::{Fdt, Status};
+
+    let fdt = Fdt::from_bytes(dtb)
+        .expect("Failed to parse DTB image, perhaps the DTB is invalid or corrupted");
+
+    let mut dram_regions = Vec::new();
+    for mem in fdt.memory() {
+        for region in mem.regions() {
+            if region.size == 0 {
+                continue;
+            }
+            dram_regions.push((region.address as usize, region.size as usize));
+        }
+    }
+
+    for mem in fdt.memory() {
+        for region in mem.regions() {
+            // Skip empty regions
+            if region.size == 0 {
+                continue;
+            }
+            warn!("DTB memory region: {:?}", region);
+            vm_cfg.add_memory_region(VmMemConfig {
+                gpa: region.address as usize,
+                size: region.size as usize,
+                flags: (MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE).bits(),
+                map_type: VmMemMappingType::MapIentical,
+            });
+        }
+    }
+
+    for reserved in fdt.reserved_memory() {
+        warn!("Find reserved memory: {:?}", reserved.name());
+    }
+
+    for mem_reserved in fdt.memory_reservation_block() {
+        warn!("Find memory reservation block: {:?}", mem_reserved);
+    }
+
+    for node in fdt.all_nodes() {
+        trace!("DTB node: {:?}", node.name());
+        let name = node.name();
+        if name.starts_with("memory") {
+            // Skip the memory node, as we handle memory regions separately.
+            continue;
+        }
+
+        if let Some(status) = node.status() {
+            if status == Status::Disabled {
+                // Skip disabled nodes
+                trace!("DTB node: {} is disabled", name);
+                // continue;
+            }
+        }
+
+        if let Some(regs) = node.reg() {
+            for reg in regs {
+                if reg.address < 0x1000 {
+                    // Skip registers with address less than 0x10000.
+                    trace!(
+                        "Skipping DTB node {} with register address {:#x} < 0x10000",
+                        node.name(),
+                        reg.address
+                    );
+                    continue;
+                }
+
+                if let Some(size) = reg.size {
+                    let start = reg.address as usize;
+                    let end = start + size as usize;
+                    if vm_cfg.contains_memory_range(&(start..end)) {
+                        trace!(
+                            "Skipping DTB node {} with register address {:#x} and size {:#x} as it overlaps with existing memory regions",
+                            node.name(),
+                            reg.address,
+                            size
+                        );
+                        continue;
+                    }
+
+                    let pt_dev = PassThroughDeviceConfig {
+                        name: node.name().to_string(),
+                        base_gpa: reg.address as _,
+                        base_hpa: reg.address as _,
+                        length: size as _,
+                        irq_id: 0,
+                    };
+                    trace!("Adding {:x?}", pt_dev);
+                    vm_cfg.add_pass_through_device(pt_dev);
+                }
+            }
+        }
+    }
+}
+
 pub fn init_guest_vms() {
     let gvm_raw_configs = config::static_vm_configs();
 
