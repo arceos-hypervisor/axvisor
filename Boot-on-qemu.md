@@ -5,7 +5,7 @@
 ./tool/dev_env.py
 cd crates/arceos && git checkout rk3588_jd4_qemu
 cd crates/axvm && git checkout dtb
-cd crates/axvcpu && git checkout 4_level_paging
+cd crates/arm_vcpu && git checkout 4_level_paging
 cd crates/axaddrspace && git checkout 4_level_paging
 ```
 
