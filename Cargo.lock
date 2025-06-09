@@ -184,8 +184,7 @@ dependencies = [
 [[package]]
 name = "arm_gicv2"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47d25e73c949c69f75d1b9dba39c5475523403b31eb8c2fdc99da4dc33bc1aca"
+source = "git+https://github.com/arceos-hypervisor/arm_gicv2#eee14941d490719f6689e82f9a87caea6767bdc3"
 dependencies = [
  "tock-registers 0.8.1",
 ]
@@ -518,7 +517,24 @@ dependencies = [
  "log",
  "memory_addr 0.4.0",
  "page_table_multiarch",
- "percpu",
+ "percpu 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "raw-cpuid 11.5.0",
+ "riscv 0.12.1",
+ "sbi-rt",
+ "static_assertions",
+ "tock-registers 0.9.0",
+ "x2apic",
+ "x86",
+ "x86_64 0.15.2",
+]
+
+[[package]]
+name = "axhvc"
+version = "0.1.0"
+dependencies = [
+ "axerrno",
+ "bit_field",
+ "numeric-enum-macro",
 ]
 
 [[package]]
@@ -804,7 +820,7 @@ dependencies = [
  "axaddrspace",
  "axconfig 0.1.0 (git+https://github.com/arceos-hypervisor/arceos.git?branch=vmm-dev)",
  "axerrno",
- "axplat-aarch64-dyn",
+ "axhvc",
  "axstd",
  "axvcpu",
  "axvm",
