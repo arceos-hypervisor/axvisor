@@ -292,6 +292,23 @@ fn vcpu_run() {
             Ok(exit_reason) => match exit_reason {
                 AxVCpuExitReason::Hypercall { nr, args } => {
                     debug!("Hypercall [{}] args {:x?}", nr, args);
+                    use crate::vmm::hvc::HyperCall;
+
+                    match HyperCall::new(vcpu.clone(), vm.clone(), nr, args) {
+                        Ok(hypercall) => {
+                            let ret_val = match hypercall.execute() {
+                                Ok(ret_val) => ret_val as isize,
+                                Err(err) => {
+                                    warn!("Hypercall [{:#x}] failed: {:?}", nr, err);
+                                    -1
+                                }
+                            };
+                            // vcpu.set_return_value(ret_val as usize);
+                        }
+                        Err(err) => {
+                            warn!("Hypercall [{:#x}] failed: {:?}", nr, err);
+                        }
+                    }
                 }
                 AxVCpuExitReason::FailEntry {
                     hardware_entry_failure_reason,
