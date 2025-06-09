@@ -191,6 +191,7 @@ dependencies = [
 [[package]]
 name = "arm_gicv2"
 version = "0.1.0"
+source = "git+https://github.com/arceos-hypervisor/arm_gicv2#eee14941d490719f6689e82f9a87caea6767bdc3"
 dependencies = [
  "tock-registers 0.8.1",
 ]
@@ -529,6 +530,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "axhvc"
+version = "0.1.0"
+dependencies = [
+ "axerrno",
+ "bit_field",
+ "numeric-enum-macro",
+]
+
+[[package]]
 name = "axio"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -693,6 +703,7 @@ dependencies = [
  "axaddrspace",
  "axconfig 0.1.0 (git+https://github.com/arceos-hypervisor/arceos.git?branch=vmm)",
  "axerrno",
+ "axhvc",
  "axstd",
  "axvcpu",
  "axvm",

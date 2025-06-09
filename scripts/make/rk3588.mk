@@ -22,6 +22,6 @@ define upload_image
 	@echo "You can now boot the image using the RK3588 board."
 	@echo "Coping this command to uboot console:"
 	@echo ""
-	@echo 'setenv serverip 192.168.50.97;setenv ipaddr 192.168.50.8;tftp 0x00480000 192.168.50.97:axvisor;tftp 0x10000000 192.168.50.97:rk3588_dtb.bin;bootm 0x00480000 - 0x10000000;'
+	@echo 'setenv serverip 192.168.50.138;setenv ipaddr 192.168.50.8;tftp 0x00480000 192.168.50.138:axvisor;tftp 0x10000000 192.168.50.138:rk3588_dtb.bin;bootm 0x00480000 - 0x10000000;'
 	@echo ""
 endef
