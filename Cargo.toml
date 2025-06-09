@@ -40,6 +40,7 @@ axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", tag="v0.2.6-d
 axvm = { git = "https://github.com/arceos-hypervisor/axvm.git" }
 axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git" }
 axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git" }
+axhvc = { git = "https://github.com/arceos-hypervisor/axhvc.git" }
 
 # System independent crates provided by ArceOS, these crates could be imported by remote url. 
 crate_interface = "0.1"
@@ -77,5 +78,9 @@ path = "crates/axdevice"
 path = "crates/arm_vgic"
 [patch."https://github.com/arceos-hypervisor/axdevice_crates.git".axdevice_base]
 path = "crates/axdevice_crates/axdevice_base"
-[patch."https://github.com/arceos-hypervisor/arm_gicv2.git".arm_gicv2]
-path = "crates/arm_gicv2"
+[patch."https://github.com/arceos-hypervisor/axhvc.git".axhvc]
+path = "crates/axhvc"
+
+[patch.crates-io]
+page_table_multiarch = {path = "crates/page_table_multiarch/page_table_multiarch"}
+page_table_entry = {path = "crates/page_table_multiarch/page_table_entry"}
