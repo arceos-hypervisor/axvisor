@@ -7,7 +7,16 @@ ifeq ("$(wildcard $(RK3588_MKIMG_FILE))","")
 		unzip -o rk3588.zip -d tools; 
 		rm rk3588.zip; 
 endif
+	$(RK3588_MKIMAGE) -n axvisor -A arm64 -O linux -T kernel -C none -a 0x00480000 -e 0x00480000 -d $(OUT_BIN) $(OUT_IMG)
+	@echo 'Built the uboot image ${OUT_IMG} successfully!'
 
-kernel: check-download build
-	$(RK3588_MKIMG_FILE) --dtb rk3588-firefly-itx-3588j.dtb --img $(OUT_BIN)
-	@echo 'Built the FIT-uImage boot.img'
+define upload_image
+	@echo "Uploading image to RK3588..."
+	cp $(OUT_IMG) /srv/tftp/axvisor
+	@echo "Image uploaded to /srv/tftp/axvisor"
+	@echo "You can now boot the image using the RK3588 board."
+	@echo "Coping this command to uboot console:"
+	@echo ""
+	@echo 'setenv serverip 192.168.50.138;setenv ipaddr 192.168.50.8;tftp 0x00480000 192.168.50.138:axvisor;tftp 0x10000000 192.168.50.138:rk3588_dtb.bin;bootm 0x00480000 - 0x10000000;'
+	@echo ""
+endef

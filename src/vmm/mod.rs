@@ -5,6 +5,8 @@ mod timer;
 mod vcpus;
 mod vm_list;
 mod fdt;
+mod hvc;
+mod ivc;
 
 use std::os::arceos::api::task::{self, AxWaitQueueHandle};
 
