@@ -22,7 +22,7 @@ entry_point = 0x4020_0000
 # Load from file system.
 image_location = "memory"
 # The file path of the kernel image.
-kernel_path = "/home/hky/workspace/arceos/axvisor/crates/arceos/examples/helloworld/helloworld_aarch64-qemu-virt_1.bin"
+kernel_path = "/home/hky/workspace/arceos/arceos/examples/ivc_tester/ivc_tester_aarch64-qemu-virt.bin"
 # The load address of the kernel image.
 kernel_load_addr = 0x4020_0000
 ## Load from memory
