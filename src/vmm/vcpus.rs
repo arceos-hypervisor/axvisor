@@ -303,7 +303,7 @@ fn vcpu_run() {
                                     -1
                                 }
                             };
-                            // vcpu.set_return_value(ret_val as usize);
+                            vcpu.set_return_value(ret_val as usize);
                         }
                         Err(err) => {
                             warn!("Hypercall [{:#x}] failed: {:?}", nr, err);
