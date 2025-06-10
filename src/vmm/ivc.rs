@@ -60,27 +60,22 @@ pub fn subscribe_to_channel_of_publisher<'a>(
 ) -> AxResult<(HostPhysAddr, usize)> {
     let mut channels = IVC_CHANNELS.lock();
     if let Some(channel) = channels.get_mut(&(publisher_vm_id, key)) {
-        if channel.key == key {
-            // Add the subscriber VM ID to the channel.
-            channel.add_subscriber(subscriber_vm_id, subscriber_gpa);
-            Ok((channel.base_hpa(), channel.size()))
-        } else {
-            Err(axerrno::ax_err_type!(
-                NotFound,
-                format!(
-                    "IVC channel with key {} not matched for publisher VM {}",
-                    key, publisher_vm_id
-                )
-            ))
-        }
+        // Add the subscriber VM ID to the channel.
+        channel.add_subscriber(subscriber_vm_id, subscriber_gpa);
+        Ok((channel.base_hpa(), channel.size()))
     } else {
         Err(axerrno::ax_err_type!(
             NotFound,
-            format!("IVC channel for publisher VM {} not found", publisher_vm_id)
+            format!(
+                "IVC channel for publisher VM [{}] key {:#x} not found",
+                publisher_vm_id, key
+            )
         ))
     }
 }
 
+/// Unsubscribe from a channel of a publisher VM with the given key,
+/// return the shared region base address and size.
 pub fn unsubscribe_from_channel_of_publisher(
     publisher_vm_id: usize,
     key: usize,
@@ -95,7 +90,7 @@ pub fn unsubscribe_from_channel_of_publisher(
             Err(axerrno::ax_err_type!(
                 NotFound,
                 format!(
-                    "Subscriber VM {} not found in channel for publisher VM[{}] Key {:?}",
+                    "VM[{}] tries to subcriber non-existed channel publisher VM[{}] Key {:#x}",
                     subscriber_vm_id, publisher_vm_id, key
                 )
             ))
@@ -130,6 +125,7 @@ pub struct IVCChannelHeader {
 }
 
 impl<H: PagingHandler> IVCChannel<H> {
+    #[allow(unused)]
     pub fn header(&self) -> &IVCChannelHeader {
         unsafe {
             // Map the shared region base to the header structure.
@@ -144,6 +140,7 @@ impl<H: PagingHandler> IVCChannel<H> {
         }
     }
 
+    #[allow(unused)]
     pub fn data_region(&self) -> *const u8 {
         unsafe {
             // Return a pointer to the data region, which starts after the header.
