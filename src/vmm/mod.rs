@@ -1,5 +1,7 @@
 mod config;
+mod hvc;
 mod images;
+mod ivc;
 #[allow(unused)] //TODO: remove this with "irq" feature.
 mod timer;
 mod vcpus;
