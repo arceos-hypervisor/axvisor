@@ -1,11 +1,11 @@
 mod config;
+mod hvc;
 mod images;
+mod ivc;
 #[allow(unused)] //TODO: remove this with "irq" feature.
 mod timer;
 mod vcpus;
 mod vm_list;
-mod hvc;
-mod ivc;
 
 use std::os::arceos::api::task::{self, AxWaitQueueHandle};
 
