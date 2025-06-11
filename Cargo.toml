@@ -39,8 +39,8 @@ axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", tag="v0.2.6-d
 ] }
 
 # System dependent modules provided by ArceOS-Hypervisor.
-axvm = { git = "https://github.com/arceos-hypervisor/axvm.git" }
-axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git" }
+axvm = { git = "https://github.com/arceos-hypervisor/axvm.git", branch = "inject_interrupt_vgicv3" }
+axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "inject_interrupt" }
 axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git" }
 axhvc = { git = "https://github.com/arceos-hypervisor/axhvc.git" }
 
@@ -53,6 +53,9 @@ page_table_multiarch = "0.5"
 # percpu = { version = "0.2.0", features = ["arm-el2"] }
 percpu = { git = "https://github.com/arceos-hypervisor/percpu.git", branch = "custom-base" }
 
+axdevice = { git = "https://github.com/arceos-hypervisor/axdevice.git", branch = "inject_interrupt_vgicv3" }
+axdevice_base = { git = "https://github.com/arceos-hypervisor/axdevice_crates.git", branch = "inject_interrupt" }
+axvisor_api = { git = "https://github.com/arceos-hypervisor/axvisor_api.git", branch = "inject_interrupt" }
 
 [build-dependencies]
 toml = { git = "https://github.com/arceos-hypervisor/toml.git", branch = "no_std" }
@@ -60,53 +63,3 @@ axconfig = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "
 prettyplease = "0.2"
 quote = "1.0"
 syn = "2.0"
-
-# [patch."https://github.com/arceos-hypervisor/axvcpu.git"]
-# axvcpu = { path = "../axvcpu" }
-
-# [patch."https://github.com/arceos-hypervisor/axvisor_api.git"]
-# axvisor_api = { path = "../axvisor_api" }
-
-# [patch."https://github.com/arceos-hypervisor/x86_vcpu.git"]
-# x86_vcpu = { path = "../x86_vcpu" }
-
-# [patch."https://github.com/arceos-hypervisor/x86_vlapic.git"]
-# x86_vlapic = { path = "../x86_vlapic" }
-
-# [patch."https://github.com/arceos-hypervisor/axvm.git"]
-# axvm = { path = "../axvm" }
-
-# [patch."https://github.com/arceos-hypervisor/axdevice.git"]
-# axdevice = { path = "../axdevice" }
-
-# [patch."https://github.com/arceos-hypervisor/axdevice_crates.git"]
-# axdevice_base = { path = "../axdevice_crates/axdevice_base" }
-
-# [patch."https://github.com/arceos-hypervisor/arceos.git"]
-# axstd = { path = "../arceos-new/ulib/axstd", features = [
-#     "alloc",
-#     "paging",
-#     "ipi",
-#     "smp",
-#     "irq"
-# ]}
-# axconfig = { path = "../arceos-new/modules/axconfig" }
-
-[patch."https://github.com/arceos-hypervisor/arm_vcpu.git"]
-arm_vcpu = { path = "../arm_vcpu" }
-
-[patch."https://github.com/arceos-hypervisor/arm_vgic.git"]
-arm_vgic = { path = "../arm_vgic" }
-
-[patch."https://github.com/arceos-hypervisor/axvm.git"]
-axvm = { path = "../axvm" }
-
-[patch."https://github.com/arceos-hypervisor/arceos.git"]
-axstd = { path = "../arceos/ulib/axstd" }
-axconfig = { path = "../arceos/modules/axconfig" }
-
-[patch."https://github.com/rcore-os/arm-gic-driver"]
-arm-gic-driver = { path = "../arm-gic-driver" }
-
-[patch."https://github.com/arceos-hypervisor/axaddrspace.git"]
-axaddrspace = { path = "../axaddrspace" }
