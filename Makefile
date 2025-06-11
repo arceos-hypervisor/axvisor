@@ -189,6 +189,12 @@ gdb:
 	  -ex 'b rust_entry' \
 	  -ex 'disp /16i $$pc'
 
+# Temporarily used for building image for the `aarch64-rk3588j` platform.
+image: build_image
+
+upload: image
+	$(call upload_image)
+
 clippy: oldconfig
 ifeq ($(origin ARCH), command line)
 	$(call cargo_clippy,--target $(TARGET))

@@ -38,10 +38,9 @@ mmio-regions = [
     [0x0900_0000, 0x1000],      # PL011 UART1
     [0x0904_0000, 0x1000],      # PL011 UART2
     [0x0910_0000, 0x1000],      # PL031 RTC
-    # [0x0800_0000, 0x5_0000],    # GICv2
-    [0x0800_0000, 0x100_0000],    # GICv3
-    [0x0800_0000, 0x2_0000],    # GICv2
-    [0x080a_0000, 0xf6_0000],   # GICv3 gicr
+    [0x0800_0000, 0x2_0000],    # GICv2/v3 GICD
+    [0x0808_0000, 0x2_0000],    # GICv3 GITS
+    [0x080a_0000, 0xf6_0000],   # GICv3 GICR
     [0x0a00_0000, 0x4000],      # VirtIO
     [0x1000_0000, 0x2eff_0000],     # PCI memory ranges (ranges 1: 32-bit MMIO space)
     [0x40_1000_0000, 0x1000_0000],  # PCI config space
@@ -103,6 +102,9 @@ gicd-paddr = 0x0800_0000        # uint
 gicv-paddr = 0x0804_0000        # uint
 gich-paddr = 0x0803_0000        # uint
 gicr-paddr = 0x080a_0000        # uint
+
+# GIC Redistributor base address
+gicr-paddr = 0x080a_0000
 
 # PSCI
 psci-method = "smc"             # str

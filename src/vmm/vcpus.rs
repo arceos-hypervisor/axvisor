@@ -1,10 +1,7 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
 use core::sync::atomic::{AtomicUsize, Ordering};
-use std::os::arceos::{
-    api::task::{AxCpuMask, ax_wait_queue_wake},
-    modules::axtask,
-};
+use std::os::arceos::{api::{self, task::{ax_wait_queue_wake, AxCpuMask}}, modules::{axhal, axtask}};
 
 use axaddrspace::GuestPhysAddr;
 use axtask::{AxTaskRef, TaskExtRef, TaskInner, WaitQueue};

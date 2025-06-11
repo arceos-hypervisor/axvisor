@@ -1,4 +1,10 @@
-use axvm::config::{AxVMConfig, AxVMCrateConfig};
+use alloc::string::ToString;
+use alloc::vec::Vec;
+
+use axaddrspace::MappingFlags;
+use axvm::config::{
+    AxVMConfig, AxVMCrateConfig, PassThroughDeviceConfig, VmMemConfig, VmMemMappingType,
+};
 
 use crate::vmm::{VM, images::load_vm_images, vm_list::push_vm};
 
@@ -132,7 +138,17 @@ pub fn init_guest_vms() {
     for raw_cfg_str in gvm_raw_configs {
         let vm_create_config =
             AxVMCrateConfig::from_toml(raw_cfg_str).expect("Failed to resolve VM config");
-        let vm_config = AxVMConfig::from(vm_create_config.clone());
+        let mut vm_config = AxVMConfig::from(vm_create_config.clone());
+
+        // Overlay VM config with the given DTB.
+        if let Some(dtb) = get_vm_dtb(&vm_config) {
+            parse_vm_dtb(&mut vm_config, dtb);
+        } else {
+            warn!(
+                "VM[{}] DTB not found in memory, skipping...",
+                vm_config.id()
+            );
+        }
 
         info!("Creating VM[{}] {:?}", vm_config.id(), vm_config.name());
 

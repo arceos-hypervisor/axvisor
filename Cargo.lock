@@ -264,7 +264,6 @@ checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
 [[package]]
 name = "axaddrspace"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/axaddrspace.git#2ed4d076e01f966710bd6480131abd3a9ffb8930"
 dependencies = [
  "axerrno",
  "bit_field",
@@ -543,9 +542,9 @@ dependencies = [
 [[package]]
 name = "axhvc"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/axhvc.git#e4ca6f919b9900f35e42b9b30863550a50432220"
 dependencies = [
  "axerrno",
+ "bit_field",
  "numeric-enum-macro",
 ]
 
@@ -702,6 +701,9 @@ dependencies = [
  "axvisor_api 0.1.0 (git+https://github.com/arceos-hypervisor/axvisor_api.git?branch=inject_interrupt)",
  "axvm",
  "bitflags 2.9.1",
+ "cfg-if",
+ "crate_interface",
+ "kernel_guard",
  "cfg-if",
  "crate_interface",
  "fdt-parser",
@@ -1112,73 +1114,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d09dfa244d6891db105eefae4f3aa5752adcab254a95e24c17c3ebd76f6d77ba"
 
 [[package]]
-name = "fnv"
-version = "1.0.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
-
-[[package]]
-name = "futures"
-version = "0.3.31"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65bc07b1a8bc7c85c5f2e110c476c7389b4554ba72af57d8445ea63a576b0876"
-dependencies = [
- "futures-channel",
- "futures-core",
- "futures-io",
- "futures-sink",
- "futures-task",
- "futures-util",
-]
-
-[[package]]
-name = "futures-channel"
-version = "0.3.31"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2dff15bf788c671c1934e366d07e30c1814a8ef514e1af724a602e8a2fbe1b10"
-dependencies = [
- "futures-core",
- "futures-sink",
-]
-
-[[package]]
-name = "futures-core"
-version = "0.3.31"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05f29059c0c2090612e8d742178b0580d2dc940c837851ad723096f87af6663e"
-
-[[package]]
-name = "futures-io"
-version = "0.3.31"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e5c1b78ca4aae1ac06c48a526a655760685149f0d465d21f37abfe57ce075c6"
-
-[[package]]
-name = "futures-sink"
-version = "0.3.31"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e575fab7d1e0dcb8d0c7bcf9a63ee213816ab51902e6d244a95819acacf1d4f7"
-
-[[package]]
-name = "futures-task"
-version = "0.3.31"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f90f7dce0722e95104fcb095585910c0977252f286e354b5e3bd38902cd99988"
-
-[[package]]
-name = "futures-util"
-version = "0.3.31"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9fa08315bb612088cc391249efdc3bc77536f16c91f6cf495e6fbe85b20a4a81"
-dependencies = [
- "futures-core",
- "futures-sink",
- "futures-task",
- "pin-project-lite",
- "pin-utils",
-]
-
-[[package]]
 name = "getrandom"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1471,8 +1406,6 @@ dependencies = [
 [[package]]
 name = "page_table_entry"
 version = "0.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c097d641745a066856a26eed6e486d4430bb3e32c94f1203ea09c63239b360a0"
 dependencies = [
  "aarch64-cpu 10.0.0",
  "bitflags 2.9.1",
@@ -1483,8 +1416,6 @@ dependencies = [
 [[package]]
 name = "page_table_multiarch"
 version = "0.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4647889585d29762d747be0916d6d28db72967a697d142be86f187a6b496832a"
 dependencies = [
  "log",
  "memory_addr",
@@ -2553,3 +2484,7 @@ dependencies = [
  "quote",
  "syn 2.0.102",
 ]
+
+[[patch.unused]]
+name = "arm_vgic"
+version = "0.0.0"
