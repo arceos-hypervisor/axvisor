@@ -24,3 +24,5 @@ rusty-tags.vi
 tools/*
 /.cargo
 /.project*
+# initramfs
+*.cpio.gz

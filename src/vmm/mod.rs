@@ -30,6 +30,7 @@ static RUNNING_VM_COUNT: AtomicUsize = AtomicUsize::new(0);
 ///
 /// This function creates the VM structures and sets up the primary VCpu for each VM.
 pub fn init() {
+    info!("Initializing VMM...");
     // Initialize guest VM according to config file.
     config::init_guest_vms();
 
