@@ -211,7 +211,7 @@ dependencies = [
  "axvcpu",
  "log",
  "numeric-enum-macro",
- "percpu",
+ "percpu 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "spin 0.9.8",
  "tock-registers 0.8.1",
 ]
@@ -275,7 +275,7 @@ dependencies = [
 [[package]]
 name = "axconfig"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=vmm#cd93ea7bed96511ad57d07f1106006cfe86ec1ab"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=vmm#968bb9aa657541afcbc94f4c35f6539e22f03099"
 dependencies = [
  "axconfig-gen-macros",
 ]
@@ -399,6 +399,7 @@ dependencies = [
  "axruntime",
  "axsync",
  "axtask",
+ "kspin",
 ]
 
 [[package]]
@@ -486,7 +487,7 @@ dependencies = [
  "ns16550a",
  "page_table_entry",
  "page_table_multiarch",
- "percpu",
+ "percpu 0.2.0 (git+https://github.com/arceos-hypervisor/percpu.git?branch=custom-base)",
  "raw-cpuid 11.5.0",
  "riscv 0.12.1",
  "sbi-rt",
@@ -501,9 +502,9 @@ dependencies = [
 [[package]]
 name = "axhvc"
 version = "0.1.0"
+source = "git+https://github.com/arceos-hypervisor/axhvc.git#e4ca6f919b9900f35e42b9b30863550a50432220"
 dependencies = [
  "axerrno",
- "bit_field",
  "numeric-enum-macro",
 ]
 
@@ -557,7 +558,7 @@ version = "0.1.0"
 source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=v0.2.6-dyn#207f5bf2992dd919bfc08154b077ae92ecd4f9f2"
 dependencies = [
  "axalloc",
- "percpu",
+ "percpu 0.2.0 (git+https://github.com/arceos-hypervisor/percpu.git?branch=custom-base)",
  "somehal",
 ]
 
@@ -578,7 +579,7 @@ dependencies = [
  "crate_interface",
  "ctor_bare",
  "kernel_guard",
- "percpu",
+ "percpu 0.2.0 (git+https://github.com/arceos-hypervisor/percpu.git?branch=custom-base)",
 ]
 
 [[package]]
@@ -617,7 +618,7 @@ dependencies = [
  "lazyinit",
  "log",
  "memory_addr",
- "percpu",
+ "percpu 0.2.0 (git+https://github.com/arceos-hypervisor/percpu.git?branch=custom-base)",
  "scheduler",
  "timer_list",
 ]
@@ -630,7 +631,7 @@ dependencies = [
  "axaddrspace",
  "axerrno",
  "memory_addr",
- "percpu",
+ "percpu 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -654,7 +655,7 @@ dependencies = [
  "memory_addr",
  "page_table_entry",
  "page_table_multiarch",
- "percpu",
+ "percpu 0.2.0 (git+https://github.com/arceos-hypervisor/percpu.git?branch=custom-base)",
  "prettyplease",
  "quote",
  "spin 0.9.8",
@@ -680,7 +681,7 @@ dependencies = [
  "memory_addr",
  "page_table_entry",
  "page_table_multiarch",
- "percpu",
+ "percpu 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "riscv_vcpu",
  "spin 0.9.8",
  "x86_vcpu",
@@ -1368,6 +1369,8 @@ dependencies = [
 [[package]]
 name = "page_table_entry"
 version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c097d641745a066856a26eed6e486d4430bb3e32c94f1203ea09c63239b360a0"
 dependencies = [
  "aarch64-cpu 10.0.0",
  "bitflags 2.9.1",
@@ -1378,6 +1381,8 @@ dependencies = [
 [[package]]
 name = "page_table_multiarch"
 version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4647889585d29762d747be0916d6d28db72967a697d142be86f187a6b496832a"
 dependencies = [
  "log",
  "memory_addr",
@@ -1395,12 +1400,35 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 [[package]]
 name = "percpu"
 version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01e56c0c558952222967b592899f98765b48590e7bd7403bfd7075f73afc6ed6"
+dependencies = [
+ "cfg-if",
+ "percpu_macros 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spin 0.9.8",
+ "x86",
+]
+
+[[package]]
+name = "percpu"
+version = "0.2.0"
 source = "git+https://github.com/arceos-hypervisor/percpu.git?branch=custom-base#b4e3aa009de9af579eb06bac9bca2bd1a6b1d0b8"
 dependencies = [
  "cfg-if",
- "percpu_macros",
+ "percpu_macros 0.2.0 (git+https://github.com/arceos-hypervisor/percpu.git?branch=custom-base)",
  "spin 0.9.8",
  "x86",
+]
+
+[[package]]
+name = "percpu_macros"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a9f4cc54a2e471ff72f1499461ba381ad4eae9cbd60d29c258545b995e406e0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.102",
 ]
 
 [[package]]

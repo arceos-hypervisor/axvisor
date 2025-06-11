@@ -41,6 +41,7 @@ MODE ?= release
 LOG ?= warn
 GICV3 ?= n
 V ?=
+GICV3 ?= n
 EXTRA_CONFIG ?=
 OUT_CONFIG ?= $(PWD)/.axconfig.toml
 
