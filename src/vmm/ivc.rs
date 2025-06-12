@@ -32,22 +32,57 @@ pub fn insert_channel(
     }
 }
 
-pub fn remove_channel(
+/// Try to remove a channel according to the publisher VM ID and key.
+/// If the channel still has subscribers, it will just mark it as unpublished
+/// (by setting its base GPA to None).
+/// If the channel is successfully unpublished, it will return the base GPA and size of the channel.
+/// If the channel does not exist, it will return an error.
+pub fn unpublish_channel(
     publisher_vm_id: usize,
     key: usize,
-) -> AxResult<IVCChannel<PagingHandlerImpl>> {
-    IVC_CHANNELS
-        .lock()
-        .remove(&(publisher_vm_id, key))
-        .ok_or_else(|| {
+) -> AxResult<Option<(GuestPhysAddr, usize)>> {
+    let mut channels = IVC_CHANNELS.lock();
+    if let Some(mut channel) = channels.remove(&(publisher_vm_id, key)) {
+        let base_gpa = channel.base_gpa_in_publisher().ok_or_else(|| {
             axerrno::ax_err_type!(
                 NotFound,
                 format!(
-                    "IVC channel for publisher VM {} with key {} not found",
+                    "IVC channel for publisher VM {} with key {} has no base GPA, it may have been marked as unpublished",
                     publisher_vm_id, key
                 )
             )
-        })
+        })?;
+        let size = channel.size();
+        if !channel.subscribers().is_empty() {
+            channel.base_gpa = None; // Mark the channel as removed.
+            // If there are still subscribers, just return None.
+            channels.insert((publisher_vm_id, key), channel);
+        }
+        Ok(Some((base_gpa, size)))
+    } else {
+        Err(axerrno::ax_err_type!(
+            NotFound,
+            format!(
+                "IVC channel for publisher VM {} with key {} not found",
+                publisher_vm_id, key
+            )
+        ))
+    }
+}
+
+pub fn get_channel_size(publisher_vm_id: usize, key: usize) -> AxResult<usize> {
+    let channels = IVC_CHANNELS.lock();
+    if let Some(channel) = channels.get(&(publisher_vm_id, key)) {
+        Ok(channel.size())
+    } else {
+        Err(axerrno::ax_err_type!(
+            NotFound,
+            format!(
+                "IVC channel for publisher VM {} with key {} not found",
+                publisher_vm_id, key
+            )
+        ))
+    }
 }
 
 /// Subcribe to a channel of a publisher VM with the given key,
@@ -75,14 +110,15 @@ pub fn subscribe_to_channel_of_publisher<'a>(
 }
 
 /// Unsubscribe from a channel of a publisher VM with the given key,
-/// return the shared region base address and size.
+/// if the channel has been unpublished (i.e., the base GPA is None) and has no subscribers,
+/// it will remove the channel from the global map.
 pub fn unsubscribe_from_channel_of_publisher(
     publisher_vm_id: usize,
     key: usize,
     subscriber_vm_id: usize,
 ) -> AxResult<(GuestPhysAddr, usize)> {
     let mut channels = IVC_CHANNELS.lock();
-    if let Some(channel) = channels.get_mut(&(publisher_vm_id, key)) {
+    let (base_gpa, size) = if let Some(channel) = channels.get_mut(&(publisher_vm_id, key)) {
         // Remove the subscriber VM ID from the channel.
         if let Some(subscriber_gpa) = channel.remove_subscriber(subscriber_vm_id) {
             Ok((subscriber_gpa, channel.size()))
@@ -90,7 +126,7 @@ pub fn unsubscribe_from_channel_of_publisher(
             Err(axerrno::ax_err_type!(
                 NotFound,
                 format!(
-                    "VM[{}] tries to subcriber non-existed channel publisher VM[{}] Key {:#x}",
+                    "VM[{}] tries to unsubscribe non-existed channel publisher VM[{}] Key {:#x}",
                     subscriber_vm_id, publisher_vm_id, key
                 )
             ))
@@ -100,7 +136,17 @@ pub fn unsubscribe_from_channel_of_publisher(
             NotFound,
             format!("IVC channel for publisher VM {} not found", publisher_vm_id)
         ))
+    }?;
+
+    // If the channel has no subscribers and has been unpublished (base GPA is None),
+    // remove it from the global map.
+    if channels.get(&(publisher_vm_id, key)).map_or(false, |c| {
+        c.subscribers().is_empty() && c.base_gpa.is_none()
+    }) {
+        channels.remove(&(publisher_vm_id, key));
     }
+
+    Ok((base_gpa, size))
 }
 
 pub struct IVCChannel<H: PagingHandler> {
@@ -113,7 +159,8 @@ pub struct IVCChannel<H: PagingHandler> {
     shared_region_base: HostPhysAddr,
     shared_region_size: usize,
     /// The base address of the shared memory region in guest physical address of the publisher VM.
-    base_gpa: GuestPhysAddr,
+    /// `None` if the channel has been unpublished (but still has subscribers).
+    base_gpa: Option<GuestPhysAddr>,
     _phatom: core::marker::PhantomData<H>,
 }
 
@@ -121,7 +168,6 @@ pub struct IVCChannel<H: PagingHandler> {
 pub struct IVCChannelHeader {
     pub publisher_id: u64,
     pub key: u64,
-    pub content_size: u64,
 }
 
 impl<H: PagingHandler> IVCChannel<H> {
@@ -155,11 +201,12 @@ impl<H: PagingHandler> core::fmt::Debug for IVCChannel<H> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
-            "IVCChannel(publisher[{}], subscribers {:?}, base: {:?}, size: {:#x})",
+            "IVCChannel(publisher[{}], subscribers {:?}, base: {:?}, size: {:#x}, gpa: {:?})",
             self.publisher_vm_id,
             self.subscriber_vms,
             self.shared_region_base,
-            self.shared_region_size
+            self.shared_region_size,
+            self.base_gpa
         )
     }
 }
@@ -194,13 +241,12 @@ impl<H: PagingHandler> IVCChannel<H> {
             subscriber_vms: BTreeMap::new(),
             shared_region_base,
             shared_region_size,
-            base_gpa,
+            base_gpa: Some(base_gpa),
             _phatom: core::marker::PhantomData,
         };
 
         channel.header_mut().publisher_id = publisher_vm_id as u64;
         channel.header_mut().key = key as u64;
-        channel.header_mut().content_size = 0;
 
         debug!("Allocated IVCChannel: {:?}", channel);
 
@@ -211,7 +257,7 @@ impl<H: PagingHandler> IVCChannel<H> {
         self.shared_region_base
     }
 
-    pub fn base_gpa_in_publisher(&self) -> GuestPhysAddr {
+    pub fn base_gpa_in_publisher(&self) -> Option<GuestPhysAddr> {
         self.base_gpa
     }
 

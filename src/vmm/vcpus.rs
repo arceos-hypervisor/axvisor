@@ -6,7 +6,7 @@ use core::{
 };
 use std::os::arceos::{
     api::task::{AxCpuMask, ax_wait_queue_wake},
-    modules::axtask,
+    modules::{axhal::time::busy_wait, axtask},
 };
 
 use axaddrspace::GuestPhysAddr;
@@ -401,8 +401,9 @@ fn vcpu_run() {
                 }
             },
             Err(err) => {
-                warn!("VM[{}] run VCpu[{}] get error {:?}", vm_id, vcpu_id, err);
-                wait(vm_id)
+                error!("VM[{}] run VCpu[{}] get error {:?}", vm_id, vcpu_id, err);
+                // wait(vm_id)
+                vm.shutdown().expect("VM shutdown failed");
             }
         }
 
