@@ -9,6 +9,8 @@ cd crates/axvcpu && git checkout ivc
 cd crates/arm_vcpu && git checkout ivc_and_4lpt
 cd crates/axaddrspace && git checkout 4_level_paging
 cd crates/axhvc && git checkout ivc
+cd crates/axdevice && git checkout ivc
+cd crates/axvmconfig && git checkout ivc
 ```
 
 

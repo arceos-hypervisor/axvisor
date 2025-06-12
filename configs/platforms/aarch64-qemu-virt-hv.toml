@@ -91,6 +91,7 @@ pci-ranges = [
 ]                               # [(uint, uint)]
 # UART Address
 uart-paddr = 0x0904_0000        # uint
+# uart-paddr = 0x0900_0000        # uint
 # UART IRQ number
 uart-irq = 1                    # uint
 

@@ -332,6 +332,8 @@ dependencies = [
  "cfg-if",
  "log",
  "memory_addr",
+ "range-alloc",
+ "spin",
 ]
 
 [[package]]
@@ -758,7 +760,6 @@ dependencies = [
 [[package]]
 name = "axvmconfig"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/axvmconfig.git#19e73fc71c48c0af49f6fda960c144b297e41435"
 dependencies = [
  "axerrno",
  "log",
@@ -1540,6 +1541,10 @@ checksum = "1885c039570dc00dcb4ff087a89e185fd56bae234ddc7f056a945bf36467248d"
 dependencies = [
  "proc-macro2",
 ]
+
+[[package]]
+name = "range-alloc"
+version = "0.1.4"
 
 [[package]]
 name = "raw-cpuid"
