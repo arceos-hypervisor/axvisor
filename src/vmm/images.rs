@@ -10,7 +10,7 @@ use memory_addr::PhysAddr;
 use crate::utils::cache::cache_clean_invalidate_d;
 use crate::vmm::VMRef;
 use crate::vmm::config::config;
-
+use crate::vmm::fdt::print_all_fdt_nodes;
 /// Loads the VM image files.
 pub fn load_vm_images(config: AxVMCrateConfig, vm: VMRef) -> AxResult {
     let load_ranges = match config.kernel.image_location.as_deref() {
@@ -137,10 +137,13 @@ fn load_vm_image_from_memory(
 #[cfg(feature = "fs")]
 mod fs {
     use alloc::string::String;
+    use memory_addr::MemoryAddr;
 
     use std::fs::File;
 
     use axerrno::{AxResult, ax_err, ax_err_type};
+
+    use crate::vmm::fdt::updated_fdt;
 
     use super::*;
 
@@ -151,6 +154,7 @@ mod fs {
         vm: VMRef,
     ) -> AxResult<Vec<LoadRange>> {
         info!("Loading VM images from filesystem");
+        let vm_config = config.clone();
         let mut load_ranges = Vec::new();
         // Load kernel image.
         load_ranges.append(&mut load_vm_image(
@@ -185,7 +189,10 @@ mod fs {
         // Load DTB image if needed.
         // Todo: generate DTB file for guest VM.
         if let Some(dtb_path) = config.kernel.dtb_path {
+            let (_, dtb_size) = open_image_file(dtb_path.as_str())?;
+            info!("DTB file size {}", dtb_size);
             if let Some(dtb_load_addr) = config.kernel.dtb_load_addr {
+                info!("DTB load addr 0x{:x}", dtb_load_addr);
                 load_ranges.append(&mut load_vm_image(
                     dtb_path,
                     GuestPhysAddr::from(dtb_load_addr),
@@ -194,6 +201,27 @@ mod fs {
             } else {
                 return ax_err!(NotFound, "DTB load addr is missed");
             }
+            // todo:print_all_fdt_nodes(dtb_load_addr);
+            // print_all_fdt_nodes(config.kernel.dtb_load_addr.unwrap(), dtb_size);
+            let new_fdt = updated_fdt(vm_config, dtb_size);
+            let target_addr = config.kernel.dtb_load_addr.unwrap().add(0x4_0000);
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    new_fdt.as_ptr(),
+                    target_addr as *mut u8,
+                    new_fdt.len(),
+                );
+            }
+            let new_fdt_regions = vm
+                .get_image_load_region(target_addr.into(), new_fdt.len())
+                .unwrap();
+            for buffer in new_fdt_regions {
+                load_ranges.push(LoadRange {
+                    start: (buffer.as_ptr() as usize).into(),
+                    size: buffer.len(),
+                });
+            }
+            print_all_fdt_nodes(target_addr, new_fdt.len());
         };
         Ok(load_ranges)
     }
@@ -207,6 +235,7 @@ mod fs {
         let (image_file, image_size) = open_image_file(image_path.as_str())?;
 
         let image_load_regions = vm.get_image_load_region(image_load_gpa, image_size)?;
+
         let mut load_ranges = Vec::with_capacity(image_load_regions.len());
 
         let mut file = BufReader::new(image_file);
