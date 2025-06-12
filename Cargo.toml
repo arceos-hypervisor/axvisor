@@ -39,8 +39,8 @@ axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", tag="v0.2.6-d
 ] }
 
 # System dependent modules provided by ArceOS-Hypervisor.
-axvm = { git = "https://github.com/arceos-hypervisor/axvm.git", branch = "inject_interrupt_vgicv3" }
-axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "inject_interrupt" }
+axvm = { git = "https://github.com/arceos-hypervisor/axvm.git", branch = "inject_interrupt_vgicv3_ivc" }
+axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "inject_interrupt_vgicv3_ivc" }
 axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git" }
 axhvc = { git = "https://github.com/arceos-hypervisor/axhvc.git" }
 
@@ -66,28 +66,11 @@ prettyplease = "0.2"
 quote = "1.0"
 syn = "2.0"
 
+[patch."https://github.com/arceos-hypervisor/axvm.git"]
+axvm = { path = "../axvm" }
 
-[patch."https://github.com/arceos-hypervisor/arceos.git".axstd]
-path = "crates/arceos/ulib/axstd"
-[patch."https://github.com/arceos-hypervisor/arceos.git".axhal]
-path = "crates/arceos/modules/axhal"
-[patch."https://github.com/arceos-hypervisor/axvm.git".axvm]
-path = "crates/axvm"
-[patch."https://github.com/arceos-hypervisor/axvcpu.git".axvcpu]
-path = "crates/axvcpu"
-[patch."https://github.com/arceos-hypervisor/axaddrspace.git".axaddrspace]
-path = "crates/axaddrspace"
-[patch."https://github.com/arceos-hypervisor/arm_vcpu.git".arm_vcpu]
-path = "crates/arm_vcpu"
-[patch."https://github.com/arceos-hypervisor/axdevice.git".axdevice]
-path = "crates/axdevice"
-[patch."https://github.com/arceos-hypervisor/arm_vgic.git".arm_vgic]
-path = "crates/arm_vgic"
-[patch."https://github.com/arceos-hypervisor/axdevice_crates.git".axdevice_base]
-path = "crates/axdevice_crates/axdevice_base"
-[patch."https://github.com/arceos-hypervisor/axhvc.git".axhvc]
-path = "crates/axhvc"
+[patch."https://github.com/arceos-hypervisor/axaddrspace.git"]
+axaddrspace = { path = "../axaddrspace" }
 
-[patch.crates-io]
-page_table_multiarch = {path = "crates/page_table_multiarch/page_table_multiarch"}
-page_table_entry = {path = "crates/page_table_multiarch/page_table_entry"}
+[patch."https://github.com/arceos-hypervisor/axhvc.git"]
+axhvc = { path = "../axhvc" }

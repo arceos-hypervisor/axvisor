@@ -101,7 +101,6 @@ gicc-paddr = 0x0801_0000        # uint
 gicd-paddr = 0x0800_0000        # uint
 gicv-paddr = 0x0804_0000        # uint
 gich-paddr = 0x0803_0000        # uint
-gicr-paddr = 0x080a_0000        # uint
 
 # GIC Redistributor base address
 gicr-paddr = 0x080a_0000
