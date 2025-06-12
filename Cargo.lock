@@ -660,7 +660,6 @@ dependencies = [
 [[package]]
 name = "axvmconfig"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/axvmconfig.git#19e73fc71c48c0af49f6fda960c144b297e41435"
 dependencies = [
  "axerrno",
  "log",
@@ -1262,7 +1261,6 @@ dependencies = [
 [[package]]
 name = "range-alloc"
 version = "0.1.4"
-source = "git+https://github.com/arceos-hypervisor/range-alloc.git#fc826e54dab9072be5358a1b0e7fc34503d6630d"
 
 [[package]]
 name = "raw-cpuid"

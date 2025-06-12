@@ -30,18 +30,21 @@ impl HyperCall {
     pub fn execute(&self) -> HyperCallResult {
         match self.code {
             HyperCallCode::HIVCPublishChannel => {
-                // This is just a placeholder for the shared memory base address,
-                // it should be allocated dynamically.
-                const SHM_BASE_GPA_RAW: usize = 0xd000_0000;
-                let shm_base_gpa = GuestPhysAddr::from_usize(SHM_BASE_GPA_RAW);
-
                 let key = self.args[0] as usize;
                 let shm_base_gpa_ptr = GuestPhysAddr::from_usize(self.args[1] as usize);
                 let shm_size_ptr = GuestPhysAddr::from_usize(self.args[2] as usize);
 
+                info!(
+                    "VM[{}] HyperCall {:?} key {:#x}",
+                    self.vm.id(),
+                    self.code,
+                    key
+                );
+                // User will pass the size of the shared memory region,
+                // we will allocate the shared memory region based on this size.
                 let shm_region_size = self.vm.read_from_guest_of::<usize>(shm_size_ptr)?;
+                let (shm_base_gpa, shm_region_size) = self.vm.alloc_ivc_channel(shm_region_size)?;
 
-                info!("VM[{}] HyperCall {:?}", self.vm.id(), self.code);
                 let ivc_channel =
                     IVCChannel::alloc(self.vm.id(), key, shm_region_size, shm_base_gpa)?;
 
@@ -71,28 +74,12 @@ impl HyperCall {
                     self.code,
                     key
                 );
-                let channel = ivc::remove_channel(self.vm.id(), key)?;
-
-                self.vm
-                    .unmap_region(channel.base_gpa_in_publisher(), channel.size())?;
-
-                for (subscriber_id, subscriber_base_gpa) in channel.subscribers() {
-                    warn!(
-                        "TODO, you should unmap subscriber VM[{}] base GPA: {:?} size {:#x}",
-                        subscriber_id,
-                        subscriber_base_gpa,
-                        channel.size()
-                    );
-                }
+                let (base_gpa, size) = ivc::unpublish_channel(self.vm.id(), key)?.unwrap();
+                self.vm.unmap_region(base_gpa, size)?;
 
                 Ok(0)
             }
             HyperCallCode::HIVCSubscribChannel => {
-                // This is just a placeholder for the shared memory base address,
-                // it should be allocated dynamically.
-                const SHM_BASE_GPA_RAW: usize = 0xe000_0000;
-                let shm_base_gpa = GuestPhysAddr::from_usize(SHM_BASE_GPA_RAW);
-
                 let publisher_vm_id = self.args[0] as usize;
                 let key = self.args[1] as usize;
                 let shm_base_gpa_ptr = GuestPhysAddr::from_usize(self.args[2] as usize);
@@ -104,6 +91,10 @@ impl HyperCall {
                     self.code,
                     publisher_vm_id
                 );
+
+                let shm_size = ivc::get_channel_size(publisher_vm_id, key)?;
+                let (shm_base_gpa, _) = self.vm.alloc_ivc_channel(shm_size)?;
+
                 let (base_hpa, actual_size) = ivc::subscribe_to_channel_of_publisher(
                     publisher_vm_id,
                     key,
@@ -111,8 +102,13 @@ impl HyperCall {
                     shm_base_gpa,
                 )?;
 
-                self.vm
-                    .map_region(shm_base_gpa, base_hpa, actual_size, MappingFlags::READ)?;
+                // TODO: seperate the mapping flags of metadata and data.
+                self.vm.map_region(
+                    shm_base_gpa,
+                    base_hpa,
+                    actual_size,
+                    MappingFlags::READ | MappingFlags::WRITE,
+                )?;
 
                 self.vm
                     .write_to_guest_of(shm_base_gpa_ptr, &shm_base_gpa.as_usize())?;

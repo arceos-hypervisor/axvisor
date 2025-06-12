@@ -80,6 +80,10 @@ path = "crates/arm_vgic"
 path = "crates/axdevice_crates/axdevice_base"
 [patch."https://github.com/arceos-hypervisor/axhvc.git".axhvc]
 path = "crates/axhvc"
+[patch."https://github.com/arceos-hypervisor/axvmconfig.git".axvmconfig]
+path = "crates/axvmconfig"
+[patch."https://github.com/arceos-hypervisor/range-alloc.git".range-alloc]
+path = "crates/range-alloc"
 
 [patch.crates-io]
 page_table_multiarch = {path = "crates/page_table_multiarch/page_table_multiarch"}
