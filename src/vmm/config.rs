@@ -24,12 +24,10 @@ pub mod config {
 
 pub fn init_guest_vms() {
     let gvm_raw_configs = config::static_vm_configs();
-
     for raw_cfg_str in gvm_raw_configs {
         let vm_create_config =
             AxVMCrateConfig::from_toml(raw_cfg_str).expect("Failed to resolve VM config");
         let vm_config = AxVMConfig::from(vm_create_config.clone());
-
         info!("Creating VM[{}] {:?}", vm_config.id(), vm_config.name());
 
         // Create VM.
