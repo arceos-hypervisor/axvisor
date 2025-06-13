@@ -8,32 +8,6 @@ use crate::vmm::images::LoadRange;
 use memory_addr::MemoryAddr;
 
 
-pub fn print_all_fdt_nodes(dtb_addr: usize, dtb_size: usize) {
-    info!("TEST SSSSSZZZZZYYYYYY");
-    let fdt_bytes = unsafe {
-        std::slice::from_raw_parts(dtb_addr as *const u8, dtb_size) // Assuming the DTB is 4KB
-    };
-    let fdt = Fdt::from_bytes(fdt_bytes)
-        .map_err(|e| format!("Failed to parse FDT: {:#?}", e))
-        .expect("Failed to parse FDT");
-    for node in fdt.all_nodes() {
-        // info!("Node: {}", node.name());
-        for prop in node.propertys() {
-            if node.name() == "memory" {
-                info!(
-                    "node{},  Property: {} = {:?}",
-                    node.name(),
-                    prop.name,
-                    prop.raw_value()
-                );
-                // let new_value: [u32; 4] = [0x00, 0x80000000, 0x00, 0x10000000];
-                // info!("new_value: {:?}", new_value);
-            }
-            // info!("  Property: {} = {:?}", prop.name, prop.raw_value());
-        }
-    }
-}
-
 pub fn updated_fdt(config: AxVMCrateConfig, dtb_size: usize, vm: VMRef) -> AxResult<Vec<LoadRange>>  {
     let new_dtb_addr = config.kernel.dtb_load_addr.unwrap().add(0x4_0000); 
     let dtb_addr = config.kernel.dtb_load_addr.unwrap();
@@ -41,7 +15,7 @@ pub fn updated_fdt(config: AxVMCrateConfig, dtb_size: usize, vm: VMRef) -> AxRes
     let mut old_node_level = 0;
     let mut child_node: Vec<FdtWriterNode> = Vec::new();
 
-    let fdt_bytes = unsafe { std::slice::from_raw_parts(dtb_addr as *const u8, dtb_size) };
+    let fdt_bytes = unsafe { core::slice::from_raw_parts(dtb_addr as *const u8, dtb_size) };
     let fdt = Fdt::from_bytes(fdt_bytes)
         .map_err(|e| format!("Failed to parse FDT: {:#?}", e))
         .expect("Failed to parse FDT");
@@ -75,19 +49,7 @@ pub fn updated_fdt(config: AxVMCrateConfig, dtb_size: usize, vm: VMRef) -> AxRes
         new_fdt.end_node(node).unwrap();
     }
     let new_fdt = new_fdt.finish().unwrap();
-    unsafe {
-        core::ptr::copy_nonoverlapping(new_fdt.as_ptr(), new_dtb_addr as *mut u8, new_fdt.len());
-    }
-    let new_fdt_regions = vm
-        .get_image_load_region(new_dtb_addr.into(), new_fdt.len())
-        .unwrap();
-    let mut load_ranges = alloc::vec![];
-    for buffer in new_fdt_regions {
-        load_ranges.push(LoadRange {
-            start: (buffer.as_ptr() as usize).into(),
-            size: buffer.len(),
-        });
-    }
+    let load_ranges = copy_new_fdt_to_new_addr(new_fdt, new_dtb_addr, vm);
     info!("load_ranges: {:?}", load_ranges);
     Ok(load_ranges)
 }
@@ -106,4 +68,25 @@ fn update_memory_node(new_memory: &Vec<VmMemConfig>, new_fdt: &mut FdtWriter) {
     new_fdt
         .property_array_u32("reg", new_value.as_ref())
         .unwrap();
+}
+
+fn copy_new_fdt_to_new_addr(
+    new_fdt: Vec<u8>,
+    new_dtb_addr: usize,
+    vm: VMRef
+) -> Vec<LoadRange> {
+    unsafe {
+        core::ptr::copy_nonoverlapping(new_fdt.as_ptr(), new_dtb_addr as *mut u8, new_fdt.len());
+    }
+    let new_fdt_regions = vm
+        .get_image_load_region(new_dtb_addr.into(), new_fdt.len())
+        .unwrap();
+    let mut load_ranges = alloc::vec![];
+    for buffer in new_fdt_regions {
+        load_ranges.push(LoadRange {
+            start: (buffer.as_ptr() as usize).into(),
+            size: buffer.len(),
+        });
+    }
+    load_ranges
 }

@@ -203,10 +203,9 @@ mod fs {
             } else {
                 return ax_err!(NotFound, "DTB load addr is missed");
             }
-            // todo:print_all_fdt_nodes(dtb_load_addr);
-            // print_all_fdt_nodes(config.kernel.dtb_load_addr.unwrap(), dtb_size);
+ 
             load_ranges.append(&mut updated_fdt(vm_config, dtb_size, vm.clone())?);
-            // print_all_fdt_nodes(target_addr, new_fdt.len());
+
         };
         Ok(load_ranges)
     }
