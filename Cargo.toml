@@ -20,6 +20,10 @@ spin = "0.9"
 kspin = "0.1"
 lazyinit = "0.2"
 timer_list = "0.1.0"
+fdt-parser = "0.4"
+vm-fdt = { git = "https://github.com/bullhh/vm-fdt.git", default-features = false, features = ["alloc"]}
+#vm-fdt = { path = "/home/hypervisor/my_vm_fdt/vm-fdt", default-features = false}
+
 
 # System dependent modules provided by ArceOS.
 # axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm", features = [
@@ -35,7 +39,8 @@ axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", tag="v0.2.6-d
 ] }
 
 # System dependent modules provided by ArceOS-Hypervisor.
-axvm = { git = "https://github.com/arceos-hypervisor/axvm.git" }
+#axvm = { git = "https://github.com/arceos-hypervisor/axvm.git" }
+axvm = { path = "/home/hypervisor/axvm" }
 axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git" }
 axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git" }
 
