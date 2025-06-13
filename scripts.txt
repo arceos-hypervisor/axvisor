@@ -1,0 +1,22 @@
+
+# 原版双VM
+make ARCH=aarch64 LOG=debug VM_CONFIGS=configs/vms/linux-qemu-aarch64.toml:configs/vms/arceos-aarch64.toml GICV3=y NET=y SMP=2 run DISK_IMG=/home/smx/source/lectures/arceos-repos/axvisor/ubuntu-22.04-rootfs_ext4.img SECOND_SERIAL=y
+
+# 原版单VM
+make ARCH=aarch64 LOG=debug VM_CONFIGS=configs/vms/linux-qemu-aarch64.toml GICV3=y NET=y SMP=2 run DISK_IMG=/home/smx/source/lectures/arceos-repos/axvisor/ubuntu-22.04-rootfs_ext4.img SECOND_SERIAL=y
+
+# 单VM：去掉NET，去掉第二个串口
+make ARCH=aarch64 LOG=debug VM_CONFIGS=configs/vms/linux-qemu-aarch64.toml GICV3=y SMP=2 DISK_IMG=/home/smx/source/lectures/arceos-repos/axvisor/ubuntu-22.04-rootfs_ext4-a.img run
+
+# 单VM：使用第二个串口
+make ARCH=aarch64 LOG=debug VM_CONFIGS=configs/vms/linux-qemu-aarch64-gicv3-a.toml GICV3=y SMP=1 SECOND_SERIAL=y DISK_IMG=/home/smx/source/lectures/arceos-repos/axvisor/ubuntu-22.04-rootfs_ext4-a.img run QEMU=/home/smx/source/3rd/qemu-9.2.4/build/qemu-system-aarch64
+
+# 单VM：使用第二个串口，SMP2
+make ARCH=aarch64 LOG=debug VM_CONFIGS=configs/vms/linux-qemu-aarch64-gicv3-a.toml GICV3=y SMP=2 SECOND_SERIAL=y DISK_IMG=/home/smx/source/lectures/arceos-repos/axvisor/ubuntu-22.04-rootfs_ext4-a.img run QEMU=/home/smx/source/3rd/qemu-9.2.4/build/qemu-system-aarch64
+
+# 双VM：三串口配置
+make ARCH=aarch64 LOG=debug VM_CONFIGS=configs/vms/linux-qemu-aarch64-gicv3-a.toml:configs/vms/linux-qemu-aarch64-gicv3-b.toml GICV3=y SMP=2 SECOND_SERIAL=y THIRD_SERIAL=y DISK_IMG=/home/smx/source/lectures/arceos-repos/axvisor/ubuntu-22.04-rootfs_ext4-a.img run QEMU=/home/smx/source/3rd/qemu-9.2.4/build/qemu-system-aarch64
+
+# GICv3 EL1测试
+make ACCEL=n ARCH=aarch64 LOG=info VM_CONFIGS=configs/vms/arceos-aarch64-gicv3-tester.toml GICV3=y LOG=debug run
+

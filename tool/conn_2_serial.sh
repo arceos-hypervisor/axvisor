@@ -15,11 +15,11 @@ SECOND_PORT=${2:-4322}
 if ! tmux has-session -t "mysession"; then
 	tmux new-session -d -s mysession
 	tmux split-window -h
+else
+	# Send C-c to both panes to clear any previous commands
+	tmux send-keys -t mysession:0.0 C-c
+	tmux send-keys -t mysession:0.1 C-c
 fi
-
-# Send C-c to both panes to clear any previous commands
-tmux send-keys -t mysession:0.0 C-c
-tmux send-keys -t mysession:0.1 C-c
 
 # Send telnet commands to both panes
 tmux send-keys -t mysession:0.0 "telnet localhost ${FIRST_PORT}" C-m

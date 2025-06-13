@@ -201,7 +201,7 @@ dependencies = [
 [[package]]
 name = "arm_vcpu"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/arm_vcpu.git?branch=inject_interrupt_vgicv3_ivc#f8e65147cf8801f590678388c05b005044fe3522"
+source = "git+https://github.com/arceos-hypervisor/arm_vcpu.git?branch=inject_interrupt_vgicv3_ivc#ad1d617150275e40c13804ab3e4a9d123e814104"
 dependencies = [
  "aarch64-cpu 9.4.0",
  "aarch64_sysreg",
@@ -517,6 +517,7 @@ dependencies = [
 [[package]]
 name = "axhvc"
 version = "0.1.0"
+source = "git+https://github.com/arceos-hypervisor/axhvc.git?branch=ivc#29ca8af1e2db294b9f266ec43a3989c36f2e23b4"
 dependencies = [
  "axerrno",
  "bit_field",
@@ -667,7 +668,7 @@ dependencies = [
 [[package]]
 name = "axvcpu"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/axvcpu.git?branch=inject_interrupt_vgicv3_ivc#aed8ed74c9be9bd0c0a71a8a38bf5a144540f87f"
+source = "git+https://github.com/arceos-hypervisor/axvcpu.git?branch=inject_interrupt_vgicv3_ivc#17cccf90a74a41570d564a42de29d04dfb1c0ab1"
 dependencies = [
  "axaddrspace",
  "axerrno",
@@ -735,6 +736,7 @@ dependencies = [
 [[package]]
 name = "axvm"
 version = "0.1.0"
+source = "git+https://github.com/arceos-hypervisor/axvm.git?branch=inject_interrupt_vgicv3_ivc#56bca9658bbada112bec531a4ea6b55a7556cd69"
 dependencies = [
  "arm_vcpu",
  "axaddrspace",
