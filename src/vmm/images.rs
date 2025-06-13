@@ -5,6 +5,7 @@ use axerrno::AxResult;
 
 use axvm::config::AxVMCrateConfig;
 use memory_addr::PhysAddr;
+use crate::vmm::fdt::updated_fdt;
 
 #[cfg(target_arch = "aarch64")]
 use crate::utils::cache::cache_clean_invalidate_d;
@@ -38,14 +39,16 @@ fn flush_vm_images_aarch64(ls: &[LoadRange]) {
     }
 }
 
-struct LoadRange {
-    start: PhysAddr,
-    size: usize,
+#[derive(Debug)]
+pub struct LoadRange {
+    pub start: PhysAddr,
+    pub size: usize,
 }
 
 /// Load VM images from memory
 /// into the guest VM's memory space based on the VM configuration.
 fn load_vm_images_from_memory(config: AxVMCrateConfig, vm: VMRef) -> AxResult<Vec<LoadRange>> {
+    let vm_config = config.clone();
     info!("Loading VM[{}] images from memory", config.base.id);
     let mut load_ranges = Vec::new();
 
@@ -69,6 +72,8 @@ fn load_vm_images_from_memory(config: AxVMCrateConfig, vm: VMRef) -> AxResult<Ve
             )
             .expect("Failed to load DTB images"),
         );
+
+        load_ranges.append(&mut updated_fdt(vm_config, buffer.len(), vm.clone())?);
     }
 
     // Load BIOS image
@@ -137,13 +142,10 @@ fn load_vm_image_from_memory(
 #[cfg(feature = "fs")]
 mod fs {
     use alloc::string::String;
-    use memory_addr::MemoryAddr;
 
     use std::fs::File;
 
     use axerrno::{AxResult, ax_err, ax_err_type};
-
-    use crate::vmm::fdt::updated_fdt;
 
     use super::*;
 
@@ -203,25 +205,8 @@ mod fs {
             }
             // todo:print_all_fdt_nodes(dtb_load_addr);
             // print_all_fdt_nodes(config.kernel.dtb_load_addr.unwrap(), dtb_size);
-            let new_fdt = updated_fdt(vm_config, dtb_size);
-            let target_addr = config.kernel.dtb_load_addr.unwrap().add(0x4_0000);
-            unsafe {
-                core::ptr::copy_nonoverlapping(
-                    new_fdt.as_ptr(),
-                    target_addr as *mut u8,
-                    new_fdt.len(),
-                );
-            }
-            let new_fdt_regions = vm
-                .get_image_load_region(target_addr.into(), new_fdt.len())
-                .unwrap();
-            for buffer in new_fdt_regions {
-                load_ranges.push(LoadRange {
-                    start: (buffer.as_ptr() as usize).into(),
-                    size: buffer.len(),
-                });
-            }
-            print_all_fdt_nodes(target_addr, new_fdt.len());
+            load_ranges.append(&mut updated_fdt(vm_config, dtb_size, vm.clone())?);
+            // print_all_fdt_nodes(target_addr, new_fdt.len());
         };
         Ok(load_ranges)
     }
