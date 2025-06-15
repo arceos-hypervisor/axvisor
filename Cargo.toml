@@ -57,15 +57,12 @@ axdevice = { git = "https://github.com/arceos-hypervisor/axdevice.git", branch =
 axdevice_base = { git = "https://github.com/arceos-hypervisor/axdevice_crates.git", branch = "inject_interrupt" }
 axvisor_api = { git = "https://github.com/arceos-hypervisor/axvisor_api.git", branch = "inject_interrupt" }
 
-fdt-parser = "0.4"
-
 [build-dependencies]
 toml = { git = "https://github.com/arceos-hypervisor/toml.git", branch = "no_std" }
 axconfig = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm" }
 prettyplease = "0.2"
 quote = "1.0"
 syn = "2.0"
-
 
 [patch."https://github.com/arceos-hypervisor/arceos.git".axstd]
 path = "crates/arceos/ulib/axstd"
