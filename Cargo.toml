@@ -40,7 +40,7 @@ axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", tag="v0.2.6-d
 axvm = { git = "https://github.com/arceos-hypervisor/axvm.git", branch = "inject_interrupt_vgicv3_ivc" }
 axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "inject_interrupt_vgicv3_ivc" }
 axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git" }
-axhvc = { git = "https://github.com/arceos-hypervisor/axhvc.git", branch = "ivc" }
+axhvc = { git = "https://github.com/arceos-hypervisor/axhvc.git" }
 
 # System independent crates provided by ArceOS, these crates could be imported by remote url. 
 crate_interface = "0.1"

@@ -70,5 +70,5 @@ passthrough_devices = [
 # Emu_devices.
 # Name Base-Ipa Ipa_len Alloc-Irq Emu-Type EmuConfig.
 emu_devices = [
-    ["ivc-channel", 0xd000_0000, 0x1000_0000, 0x0, 0x1, []],
+    ["ivc-channel", 0xd000_0000, 0x1000_0000, 0x0, 0xa, []],
 ]
