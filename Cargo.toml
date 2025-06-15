@@ -58,6 +58,7 @@ axconfig = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "
 prettyplease = "0.2"
 quote = "1.0"
 syn = "2.0"
+<<<<<<< HEAD
 
 [patch."https://github.com/arceos-hypervisor/arceos.git".axstd]
 path = "crates/arceos/ulib/axstd"
@@ -116,3 +117,5 @@ path = "crates/range-alloc"
 
 [patch.crates-io]
 percpu = { git = "https://github.com/arceos-hypervisor/percpu.git", branch = "custom-base" }
+=======
+>>>>>>> 627f841 ([wip] merge ivc branch, modify configuration)
