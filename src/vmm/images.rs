@@ -11,7 +11,7 @@ use crate::vmm::fdt::updated_fdt;
 use crate::utils::cache::cache_clean_invalidate_d;
 use crate::vmm::VMRef;
 use crate::vmm::config::config;
-use crate::vmm::fdt::print_all_fdt_nodes;
+
 /// Loads the VM image files.
 pub fn load_vm_images(config: AxVMCrateConfig, vm: VMRef) -> AxResult {
     let load_ranges = match config.kernel.image_location.as_deref() {
