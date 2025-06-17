@@ -26,11 +26,11 @@ use crate::libos::config::{
     SHIM_SKERNEL, SHIM_SRODATA, SHIM_STEXT, SHIM_USER_ENTRY, get_shim_image,
 };
 use crate::libos::def::{
-    GUEST_MEM_REGION_BASE_GPA, GUEST_PT_ROOT_GPA, INSTANCE_INNER_REGION_BASE_GPA,
+    GUEST_MEM_REGION_BASE_GPA, GUEST_PT_ROOT_GPA, INSTANCE_REGION_BASE_GPA,
     PROCESS_INNER_REGION_BASE_GPA, SHIM_BASE_GPA, USER_STACK_BASE, USER_STACK_SIZE,
 };
 use crate::libos::def::{
-    GUEST_MEMORY_REGION_BASE_GVA, GUEST_PT_BASE_GVA, INSTANCE_INNER_REGION_BASE_GVA,
+    GUEST_MEMORY_REGION_BASE_GVA, GUEST_PT_BASE_GVA, INSTANCE_REGION_BASE_GVA,
     PROCESS_INNER_REGION_BASE_GVA,
 };
 use crate::libos::def::{PROCESS_INNER_REGION_SIZE, ProcessInnerRegion};
@@ -195,7 +195,7 @@ impl<
         // Map the instance inner region.
         // Do not allocate a new instance inner region, since it is shared by all processes in the same instance.
         forked_addrspace.map_linear(
-            INSTANCE_INNER_REGION_BASE_GPA,
+            INSTANCE_REGION_BASE_GPA,
             self.instance_region_base,
             INSTANCE_REGION_SIZE,
             MappingFlags::READ | MappingFlags::WRITE,
@@ -344,6 +344,16 @@ impl<
             }
         }
         Ok(true)
+    }
+
+    pub fn setup_kernel_stack_frame(&mut self) -> AxResult {
+        // Init process's context frame.
+        self.process_inner_region_mut()
+            .init_kernel_stack_frame(SHIM_USER_ENTRY);
+
+        self.process_inner_region().dump_kernel_context_frame();
+
+        Ok(())
     }
 
     /// Load user ELF file into the guest address space.
@@ -555,7 +565,7 @@ impl<
         // Map the instance inner region.
         // The instance inner region is shared by all processes in the same instance.
         ept_addrspace.map_linear(
-            INSTANCE_INNER_REGION_BASE_GPA,
+            INSTANCE_REGION_BASE_GPA,
             instance_region_base,
             INSTANCE_REGION_SIZE,
             MappingFlags::READ | MappingFlags::WRITE,
@@ -645,10 +655,6 @@ impl<
             GUEST_PT_ROOT_GPA.as_usize(),
             PAGE_SIZE_2M,
         );
-        // Init process's context frame.
-        process_inner_region.init_kernel_stack_frame(SHIM_USER_ENTRY);
-
-        process_inner_region.dump_kernel_context_frame();
 
         // Alloc the page table root frame first.
         let guest_pg_root = guest_addrspace.alloc_pt_frame().map_err(|e| {
@@ -775,12 +781,9 @@ impl<
                 // Map instance inner region and process inner region.
                 guest_addrspace
                     .guest_map_region(
-                        INSTANCE_INNER_REGION_BASE_GVA,
-                        |gva| {
-                            INSTANCE_INNER_REGION_BASE_GPA
-                                .add(gva.sub_addr(INSTANCE_INNER_REGION_BASE_GVA))
-                        },
-                        PAGE_SIZE_4K,
+                        INSTANCE_REGION_BASE_GVA,
+                        |gva| INSTANCE_REGION_BASE_GPA.add(gva.sub_addr(INSTANCE_REGION_BASE_GVA)),
+                        INSTANCE_REGION_SIZE,
                         MappingFlags::READ | MappingFlags::WRITE,
                         false,
                         false,

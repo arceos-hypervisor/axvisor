@@ -20,8 +20,8 @@ pub const GUEST_MEM_REGION_BASE_GPA: GuestPhysAddr =
 pub const SHIM_BASE_GPA: GuestPhysAddr = GuestPhysAddr::from_usize(SHIM_BASE_PA);
 pub const GUEST_PT_ROOT_GPA: GuestPhysAddr = GuestPhysAddr::from_usize(GUEST_PT_ROOT_PA);
 
-pub const INSTANCE_INNER_REGION_BASE_GPA: GuestPhysAddr =
-    GuestPhysAddr::from_usize(INSTANCE_INNER_REGION_BASE_PA);
+pub const INSTANCE_REGION_BASE_GPA: GuestPhysAddr =
+    GuestPhysAddr::from_usize(INSTANCE_REGION_BASE_PA);
 pub const PROCESS_INNER_REGION_BASE_GPA: GuestPhysAddr =
     GuestPhysAddr::from_usize(PROCESS_INNER_REGION_BASE_PA);
 pub const PERCPU_EPTP_LIST_REGION_GPA: GuestPhysAddr =
@@ -40,8 +40,8 @@ pub const GUEST_MEMORY_REGION_BASE_GVA: GuestVirtAddr =
 pub const GUEST_PT_BASE_GVA: GuestVirtAddr = GuestVirtAddr::from_usize(GUEST_PT_BASE_VA as usize);
 pub const PROCESS_INNER_REGION_BASE_GVA: GuestVirtAddr =
     GuestVirtAddr::from_usize(PROCESS_INNER_REGION_BASE_VA as usize);
-pub const INSTANCE_INNER_REGION_BASE_GVA: GuestVirtAddr =
-    GuestVirtAddr::from_usize(INSTANCE_INNER_REGION_BASE_VA as usize);
+pub const INSTANCE_REGION_BASE_GVA: GuestVirtAddr =
+    GuestVirtAddr::from_usize(INSTANCE_REGION_BASE_VA as usize);
 pub const PERCPU_REGION_BASE_GVA: GuestVirtAddr =
     GuestVirtAddr::from_usize(PERCPU_REGION_BASE_VA as usize);
 
@@ -50,7 +50,7 @@ pub const GP_ALL_EPTP_LIST_REGION_GVA: GuestVirtAddr =
 pub const GP_PERCPU_EPT_LIST_REGION_GVA: GuestVirtAddr =
     GuestVirtAddr::from_usize(GP_PERCPU_EPTP_LIST_REGION_VA as usize);
 pub const GP_ALL_INSTANCE_PERCPU_REGION_GVA: GuestVirtAddr =
-	GuestVirtAddr::from_usize(GP_ALL_INSTANCE_PERCPU_REGION_VA as usize);
+    GuestVirtAddr::from_usize(GP_ALL_INSTANCE_PERCPU_REGION_VA as usize);
 
 /// Guest Process stack size.
 pub const USER_STACK_SIZE: usize = 4096 * 4; // 16K
@@ -96,6 +96,12 @@ impl EPTPList {
         eptp_list.dump();
     }
 
+    /// Copy the EPTP list into the given target region.
+    /// The target region must be aligned to 4K.
+    /// The caller must ensure that the target region is valid.
+    ///
+    /// The first entry (gate EPTP) WILL BE ingnored during the copy,
+    /// because it is reserved for the gate process.
     pub unsafe fn copy_into_region(&self, target_region: HostVirtAddr) {
         assert!(target_region.is_aligned(PAGE_SIZE_4K));
 

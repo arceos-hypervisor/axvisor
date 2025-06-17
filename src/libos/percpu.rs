@@ -7,6 +7,7 @@ use std::thread;
 
 use axaddrspace::npt::EPTPointer;
 use axaddrspace::{GuestPhysAddr, HostPhysAddr};
+use axerrno::{AxResult, ax_err};
 use lazyinit::LazyInit;
 
 use axconfig::SMP;
@@ -78,7 +79,10 @@ impl<H: PagingHandler> EqOSPerCpu<H> {
         .unwrap()
     }
 
-    #[allow(unused)]
+    pub fn set_next_instance_id(&mut self, instance_id: usize) {
+        self.percpu_region_mut().next_instance_id = instance_id as _;
+    }
+
     fn dump_current_eptp_list(&self) {
         info!(
             "Current EPTP list region {:?} for CPU {}, vcpu {}",
@@ -180,6 +184,28 @@ fn current_libos_percpu() -> &'static EqOSPerCpu<PagingHandlerImpl> {
     unsafe { LIBOS_PERCPU.current_ref_raw() }
 }
 
+/// Update the next instance ID of the specified per CPU region,
+/// which is used to determine the next instance to run on this CPU.
+pub fn set_next_instance_id_of_cpu(cpu_id: usize, instance_id: usize) -> AxResult {
+    assert!(cpu_id < SMP, "Invalid CPU ID: {}", cpu_id);
+    if !get_instance_cpus_mask().get(cpu_id) {
+        warn!(
+            "CPU {} is not in the instance CPU mask, skipping setting next instance ID",
+            cpu_id
+        );
+        return ax_err!(
+            InvalidInput,
+            format!("CPU {} is not in the instance CPU mask", cpu_id)
+        );
+    }
+
+    let remote_percpu = unsafe { LIBOS_PERCPU.remote_ref_mut_raw(cpu_id) };
+
+    remote_percpu.set_next_instance_id(instance_id);
+
+    Ok(())
+}
+
 #[percpu::def_percpu]
 static LIBOS_PERCPU: LazyInit<EqOSPerCpu<PagingHandlerImpl>> = LazyInit::new();
 
@@ -231,6 +257,8 @@ pub fn init_instance_percore_task(cpu_id: usize, vcpu: VCpuRef, percpu_region: H
     // // Set shim task ID as cpu_id for no reason...
     // remote_percpu.percpu_region_mut().current_task.task_id = cpu_id;
     remote_percpu.percpu_region_mut().cpu_id = cpu_id as _;
+    remote_percpu.percpu_region_mut().current_instance_id = SHIM_INSTANCE_ID as _;
+    remote_percpu.percpu_region_mut().next_instance_id = SHIM_INSTANCE_ID as _;
 
     info!(
         "LibOSPerCpu CPU[{}] initialized, vcpu {}, percpu region[{}] @{:?}, eptp list region {:?}",
@@ -394,6 +422,15 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
                             }
                         }
 
+                        curcpu.mark_idle();
+                    }
+                    AxVCpuExitReason::EPTPSwitch { index } => {
+                        error!(
+                            "Instance[{}] run on Vcpu [{}] EPTP switch to index {} failed",
+                            instance_id, vcpu_id, index
+                        );
+
+                        current_libos_percpu().dump_current_eptp_list();
                         curcpu.mark_idle();
                     }
                     AxVCpuExitReason::Nothing => {

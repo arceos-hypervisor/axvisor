@@ -89,16 +89,9 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
     /// Exit the instance with the given exit code.
     /// TODO: we may need to care about more context states.
     fn exit_process(&self, exit_code: u64) -> HyperCallResult {
-        info!("HExitInstance code {exit_code:#x}");
+        info!("HExitProcess code {exit_code:#x}");
 
         self.instance.remove_process(self.pcpu.current_ept_root())?;
-
-        // DO NOT exit thread here, just mark the percpu as idle.
-        // The thread will be exited in the next loop in `libos_vcpu_run`,
-        // to let current `InstanceCall` to be dropped peacefully.
-        if self.instance.processes.lock().len() == 0 {
-            self.pcpu.mark_idle();
-        }
 
         Ok(0)
     }

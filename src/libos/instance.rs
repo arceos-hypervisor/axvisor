@@ -246,6 +246,9 @@ impl<H: PagingHandler> Instance<H> {
 
         match itype {
             InstanceType::LibOS => {
+                init_addrspace.setup_kernel_stack_frame()?;
+
+                // Init process's context frame.
                 // Load ELF data for libos process and setup libos process's stack region.
                 init_addrspace.setup_user_elf(raw_file.as_ref())?;
             }
@@ -430,8 +433,16 @@ impl<H: PagingHandler> Instance<H> {
         }
 
         if self.processes.lock().is_empty() {
-            // If there are no processes left, we can remove the instance.
-            remove_instance(self.id())?;
+            // If there are no processes left in the instance,
+            // if the instance has no running tasks,
+            // it means that all processes have exited and
+            // the instance is no longer needed, so
+            // we can remove the instance.
+
+            if self.instance_region().running_tasks_count() == 0 {
+                info!("No more running tasks in instance [{}]", self.id());
+                remove_instance(self.id())?;
+            }
         }
         Ok(())
     }
@@ -755,7 +766,9 @@ pub fn create_instance(
             ax_err_type!(BadState, "Failed to insert init task into run queue")
         })?;
 
-	// TODO: remove this when we have a better way to send IPI.
+    crate::libos::percpu::set_next_instance_id_of_cpu(target_core, iid)?;
+
+    // TODO: remove this when we have a better way to send IPI.
     use std::os::arceos::modules::axhal::irq::{IPI_IRQ_NUM, send_ipi_one};
     send_ipi_one(target_core, IPI_IRQ_NUM);
 
