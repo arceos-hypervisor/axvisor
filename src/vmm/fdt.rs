@@ -5,11 +5,9 @@ use fdt_parser::Fdt;
 use vm_fdt::{FdtWriter, FdtWriterNode};
 use axerrno::AxResult;
 use crate::vmm::images::LoadRange;
-use memory_addr::MemoryAddr;
 
 
 pub fn updated_fdt(config: AxVMCrateConfig, dtb_size: usize, vm: VMRef) -> AxResult<Vec<LoadRange>>  {
-    // let new_dtb_addr = config.kernel.dtb_load_addr.unwrap().add(0x4_0000); 
     let dtb_addr = config.kernel.dtb_load_addr.unwrap();
     let mut new_fdt = FdtWriter::new().unwrap();
     let mut old_node_level = 0;
