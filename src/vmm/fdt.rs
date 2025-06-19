@@ -9,7 +9,7 @@ use memory_addr::MemoryAddr;
 
 
 pub fn updated_fdt(config: AxVMCrateConfig, dtb_size: usize, vm: VMRef) -> AxResult<Vec<LoadRange>>  {
-    let new_dtb_addr = config.kernel.dtb_load_addr.unwrap().add(0x4_0000); 
+    // let new_dtb_addr = config.kernel.dtb_load_addr.unwrap().add(0x4_0000); 
     let dtb_addr = config.kernel.dtb_load_addr.unwrap();
     let mut new_fdt = FdtWriter::new().unwrap();
     let mut old_node_level = 0;
@@ -49,7 +49,7 @@ pub fn updated_fdt(config: AxVMCrateConfig, dtb_size: usize, vm: VMRef) -> AxRes
         new_fdt.end_node(node).unwrap();
     }
     let new_fdt = new_fdt.finish().unwrap();
-    let load_ranges = copy_new_fdt_to_new_addr(new_fdt, new_dtb_addr, vm);
+    let load_ranges = copy_new_fdt_to_new_addr(new_fdt, dtb_addr, vm);
     info!("load_ranges: {:?}", load_ranges);
     Ok(load_ranges)
 }
