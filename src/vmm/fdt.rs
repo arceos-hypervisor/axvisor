@@ -1,6 +1,6 @@
 use crate::vmm::VMRef;
 use alloc::vec::Vec;
-use axvm::config::{self, AxVMCrateConfig, VmMemConfig};
+use axvm::config::{AxVMCrateConfig, VmMemConfig};
 use fdt_parser::Fdt;
 use vm_fdt::{FdtWriter, FdtWriterNode};
 use axerrno::AxResult;
