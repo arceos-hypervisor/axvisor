@@ -391,7 +391,7 @@ fn gen_libos_configs() -> io::Result<()> {
     let erodata = erodata_value.expect("Failed to find erodata symbol");
     let sdata = sdata_value.expect("Failed to find sdata symbol");
     let ekernel = ekernel_value.expect("Failed to find ekernel symbol");
-    let user_entry = shim_user_entry.expect("Failed to find user_entry symbol");
+    let shim_user_entry = shim_user_entry.expect("Failed to find shim_user_entry symbol");
     let gate_entry = gate_entry.expect("Failed to find gate_entry symbol");
 
     writeln!(output_file, "pub const SHIM_ENTRY: usize = {:#x};", entry)?;
@@ -422,7 +422,7 @@ fn gen_libos_configs() -> io::Result<()> {
     writeln!(
         output_file,
         "pub const SHIM_USER_ENTRY: usize = {:#x};",
-        user_entry
+        shim_user_entry
     )?;
 
     writeln!(

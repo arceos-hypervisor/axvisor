@@ -17,8 +17,10 @@ use page_table_multiarch::{
 use axaddrspace::npt::{EPTEntry, EPTMetadata};
 use axaddrspace::{AddrSpace, GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr};
 use equation_defs::bitmap_allocator::PageAllocator;
+use equation_defs::task::context::TaskContext;
 use equation_defs::{
-    GuestMappingType, INSTANCE_REGION_SIZE, InstanceRegion, MMFrameAllocator, PTFrameAllocator,
+    EQUATION_MAGIC_NUMBER, GuestMappingType, INSTANCE_REGION_SIZE, InstanceRegion,
+    MMFrameAllocator, PTFrameAllocator,
 };
 
 use crate::libos::config::{
@@ -360,7 +362,7 @@ impl<
     /// Setup the entry point and stack region.
     ///
     /// Returns the entry point of the ELF file.
-    pub fn setup_user_elf(&mut self, elf_data: &[u8]) -> AxResult {
+    pub fn setup_user_elf(&mut self, elf_data: &[u8]) -> AxResult<TaskContext> {
         use xmas_elf::program::{Flags, SegmentData, Type};
         use xmas_elf::{ElfFile, header};
 
@@ -415,13 +417,6 @@ impl<
             let area_start = vaddr.align_down_4k();
             let area_end = GuestVirtAddr::from_usize((ph.virtual_addr() + ph.mem_size()) as usize)
                 .align_up_4k();
-            let ph_data = match ph.get_data(&elf).unwrap() {
-                SegmentData::Undefined(data) => data,
-                _ => {
-                    error!("failed to get ELF segment data");
-                    return ax_err!(InvalidInput);
-                }
-            };
 
             self.guest_map_alloc(
                 area_start,
@@ -430,11 +425,28 @@ impl<
                 true,
             )?;
 
-            self.copy_into_guest(
-                HostVirtAddr::from_ptr_of(ph_data.as_ptr()),
-                vaddr,
-                ph.mem_size() as usize,
-            )?;
+            if ph.file_size() > 0 {
+                let ph_data = match ph.get_data(&elf).unwrap() {
+                    SegmentData::Undefined(data) => data,
+                    _ => {
+                        error!("failed to get ELF segment data");
+                        return ax_err!(InvalidInput);
+                    }
+                };
+                self.copy_into_guest(
+                    HostVirtAddr::from_ptr_of(ph_data.as_ptr()),
+                    vaddr,
+                    ph.file_size() as usize,
+                )?;
+            }
+
+            let zeroed_size = ph.mem_size() as usize - ph.file_size() as usize;
+
+            if zeroed_size > 0 {
+                // Zero the memory region after the file size,
+                // mainly for BSS segments.
+                self.zero_range(vaddr.add(ph.file_size() as usize), zeroed_size)?;
+            }
         }
 
         // Setup shim process's stack region.
@@ -445,11 +457,49 @@ impl<
             true,
         )?;
 
+        // TODO: this is extremely silly.
         self.process_inner_region_mut().user_stack_top =
             USER_STACK_BASE.as_usize() + USER_STACK_SIZE;
         self.process_inner_region_mut().user_entry = elf.header.pt2.entry_point() as usize;
 
-        Ok(())
+        let user_entry = elf.header.pt2.entry_point() as usize;
+        let user_sp = GuestVirtAddr::from_usize(USER_STACK_BASE.as_usize() + USER_STACK_SIZE - 1);
+
+        let (usp_gpa, _gflags, _gpgsize) = self.guest_query(user_sp).map_err(|paging_err| {
+            error!(
+                "Failed to query {:?} from guest page table: {:?}",
+                user_sp, paging_err
+            );
+            ax_err_type!(BadAddress, "GVA not mapped to GPA")
+        })?;
+
+        let (usp_hpa, _hflags, _hpgsize) = self
+            .ept_addrspace
+            .translate(usp_gpa)
+            .ok_or_else(|| ax_err_type!(BadAddress, "GPA not mapped"))?;
+        let usp_hva = H::phys_to_virt(usp_hpa);
+
+        let mut ctx = TaskContext::new();
+        use equation_defs::task::context::ContextSwitchFrame;
+
+        // Setup the user task context.
+        let offset = unsafe {
+            // x86_64 calling convention: the stack must be 16-byte aligned before
+            // calling a function. That means when entering a new task (`ret` in `context_switch`
+            // is executed), (stack pointer + 8) should be 16-byte aligned.
+            let frame_ptr = (usp_hva.as_mut_ptr() as *mut u64).sub(1);
+            let frame_ptr = (frame_ptr as *mut ContextSwitchFrame).sub(1);
+            core::ptr::write(frame_ptr, ContextSwitchFrame {
+                rip: user_entry as _,
+                r15: EQUATION_MAGIC_NUMBER as _,
+                ..Default::default()
+            });
+            usp_hva.as_usize() - frame_ptr as usize
+        };
+        ctx.rsp = (user_sp.as_usize() - offset) as _;
+        ctx.kstack_top = HostVirtAddr::from_usize(user_sp.as_usize() + 1);
+
+        Ok(ctx)
     }
 }
 
@@ -563,7 +613,7 @@ impl<
         )?;
 
         // Map the instance inner region.
-        // The instance inner region is shared by all processes in the same instance.
+        // The instance region is shared by all processes in the same instance.
         ept_addrspace.map_linear(
             INSTANCE_REGION_BASE_GPA,
             instance_region_base,
@@ -699,7 +749,8 @@ impl<
                         GuestVirtAddr::from_usize(SHIM_STEXT),
                         |gva| SHIM_BASE_GPA.add(gva.sub(SHIM_PHYS_VIRT_OFFSET).as_usize()),
                         SHIM_ETEXT - SHIM_STEXT,
-                        MappingFlags::READ | MappingFlags::EXECUTE,
+                        // TODO: only equation segments should be mapped with USER permission.
+                        MappingFlags::READ | MappingFlags::EXECUTE | MappingFlags::USER,
                         false,
                         false,
                     )
@@ -778,13 +829,13 @@ impl<
                     .map_err(paging_err_to_ax_err)?;
 
                 info!("Mapping instance inner region");
-                // Map instance inner region and process inner region.
+                // Map instance region and process inner region.
                 guest_addrspace
                     .guest_map_region(
                         INSTANCE_REGION_BASE_GVA,
                         |gva| INSTANCE_REGION_BASE_GPA.add(gva.sub_addr(INSTANCE_REGION_BASE_GVA)),
                         INSTANCE_REGION_SIZE,
-                        MappingFlags::READ | MappingFlags::WRITE,
+                        MappingFlags::READ | MappingFlags::WRITE | MappingFlags::USER,
                         false,
                         false,
                     )
@@ -1031,6 +1082,60 @@ impl<
 
             remained_size -= copied_size;
             src_hva = src_hva.add(copied_size);
+        }
+
+        Ok(())
+    }
+
+    pub fn zero_range(&mut self, dst: GuestVirtAddr, size: usize) -> AxResult {
+        debug!("zero_range dst: {:?} size: {:#x}", dst, size);
+
+        let start_addr = dst;
+        let end_addr = start_addr.add(size);
+
+        if !self.gva_range.contains(start_addr) || !self.gva_range.contains(end_addr) {
+            return ax_err!(
+                InvalidInput,
+                alloc::format!("GVA [{:?}~{:?}] out of range", start_addr, end_addr).as_str()
+            );
+        }
+
+        if size == 0 {
+            return ax_err!(InvalidInput, "GVA range is empty");
+        }
+
+        let start_addr_aligned = start_addr.align_down(PAGE_SIZE_4K);
+        let end_addr_aligned = end_addr.align_up(PAGE_SIZE_4K);
+
+        let mut remained_size = size;
+
+        for gva in PageIter4K::new(start_addr_aligned, end_addr_aligned).unwrap() {
+            let (gpa, _gflags, _gpgsize) = self.guest_query(gva).map_err(paging_err_to_ax_err)?;
+            let (hpa, _hflags, _hpgsize) = self
+                .ept_addrspace
+                .translate(gpa)
+                .ok_or_else(|| ax_err_type!(BadAddress, "GPA not mapped"))?;
+
+            let hva = H::phys_to_virt(hpa);
+            let dst_hva = if gva == start_addr_aligned {
+                hva.add(dst.align_offset_4k())
+            } else {
+                hva
+            };
+
+            let zeroed_size = if gva == start_addr_aligned {
+                (PAGE_SIZE_4K - dst.align_offset_4k()).min(remained_size)
+            } else if remained_size >= PAGE_SIZE_4K {
+                PAGE_SIZE_4K
+            } else {
+                remained_size
+            };
+
+            unsafe {
+                core::ptr::write_bytes(dst_hva.as_mut_ptr(), 0, zeroed_size);
+            }
+
+            remained_size -= zeroed_size;
         }
 
         Ok(())

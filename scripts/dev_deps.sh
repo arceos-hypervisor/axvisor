@@ -19,5 +19,5 @@ git clone git@github.com:arceos-hypervisor/x86_vcpu.git --branch equation
 # Clone repository into the deps directory
 cd ../deps || exit
 git clone git@github.com:arceos-hypervisor/axvisor-tools.git --branch equation
-git clone git@github.com:EquationOS/shim.git --branch shim
+git clone git@github.com:EquationOS/shim.git --branch gate_process
 git clone git@github.com:EquationOS/jailhouse-equation.git --branch axvisor_hw

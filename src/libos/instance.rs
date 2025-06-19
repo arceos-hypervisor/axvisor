@@ -18,7 +18,7 @@ use axaddrspace::{GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr, Mapp
 use axvcpu::AxVcpuAccessGuestState;
 use equation_defs::{
     FIRST_PROCESS_ID, GuestMappingType, INSTANCE_PERCPU_REGION_SIZE, InstanceRegion, InstanceType,
-    MAX_CPUS_NUM, MAX_INSTANCES_NUM, PERCPU_REGION_SIZE, SHIM_INSTANCE_ID,
+    MAX_CPUS_NUM, MAX_INSTANCES_NUM, SHIM_INSTANCE_ID,
 };
 
 use crate::libos::config::get_gate_process_data;
@@ -26,7 +26,7 @@ use crate::libos::def::{
     EPTP_LIST_REGION_SIZE, EPTPList, GP_ALL_EPTP_LIST_REGIN_GPA, GP_ALL_EPTP_LIST_REGION_GVA,
     GP_ALL_INSTANCE_PERCPU_REGION_GPA, GP_ALL_INSTANCE_PERCPU_REGION_GVA,
     GP_PERCPU_EPT_LIST_REGION_GVA, INSTANCE_REGION_SIZE, PERCPU_EPTP_LIST_REGION_GPA,
-    PERCPU_REGION_BASE_GPA, PERCPU_REGION_BASE_GVA,
+    PERCPU_REGION_BASE_GPA, PERCPU_REGION_BASE_GVA, PERCPU_REGION_SIZE,
 };
 use crate::libos::gaddrspace::{GuestAddrSpace, init_shim_kernel};
 use crate::libos::process::Process;
@@ -176,7 +176,7 @@ impl<H: PagingHandler> Instance<H> {
 
         // Load elf data for shim process.
         let gate_process_data = get_gate_process_data();
-        shim_addrspace.setup_user_elf(gate_process_data)?;
+        let _ctx = shim_addrspace.setup_user_elf(gate_process_data)?;
 
         let init_ept_root_hpa = shim_addrspace.ept_root_hpa();
 
@@ -244,32 +244,30 @@ impl<H: PagingHandler> Instance<H> {
         let mut init_addrspace =
             GuestAddrSpace::new(FIRST_PROCESS_ID, instance_region_base, mapping_type)?;
 
-        match itype {
+        let task_context = match itype {
             InstanceType::LibOS => {
-                init_addrspace.setup_kernel_stack_frame()?;
+                // init_addrspace.setup_kernel_stack_frame()?;
 
                 // Init process's context frame.
                 // Load ELF data for libos process and setup libos process's stack region.
-                init_addrspace.setup_user_elf(raw_file.as_ref())?;
+                init_addrspace.setup_user_elf(raw_file.as_ref())?
             }
             InstanceType::Kernel => {
-                unimplemented!()
+                init_addrspace.setup_kernel_stack_frame()?;
+                let (rsp_gva, kstack_top_gva) = init_addrspace
+                    .process_inner_region_mut()
+                    .kernel_context_rsp_stack_top_gva();
+                TaskContext {
+                    kstack_top: HostVirtAddr::from_usize(kstack_top_gva),
+                    rsp: rsp_gva as _,
+                    fs_base: 0,
+                }
             }
         };
 
         let init_ept_root_hpa = init_addrspace.ept_root_hpa();
 
         info!("Instance {}: init eptp at: {:?}", id, init_ept_root_hpa);
-
-        let (rsp_gva, kstack_top_gva) = init_addrspace
-            .process_inner_region_mut()
-            .kernel_context_rsp_stack_top_gva();
-
-        let task_context = TaskContext {
-            kstack_top: HostVirtAddr::from_usize(kstack_top_gva),
-            rsp: rsp_gva as _,
-            fs_base: 0,
-        };
 
         let mut processes = BTreeMap::new();
         let init_process = Process::new(FIRST_PROCESS_ID, init_addrspace);
@@ -534,7 +532,7 @@ impl<H: PagingHandler> Instance<H> {
                     PERCPU_REGION_BASE_GVA,
                     |gva| PERCPU_REGION_BASE_GPA.add(gva.sub_addr(PERCPU_REGION_BASE_GVA)),
                     PERCPU_REGION_SIZE,
-                    MappingFlags::READ | MappingFlags::WRITE,
+                    MappingFlags::READ | MappingFlags::WRITE | MappingFlags::USER,
                     false,
                     false,
                 )
@@ -555,7 +553,7 @@ impl<H: PagingHandler> Instance<H> {
                     GP_PERCPU_EPT_LIST_REGION_GVA,
                     |_gva| PERCPU_EPTP_LIST_REGION_GPA,
                     EPTP_LIST_REGION_SIZE,
-                    MappingFlags::READ | MappingFlags::WRITE,
+                    MappingFlags::READ | MappingFlags::WRITE | MappingFlags::USER,
                     false,
                     false,
                 )
@@ -578,7 +576,10 @@ impl<H: PagingHandler> Instance<H> {
                     |gva| GP_ALL_EPTP_LIST_REGIN_GPA.add(gva.sub_addr(GP_ALL_EPTP_LIST_REGION_GVA)),
                     EPTP_LIST_REGION_SIZE * MAX_INSTANCES_NUM,
                     // Map as UNCACHED to make sure the update of EPTP list is visible to VMX immediately.
-                    MappingFlags::READ | MappingFlags::WRITE | MappingFlags::UNCACHED,
+                    MappingFlags::READ
+                        | MappingFlags::WRITE
+                        | MappingFlags::UNCACHED
+                        | MappingFlags::USER,
                     true,
                     false,
                 )
@@ -597,7 +598,6 @@ impl<H: PagingHandler> Instance<H> {
             )?;
 
             // Map all instances' perCPU region for gate process.
-
             for i in 0..MAX_INSTANCES_NUM {
                 let instance_percpu_region_base_gva =
                     GP_ALL_INSTANCE_PERCPU_REGION_GVA.add(i * INSTANCE_PERCPU_REGION_SIZE);
@@ -627,7 +627,7 @@ impl<H: PagingHandler> Instance<H> {
                                 .add(gva.sub_addr(instance_percpu_region_base_gva))
                         },
                         INSTANCE_PERCPU_REGION_SIZE,
-                        MappingFlags::READ | MappingFlags::WRITE,
+                        MappingFlags::READ | MappingFlags::WRITE | MappingFlags::USER,
                         false,
                         false,
                     )

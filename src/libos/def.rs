@@ -10,10 +10,8 @@ use equation_defs::*;
 
 use crate::vmm::{VCpuRef, VMRef};
 
-pub use equation_defs::{
-    EPTP_LIST_REGION_SIZE, INSTANCE_REGION_SIZE, PROCESS_INNER_REGION_SIZE, PerCPURegion,
-    ProcessInnerRegion,
-};
+pub use equation_defs::gate::region::{EPTP_LIST_REGION_SIZE, PERCPU_REGION_SIZE, PerCPURegion};
+pub use equation_defs::{INSTANCE_REGION_SIZE, PROCESS_INNER_REGION_SIZE, ProcessInnerRegion};
 
 pub const GUEST_MEM_REGION_BASE_GPA: GuestPhysAddr =
     GuestPhysAddr::from_usize(GUEST_MEM_REGION_BASE_PA);
