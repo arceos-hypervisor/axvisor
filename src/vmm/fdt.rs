@@ -11,6 +11,7 @@ pub fn updated_fdt(config: AxVMCrateConfig, dtb_size: usize, vm: VMRef) -> AxRes
     let mut new_fdt = FdtWriter::new().unwrap();
     let mut old_node_level = 0;
     let mut child_node: Vec<FdtWriterNode> = Vec::new();
+    let mut found_memory = false;
 
     let fdt_bytes = unsafe { core::slice::from_raw_parts(dtb_addr as *const u8, dtb_size) };
     let fdt = Fdt::from_bytes(fdt_bytes)
@@ -34,6 +35,7 @@ pub fn updated_fdt(config: AxVMCrateConfig, dtb_size: usize, vm: VMRef) -> AxRes
 
         for prop in node.propertys() {
             if node.name() == "memory" && prop.name == "reg" {
+                found_memory = true;
                 info!("node{},  Property: {} = {:?}", node.name(), prop.name, prop.raw_value());
                 update_memory_node(&config.kernel.memory_regions, &mut new_fdt);
             } else {
@@ -43,11 +45,22 @@ pub fn updated_fdt(config: AxVMCrateConfig, dtb_size: usize, vm: VMRef) -> AxRes
         }
     }
     while let Some(node) = child_node.pop() {
+        old_node_level -= 1;
         new_fdt.end_node(node).unwrap();
+
+        // If we haven't found the memory node, add it now
+        if old_node_level == 1 && !found_memory {
+            info!("Adding memory node with regions: {:?}", config.kernel.memory_regions);
+            let memory_node = new_fdt.begin_node("memory").unwrap();
+            update_memory_node(&config.kernel.memory_regions, &mut new_fdt);
+            new_fdt.end_node(memory_node).unwrap();
+        }
     }
+    assert_eq!(old_node_level , 0);
     let new_fdt = new_fdt.finish().unwrap();
     let load_ranges = copy_new_fdt_to_new_addr(new_fdt, dtb_addr, vm);
 
+    // panic!("FDT parsing complete, starting to update FDT...");
     Ok(load_ranges)
 }
 
