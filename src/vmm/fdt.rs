@@ -1,10 +1,9 @@
-use crate::vmm::VMRef;
+use crate::vmm::{VMRef, images::LoadRange};
 use alloc::vec::Vec;
 use axvm::config::{AxVMCrateConfig, VmMemConfig};
 use fdt_parser::Fdt;
 use vm_fdt::{FdtWriter, FdtWriterNode};
 use axerrno::AxResult;
-use crate::vmm::images::LoadRange;
 
 
 pub fn updated_fdt(config: AxVMCrateConfig, dtb_size: usize, vm: VMRef) -> AxResult<Vec<LoadRange>>  {
@@ -48,7 +47,7 @@ pub fn updated_fdt(config: AxVMCrateConfig, dtb_size: usize, vm: VMRef) -> AxRes
     }
     let new_fdt = new_fdt.finish().unwrap();
     let load_ranges = copy_new_fdt_to_new_addr(new_fdt, dtb_addr, vm);
-    info!("load_ranges: {:?}", load_ranges);
+
     Ok(load_ranges)
 }
 
