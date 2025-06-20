@@ -565,6 +565,7 @@ dependencies = [
  "syn 2.0.100",
  "timer_list",
  "toml",
+ "x86",
  "xmas-elf",
 ]
 
@@ -816,11 +817,14 @@ name = "equation_defs"
 version = "0.1.0"
 dependencies = [
  "allocator",
+ "axhvc",
  "bit_field",
  "bitmap-allocator",
  "bitmaps",
+ "cfg-if",
  "log",
  "memory_addr",
+ "x86",
 ]
 
 [[package]]

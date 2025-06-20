@@ -691,7 +691,6 @@ impl<
         let process_inner_region = guest_addrspace.process_inner_region_mut();
         process_inner_region.is_primary = true;
         process_inner_region.process_id = process_id;
-        process_inner_region.cpu_id = process_id;
         process_inner_region.mm_region_granularity = region_granularity;
         process_inner_region.mm_frame_allocator.init_with_page_size(
             PAGE_SIZE_4K,

@@ -19,7 +19,9 @@ use page_table_multiarch::{MappingFlags, PageSize, PagingHandler};
 use crate::libos::config::SHIM_ENTRY;
 use crate::libos::def::{EPTPList, GUEST_PT_ROOT_GPA, PerCPURegion};
 use crate::libos::hvc::InstanceCall;
-use crate::libos::instance::{InstanceRef, get_instances_by_id, remove_instance};
+use crate::libos::instance::{
+    InstanceRef, get_instances_by_id, remove_instance, shutdown_instance,
+};
 use crate::task_ext::{TaskExt, TaskExtType};
 use crate::vmm::VCpuRef;
 use crate::vmm::config::get_instance_cpus_mask;
@@ -83,7 +85,7 @@ impl<H: PagingHandler> EqOSPerCpu<H> {
         self.percpu_region_mut().next_instance_id = instance_id as _;
     }
 
-    fn get_gate_eptp_list_entry(&self) -> AxResult<EPTPointer> {
+    pub fn get_gate_eptp_list_entry(&self) -> AxResult<EPTPointer> {
         let eptp_list = EPTPList::construct(H::phys_to_virt(self.cpu_eptp_list_region))
             .ok_or_else(|| {
                 ax_err_type!(InvalidInput, "Failed to construct EPTPList from region")
@@ -299,6 +301,14 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
         vcpu_id, cpu_id
     );
 
+    unsafe {
+        // SDM 19.17.2 IA32_TSC_AUX Register and RDTSCP Support
+        // IA32_TSC_AUX provides a 32-bit field that is initialized by privileged
+        // software with a signature value (for example, a logical processor ID).
+        // RDTSCP returns the 64-bit time stamp in EDX:EAX and the 32-bit TSC_AUX signature value in ECX.
+        x86::msr::wrmsr(x86::msr::IA32_TSC_AUX, cpu_id as u64);
+    }
+
     let curcpu = unsafe { LIBOS_PERCPU.current_ref_raw() };
     let instance = curcpu.current_instance();
 
@@ -433,65 +443,12 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
                                     instance_id, vcpu_id
                                 );
 
-                                // Get the context of gate task so that this vCPU can return to the gate task
-                                // directly after next vCPU.run().
-                                let gate_task = instance_ref.instance_region().percpu_regions
-                                    [cpu_id]
-                                    .gate_task();
-
-                                // Update the vCPU's EPT pointer to the gate EPTP list entry.
                                 let gate_eptp = curcpu
                                     .get_gate_eptp_list_entry()
                                     .expect("Failed to get gate EPTP list entry");
-                                vcpu.get_arch_vcpu()
-                                    .set_ept_pointer(gate_eptp)
-                                    .expect("Failed to set EPT pointer for vCPU");
-                                // Set the vCPU's stack pointer to the gate task's stack pointer.
-                                vcpu.get_arch_vcpu()
-                                    .set_stack_pointer(gate_task.context.rsp as usize);
-                                // Set the vCPU's instruction pointer to the gate entry point.
-                                use crate::libos::config::SHIM_GATE_ENTRY;
-                                vcpu.get_arch_vcpu().set_instr_pointer(SHIM_GATE_ENTRY);
-                                vcpu.get_arch_vcpu().set_return_value(cpu_id);
-                                // SHIM_GATE_ENTRY:
-                                // // Stack pointer `rsp` is prepared by AxVisor.
-                                // // Restore callee-saved registers
-                                // "pop     r15",
-                                // "pop     r14",
-                                // "pop     r13",
-                                // "pop     r12",
-                                // "pop     rbx",
-                                // "pop     rbp",
-                                // // cpu_id is in `rax` (return value),
-                                // "ret",
 
-                                // Notify other CPUs to stop running this instance.
-                                if instance_ref.instance_region().running_tasks_count() > 0 {
-                                    let instance_running_cpu_mask =
-                                        instance_ref.instance_region().running_cpu_bitmask();
-
-                                    for cpu_id in get_instance_cpus_mask().into_iter() {
-                                        if (instance_running_cpu_mask & (1 << cpu_id)) != 0 {
-                                            warn!(
-                                                "TODO: Notifying CPU {} to stop running instance {}",
-                                                cpu_id, instance_id
-                                            );
-                                            // TODO: Add logic to notify the CPU to stop running this instance.
-                                        }
-                                    }
-                                }
-
-                                // If there are no more running tasks in this instance,
-                                // we can safely remove the instance.
-                                if instance_ref.instance_region().all_tasks_count() == 0 {
-                                    info!("No more running tasks in instance [{}]", instance_id);
-                                    let _ = remove_instance(instance_id).inspect_err(|e| {
-                                        error!(
-                                            "Failed to remove instance [{}]: {:?}",
-                                            instance_id, e
-                                        );
-                                    });
-                                }
+                                shutdown_instance(&vcpu, &instance_ref, gate_eptp)
+                                    .expect("Failed to shutdown instance");
                             }
                         }
                     }

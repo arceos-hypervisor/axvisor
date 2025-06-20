@@ -2,8 +2,7 @@ use alloc::collections::btree_map::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicBool, Ordering};
-use equation_defs::context::TaskContext;
-use equation_defs::task::EqTask;
+
 use lazyinit::LazyInit;
 use std::os::arceos::modules::axhal::paging::PagingHandlerImpl;
 use std::sync::Mutex;
@@ -16,6 +15,8 @@ use page_table_multiarch::{PageSize, PagingHandler};
 use axaddrspace::npt::EPTPointer;
 use axaddrspace::{GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr, MappingFlags};
 use axvcpu::AxVcpuAccessGuestState;
+use equation_defs::context::TaskContext;
+use equation_defs::task::EqTask;
 use equation_defs::{
     FIRST_PROCESS_ID, GuestMappingType, INSTANCE_PERCPU_REGION_SIZE, InstanceRegion, InstanceType,
     MAX_CPUS_NUM, MAX_INSTANCES_NUM, SHIM_INSTANCE_ID,
@@ -781,6 +782,78 @@ pub fn init_shim() -> AxResult {
         .lock()
         .insert(shim_instance.id(), shim_instance.clone());
     shim_instance.init_gate_processes()?;
+    Ok(())
+}
+
+use crate::vmm::VCpuRef;
+
+pub fn shutdown_instance(
+    vcpu: &VCpuRef,
+    instance_ref: &InstanceRef,
+    gate_eptp: EPTPointer,
+) -> AxResult {
+    let cpu_id = vcpu.id();
+    let instance_id = instance_ref.id();
+    info!(
+        "CPU {} Shutting down instance {}",
+        cpu_id,
+        instance_ref.id()
+    );
+
+    // Get the context of gate task so that this vCPU can return to the gate task
+    // directly after next vCPU.run().
+    let gate_task = instance_ref.instance_region().percpu_regions[cpu_id].gate_task();
+
+    // // Update the vCPU's EPT pointer to the gate EPTP list entry.
+    // let gate_eptp = curcpu
+    //     .get_gate_eptp_list_entry()
+    //     .expect("Failed to get gate EPTP list entry");
+    vcpu.get_arch_vcpu()
+        .set_ept_pointer(gate_eptp)
+        .expect("Failed to set EPT pointer for vCPU");
+    // Set the vCPU's stack pointer to the gate task's stack pointer.
+    vcpu.get_arch_vcpu()
+        .set_stack_pointer(gate_task.context.rsp as usize);
+    // Set the vCPU's instruction pointer to the gate entry point.
+    use crate::libos::config::SHIM_GATE_ENTRY;
+    vcpu.get_arch_vcpu().set_instr_pointer(SHIM_GATE_ENTRY);
+    vcpu.get_arch_vcpu().set_return_value(cpu_id);
+    // SHIM_GATE_ENTRY:
+    // // Stack pointer `rsp` is prepared by AxVisor.
+    // // Restore callee-saved registers
+    // "pop     r15",
+    // "pop     r14",
+    // "pop     r13",
+    // "pop     r12",
+    // "pop     rbx",
+    // "pop     rbp",
+    // // cpu_id is in `rax` (return value),
+    // "ret",
+
+    // Notify other CPUs to stop running this instance.
+    if instance_ref.instance_region().running_tasks_count() > 0 {
+        let instance_running_cpu_mask = instance_ref.instance_region().running_cpu_bitmask();
+
+        for cpu_id in get_instance_cpus_mask().into_iter() {
+            if (instance_running_cpu_mask & (1 << cpu_id)) != 0 {
+                warn!(
+                    "TODO: Notifying CPU {} to stop running instance {}",
+                    cpu_id, instance_id
+                );
+                // TODO: Add logic to notify the CPU to stop running this instance.
+            }
+        }
+    }
+
+    // If there are no more running tasks in this instance,
+    // we can safely remove the instance.
+    if instance_ref.instance_region().all_tasks_count() == 0 {
+        info!("No more running tasks in instance [{}]", instance_id);
+        let _ = remove_instance(instance_id).inspect_err(|e| {
+            error!("Failed to remove instance [{}]: {:?}", instance_id, e);
+        });
+    }
+
     Ok(())
 }
 

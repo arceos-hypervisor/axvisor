@@ -55,6 +55,9 @@ page_table_multiarch = "0.5"
 percpu = { version = "0.1.4", features = ["arm-el2"] }
 allocator = { git = "https://github.com/arceos-org/allocator.git", tag ="v0.1.1", features = ["bitmap"] }
 
+[target.'cfg(target_arch = "x86_64")'.dependencies.x86]
+version = "0.52"
+
 [build-dependencies]
 toml = { git = "https://github.com/arceos-hypervisor/toml.git", branch = "no_std" }
 axconfig = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm" }

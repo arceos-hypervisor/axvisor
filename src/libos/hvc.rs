@@ -7,7 +7,7 @@ use axhvc::{HyperCallCode, HyperCallResult};
 use axvcpu::AxVcpuAccessGuestState;
 use page_table_multiarch::PagingHandler;
 
-use crate::libos::instance::InstanceRef;
+use crate::libos::instance::{InstanceRef, shutdown_instance};
 use crate::libos::percpu::EqOSPerCpu;
 use crate::vmm::VCpuRef;
 
@@ -60,6 +60,7 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
             HyperCallCode::HyperVisorDebug => self.debug(),
             HyperCallCode::HDebug => self.debug(),
             HyperCallCode::HExitProcess => self.exit_process(self.args[0]),
+            HyperCallCode::HShutdownInstance => self.shutdown_instance(),
             HyperCallCode::HClone => self.clone(),
             HyperCallCode::HRead => self.read(self.args[0], self.args[1], self.args[2]),
             HyperCallCode::HWrite => self.write(self.args[0], self.args[1], self.args[2]),
@@ -93,6 +94,18 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
 
         self.instance.remove_process(self.pcpu.current_ept_root())?;
 
+        Ok(0)
+    }
+
+    fn shutdown_instance(&self) -> HyperCallResult {
+        info!("HShutdownInstance");
+
+        let gate_eptp = self
+            .pcpu
+            .get_gate_eptp_list_entry()
+            .expect("Failed to get gate EPTP list entry");
+
+        shutdown_instance(&self.vcpu, &self.instance, gate_eptp)?;
         Ok(0)
     }
 
