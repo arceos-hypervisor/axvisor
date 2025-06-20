@@ -637,6 +637,7 @@ dependencies = [
  "bitflags 2.9.1",
  "cfg-if",
  "crate_interface",
+ "fdt-parser",
  "kspin",
  "lazyinit",
  "log",
@@ -650,6 +651,7 @@ dependencies = [
  "syn 2.0.102",
  "timer_list",
  "toml",
+ "vm-fdt",
 ]
 
 [[package]]
@@ -2154,6 +2156,14 @@ dependencies = [
  "bitflags 2.9.1",
  "log",
  "zerocopy 0.7.35",
+]
+
+[[package]]
+name = "vm-fdt"
+version = "0.3.0"
+source = "git+https://github.com/bullhh/vm-fdt.git#f8caf77fadf4e925e91df5bd211c8a96dc1f6e07"
+dependencies = [
+ "hashbrown 0.14.5",
 ]
 
 [[package]]
