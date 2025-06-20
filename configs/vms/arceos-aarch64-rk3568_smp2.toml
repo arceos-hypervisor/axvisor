@@ -13,6 +13,7 @@ cpu_num = 2
 phys_cpu_ids = [0x00, 0x100]
 # Guest vm physical cpu sets.
 phys_cpu_sets = [1, 2]
+
 #
 # Vm kernel configs
 #
@@ -38,6 +39,7 @@ memory_regions = [
   # [0x600_0000, 0x240_0000, 0x7, 1], # System RAM MAP_IDENTICAL
   #  [0x1_f000_0000, 0x1000_0000, 0x7, 1], # System RAM MAP_IDENTICAL
 ]
+
 #
 # Device specifications
 #
@@ -45,6 +47,7 @@ memory_regions = [
 # Emu_devices.
 # Name Base-Ipa Ipa_len Alloc-Irq Emu-Type EmuConfig.
 emu_devices = []
+
 # Pass-through devices.
 # Name Base-Ipa Base-Pa Length Alloc-Irq.
 passthrough_devices = [
