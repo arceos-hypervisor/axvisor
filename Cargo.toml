@@ -37,8 +37,7 @@ axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", tag="v0.2.6-d
 ] }
 
 # System dependent modules provided by ArceOS-Hypervisor.
-#axvm = { git = "https://github.com/arceos-hypervisor/axvm.git" }
-axvm = { path = "/home/hypervisor/axvm" }
+axvm = { git = "https://github.com/arceos-hypervisor/axvm.git" }
 axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git" }
 axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git" }
 
