@@ -24,7 +24,7 @@ timer_list = "0.1.0"
 # System dependent modules provided by ArceOS.
 # axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm", features = [
 # axstd = { path = "/home/zhourui/arceos/arceos-vm-dev-dyn/ulib/axstd", features = [
-axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", tag="v0.2.6-dyn", features = [ # branch = "vmm_irq_gicv3"
+axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", branch="vmm_irq_gicv3", features = [ # branch = "vmm_irq_gicv3"
     "alloc",
     "paging",
     # "fs",
@@ -62,3 +62,20 @@ axconfig = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "
 prettyplease = "0.2"
 quote = "1.0"
 syn = "2.0"
+
+[patch."https://github.com/arceos-hypervisor/axvm.git".axvm]
+path = "crates/axvm"
+[patch."https://github.com/arceos-hypervisor/axvcpu.git".axvcpu]
+path = "crates/axvcpu"
+[patch."https://github.com/arceos-hypervisor/axaddrspace.git".axaddrspace]
+path = "crates/axaddrspace"
+[patch."https://github.com/arceos-hypervisor/arm_vcpu.git".arm_vcpu]
+path = "crates/arm_vcpu"
+[patch."https://github.com/arceos-hypervisor/axdevice.git".axdevice]
+path = "crates/axdevice"
+[patch."https://github.com/arceos-hypervisor/arm_vgic.git".arm_vgic]
+path = "crates/arm_vgic"
+[patch."https://github.com/arceos-hypervisor/axdevice_crates.git".axdevice_base]
+path = "crates/axdevice_crates/axdevice_base"
+[patch."https://github.com/arceos-hypervisor/axhvc.git".axhvc]
+path = "crates/axhvc"
