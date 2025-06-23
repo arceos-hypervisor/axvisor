@@ -52,7 +52,7 @@ pub fn updated_fdt(config: AxVMCrateConfig, dtb_size: usize, vm: VMRef) -> AxRes
         if old_node_level == 1 && !found_memory {
             info!("Adding memory node with regions: {:?}", config.kernel.memory_regions);
             let memory_node = new_fdt.begin_node("memory").unwrap();
-            update_memory_node(&config.kernel.memory_regions, &mut new_fdt);
+            add_memory_node(&config.kernel.memory_regions, &mut new_fdt);
             new_fdt.end_node(memory_node).unwrap();
         }
     }
@@ -77,6 +77,13 @@ fn update_memory_node(new_memory: &Vec<VmMemConfig>, new_fdt: &mut FdtWriter) {
     info!("new_value: {:?}", new_value);
     new_fdt
         .property_array_u32("reg", new_value.as_ref())
+        .unwrap();
+}
+
+fn add_memory_node(new_memory: &Vec<VmMemConfig>, new_fdt: &mut FdtWriter) {
+    update_memory_node(new_memory, new_fdt);
+    new_fdt
+        .property_string("device_type", "memory")
         .unwrap();
 }
 
