@@ -4,13 +4,8 @@ mod images;
 mod mock;
 pub mod timer;
 mod ivc;
-#[allow(unused)] //TODO: remove this with "irq" feature.
-mod timer;
 mod vcpus;
 mod vm_list;
-mod fdt;
-mod hvc;
-mod ivc;
 
 
 use core::sync::atomic::{AtomicUsize, Ordering};

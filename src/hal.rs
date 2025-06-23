@@ -1,10 +1,14 @@
-use std::os::arceos;
+use std::os::arceos::{
+    self,
+    modules::axtask::{self, TaskExtRef},
+};
 
+use axerrno::{AxResult, ax_err_type};
 use memory_addr::{PAGE_SIZE_4K, align_up_4k};
 use page_table_multiarch::PagingHandler;
 
 use arceos::modules::{axalloc, axhal};
-use axaddrspace::{HostPhysAddr, HostVirtAddr};
+use axaddrspace::{AxMmHal, HostPhysAddr, HostVirtAddr};
 use axvcpu::AxVCpuHal;
 use axvm::{AxVMHal, AxVMPerCpu};
 
@@ -45,11 +49,34 @@ impl AxVMHal for AxVMHalImpl {
     fn current_time_nanos() -> u64 {
         axhal::time::monotonic_time_nanos()
     }
+
+    fn current_vm_id() -> usize {
+        axtask::current().task_ext().vm.id()
+    }
+
+    fn current_vcpu_id() -> usize {
+        axtask::current().task_ext().vcpu.id()
+    }
+
+    fn current_pcpu_id() -> usize {
+        axhal::cpu::this_cpu_id()
+    }
+
+    fn vcpu_resides_on(vm_id: usize, vcpu_id: usize) -> AxResult<usize> {
+        vmm::with_vcpu_task(vm_id, vcpu_id, |task| task.cpu_id() as usize)
+            .ok_or_else(|| ax_err_type!(NotFound))
+    }
+
+    fn inject_irq_to_vcpu(vm_id: usize, vcpu_id: usize, irq: usize) -> axerrno::AxResult {
+        vmm::with_vm_and_vcpu_on_pcpu(vm_id, vcpu_id, move |_, vcpu| {
+            vcpu.inject_interrupt(irq).unwrap();
+        })
+    }
 }
 
-pub struct AxVCpuHalImpl;
+pub struct AxMmHalImpl;
 
-impl AxVCpuHal for AxVCpuHalImpl {
+impl AxMmHal for AxMmHalImpl {
     fn alloc_frame() -> Option<HostPhysAddr> {
         <AxVMHalImpl as AxVMHal>::PagingHandler::alloc_frame()
     }
@@ -66,6 +93,12 @@ impl AxVCpuHal for AxVCpuHalImpl {
     fn virt_to_phys(vaddr: axaddrspace::HostVirtAddr) -> axaddrspace::HostPhysAddr {
         std::os::arceos::modules::axhal::mem::virt_to_phys(vaddr)
     }
+}
+
+pub struct AxVCpuHalImpl;
+
+impl AxVCpuHal for AxVCpuHalImpl {
+    type MmHal = AxMmHalImpl;
 
     #[cfg(target_arch = "aarch64")]
     fn irq_fetch() -> usize {
@@ -81,7 +114,7 @@ impl AxVCpuHal for AxVCpuHalImpl {
 }
 
 #[percpu::def_percpu]
-static AXVM_PER_CPU: AxVMPerCpu<AxVCpuHalImpl> = AxVMPerCpu::<AxVCpuHalImpl>::new_uninit();
+static mut AXVM_PER_CPU: AxVMPerCpu<AxVCpuHalImpl> = AxVMPerCpu::<AxVCpuHalImpl>::new_uninit();
 
 /// Init hardware virtualization support in each core.
 pub(crate) fn enable_virtualization() {
@@ -90,48 +123,44 @@ pub(crate) fn enable_virtualization() {
 
     use std::thread;
 
+    use arceos::api::config;
     use arceos::api::task::{AxCpuMask, ax_set_current_affinity};
-    use arceos::modules::axhal::cpu::{cpu_count, this_cpu_id};
+    use arceos::modules::axhal::cpu::this_cpu_id;
 
     static CORES: AtomicUsize = AtomicUsize::new(0);
 
     info!("Enabling hardware virtualization support on all cores...");
 
-    let cpu_count = cpu_count();
+    for cpu_id in 0..config::SMP {
+        thread::spawn(move || {
+            // Initialize cpu affinity here.
+            assert!(
+                ax_set_current_affinity(AxCpuMask::one_shot(cpu_id)).is_ok(),
+                "Initialize CPU affinity failed!"
+            );
 
-    debug!("Enable virtualization for {} cores...", cpu_count);
+            info!("Enabling hardware virtualization support on core {}", cpu_id);
 
-    for cpu_id in 0..cpu_count {
-        thread::Builder::new()
-            .name(format!("cpu {cpu_id} enable hv"))
-            .spawn(move || {
-                // Initialize cpu affinity here.
-                assert!(
-                    ax_set_current_affinity(AxCpuMask::one_shot(cpu_id)).is_ok(),
-                    "Initialize CPU affinity failed!"
-                );
+            vmm::init_timer_percpu();
 
-                vmm::init_timer_percpu();
+            let percpu = unsafe { AXVM_PER_CPU.current_ref_mut_raw() };
+            percpu
+                .init(this_cpu_id())
+                .expect("Failed to initialize percpu state");
+            percpu
+                .hardware_enable()
+                .expect("Failed to enable virtualization");
 
-                let percpu = unsafe { AXVM_PER_CPU.current_ref_mut_raw() };
-                percpu
-                    .init(this_cpu_id())
-                    .expect("Failed to initialize percpu state");
-                percpu
-                    .hardware_enable()
-                    .expect("Failed to enable virtualization");
+            info!("Hardware virtualization support enabled on core {}", cpu_id);
 
-                info!("Hardware virtualization support enabled on core {}", cpu_id);
-
-                let _ = CORES.fetch_add(1, Ordering::Release);
-            })
-            .unwrap();
+            let _ = CORES.fetch_add(1, Ordering::Release);
+        });
     }
 
     info!("Waiting for all cores to enable hardware virtualization...");
 
     // Wait for all cores to enable virtualization.
-    while CORES.load(Ordering::Acquire) != cpu_count {
+    while CORES.load(Ordering::Acquire) != config::SMP {
         // Use `yield_now` instead of `core::hint::spin_loop` to avoid deadlock.
         thread::yield_now();
     }
