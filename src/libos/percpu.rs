@@ -19,9 +19,7 @@ use page_table_multiarch::{MappingFlags, PageSize, PagingHandler};
 use crate::libos::config::SHIM_ENTRY;
 use crate::libos::def::{EPTPList, GUEST_PT_ROOT_GPA, PerCPURegion};
 use crate::libos::hvc::InstanceCall;
-use crate::libos::instance::{
-    InstanceRef, get_instances_by_id, remove_instance, shutdown_instance,
-};
+use crate::libos::instance::{InstanceRef, get_instances_by_id, shutdown_instance};
 use crate::task_ext::{TaskExt, TaskExtType};
 use crate::vmm::VCpuRef;
 use crate::vmm::config::get_instance_cpus_mask;
@@ -442,12 +440,7 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
                                     "Instance[{}] calls system down on CPU [{}], removing instance",
                                     instance_id, vcpu_id
                                 );
-
-                                let gate_eptp = curcpu
-                                    .get_gate_eptp_list_entry()
-                                    .expect("Failed to get gate EPTP list entry");
-
-                                shutdown_instance(&vcpu, &instance_ref, gate_eptp)
+                                shutdown_instance(curcpu, &vcpu, &instance_ref)
                                     .expect("Failed to shutdown instance");
                             }
                         }

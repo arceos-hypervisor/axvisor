@@ -30,6 +30,7 @@ use crate::libos::def::{
     PERCPU_REGION_BASE_GPA, PERCPU_REGION_BASE_GVA, PERCPU_REGION_SIZE,
 };
 use crate::libos::gaddrspace::{GuestAddrSpace, init_shim_kernel};
+use crate::libos::percpu::EqOSPerCpu;
 use crate::libos::process::Process;
 use crate::libos::region::{HostPhysicalRegion, HostPhysicalRegionRef};
 use crate::vmm::VCpu;
@@ -787,10 +788,10 @@ pub fn init_shim() -> AxResult {
 
 use crate::vmm::VCpuRef;
 
-pub fn shutdown_instance(
+pub(super) fn shutdown_instance<H: PagingHandler>(
+    curcpu: &EqOSPerCpu<H>,
     vcpu: &VCpuRef,
     instance_ref: &InstanceRef,
-    gate_eptp: EPTPointer,
 ) -> AxResult {
     let cpu_id = vcpu.id();
     let instance_id = instance_ref.id();
@@ -804,10 +805,10 @@ pub fn shutdown_instance(
     // directly after next vCPU.run().
     let gate_task = instance_ref.instance_region().percpu_regions[cpu_id].gate_task();
 
-    // // Update the vCPU's EPT pointer to the gate EPTP list entry.
-    // let gate_eptp = curcpu
-    //     .get_gate_eptp_list_entry()
-    //     .expect("Failed to get gate EPTP list entry");
+    // Update the vCPU's EPT pointer to the gate EPTP list entry.
+    let gate_eptp = curcpu
+        .get_gate_eptp_list_entry()
+        .expect("Failed to get gate EPTP list entry");
     vcpu.get_arch_vcpu()
         .set_ept_pointer(gate_eptp)
         .expect("Failed to set EPT pointer for vCPU");
@@ -857,7 +858,12 @@ pub fn shutdown_instance(
     Ok(())
 }
 
-pub fn remove_instance(id: usize) -> AxResult {
+/// Remove an instance from INSTANCES BTreeMap according to its ID.
+/// This function will also free the instance ID from the ID map.
+/// If the instance ID is not found, it will return an error.
+///
+/// This function is called by `shutdown_instance` when the instance is no longer needed,
+fn remove_instance(id: usize) -> AxResult {
     info!("Removing instance {}", id);
 
     let mut instances = INSTANCES.lock();

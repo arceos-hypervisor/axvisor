@@ -99,13 +99,7 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
 
     fn shutdown_instance(&self) -> HyperCallResult {
         info!("HShutdownInstance");
-
-        let gate_eptp = self
-            .pcpu
-            .get_gate_eptp_list_entry()
-            .expect("Failed to get gate EPTP list entry");
-
-        shutdown_instance(&self.vcpu, &self.instance, gate_eptp)?;
+        shutdown_instance(self.pcpu, &self.vcpu, &self.instance)?;
         Ok(0)
     }
 
