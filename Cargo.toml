@@ -26,7 +26,7 @@ vm-fdt = { git = "https://github.com/bullhh/vm-fdt.git", default-features = fals
 # System dependent modules provided by ArceOS.
 # axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm", features = [
 # axstd = { path = "/home/zhourui/arceos/arceos-vm-dev-dyn/ulib/axstd", features = [
-axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "rk3568_ivc", features = [
+axstd = { path = "/code/new/arceos/ulib/axstd", features = [
     "alloc",
     "paging",
     # "fs",

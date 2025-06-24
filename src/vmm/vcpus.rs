@@ -396,7 +396,7 @@ fn vcpu_run() {
                         let aff3 = (target_cpu >> 24) & 0xff;
                         let aff2 = (target_cpu >> 16) & 0xff;
                         let aff1 = (target_cpu >> 8) & 0xff;
-                        let irm = (send_to_all as u64);
+                        let irm = send_to_all as u64;
 
                         let icc_sgi1r_value = 
                             (vector as u64) << 24 |

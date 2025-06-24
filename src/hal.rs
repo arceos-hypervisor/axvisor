@@ -125,42 +125,45 @@ pub(crate) fn enable_virtualization() {
 
     use arceos::api::config;
     use arceos::api::task::{AxCpuMask, ax_set_current_affinity};
-    use arceos::modules::axhal::cpu::this_cpu_id;
+    use arceos::modules::axhal::cpu::{cpu_count, this_cpu_id};
 
     static CORES: AtomicUsize = AtomicUsize::new(0);
 
+    let cpu_count = cpu_count();
+
     info!("Enabling hardware virtualization support on all cores...");
 
-    for cpu_id in 0..config::SMP {
-        thread::spawn(move || {
-            // Initialize cpu affinity here.
-            assert!(
-                ax_set_current_affinity(AxCpuMask::one_shot(cpu_id)).is_ok(),
-                "Initialize CPU affinity failed!"
-            );
+    for cpu_id in 0..cpu_count {
+        thread::Builder::new()
+            .name(format!("cpu {cpu_id} enable hv"))
+            .spawn(move || {
+                // Initialize cpu affinity here.
+                assert!(
+                    ax_set_current_affinity(AxCpuMask::one_shot(cpu_id)).is_ok(),
+                    "Initialize CPU affinity failed!"
+                );
 
-            info!("Enabling hardware virtualization support on core {}", cpu_id);
+                vmm::init_timer_percpu();
 
-            vmm::init_timer_percpu();
+                let percpu = unsafe { AXVM_PER_CPU.current_ref_mut_raw() };
+                percpu
+                    .init(this_cpu_id())
+                    .expect("Failed to initialize percpu state");
+                percpu
+                    .hardware_enable()
+                    .expect("Failed to enable virtualization");
 
-            let percpu = unsafe { AXVM_PER_CPU.current_ref_mut_raw() };
-            percpu
-                .init(this_cpu_id())
-                .expect("Failed to initialize percpu state");
-            percpu
-                .hardware_enable()
-                .expect("Failed to enable virtualization");
+                info!("Hardware virtualization support enabled on core {}", cpu_id);
 
-            info!("Hardware virtualization support enabled on core {}", cpu_id);
-
-            let _ = CORES.fetch_add(1, Ordering::Release);
-        });
+                let _ = CORES.fetch_add(1, Ordering::Release);
+            })
+            .unwrap();
     }
 
     info!("Waiting for all cores to enable hardware virtualization...");
 
     // Wait for all cores to enable virtualization.
-    while CORES.load(Ordering::Acquire) != config::SMP {
+    while CORES.load(Ordering::Acquire) != cpu_count {
         // Use `yield_now` instead of `core::hint::spin_loop` to avoid deadlock.
         thread::yield_now();
     }
@@ -265,6 +268,17 @@ mod vmm_api_impl {
 
 #[axvisor_api::api_mod_impl(axvisor_api::arch)]
 mod arch_api_impl {
+    // write GICD_PADDR and GICR_PADDR down temporarily
+    cfg_if::cfg_if! {
+        if #[cfg(target_platform = "aarch64-dyn")] {
+            pub const GICD_PADDR: usize = 0xfd400000;
+            pub const GICR_PADDR: usize = 0xfd460000;
+        } else {
+            pub const GICD_PADDR: usize = 0x08000000;
+            pub const GICR_PADDR: usize = 0x080a0000;
+        }
+    }
+    
     #[cfg(target_arch = "aarch64")]
     extern fn hardware_inject_virtual_interrupt(irq: axvisor_api::vmm::InterruptVector) {
         use axstd::os::arceos::modules::axhal;
@@ -279,7 +293,7 @@ mod arch_api_impl {
         use std::os::arceos::modules::{axconfig, axhal};
         use memory_addr::pa;
 
-        let typer_phys_addr = axconfig::devices::GICD_PADDR + 0x4;
+        let typer_phys_addr = GICD_PADDR + 0x4;
         let typer_virt_addr = axhal::mem::phys_to_virt(pa!(typer_phys_addr));
 
         unsafe {
@@ -291,21 +305,17 @@ mod arch_api_impl {
     extern fn read_vgicd_iidr() -> u32 {
         // use axstd::os::arceos::modules::axhal::irq::MyVgic;
         // MyVgic::get_gicd().lock().get_iidr()
-0
+        0
     }
 
     #[cfg(target_arch = "aarch64")]
     extern fn get_host_gicd_base() -> memory_addr::PhysAddr {
-        use std::os::arceos::api::config;
-
-        config::devices::GICD_PADDR.into()
+        GICD_PADDR.into()
     }
 
     #[cfg(target_arch = "aarch64")]
     extern fn get_host_gicr_base() -> memory_addr::PhysAddr {
-        use std::os::arceos::api::config;
-
-        config::devices::GICR_PADDR.into()
+        GICR_PADDR.into()
     }
 }
 
