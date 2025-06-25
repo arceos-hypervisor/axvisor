@@ -22,7 +22,7 @@ entry_point = 0x4008_0000
 # Load from file system.
 image_location = "fs"
 # The file path of the kernel image.
-kernel_path = "arceos-aarch64.bin"
+kernel_path = "/code/new/arceos/examples/ivc_tester/ivc_tester_aarch64-qemu-virt.bin"
 # The load address of the kernel image.
 kernel_load_addr = 0x4008_0000
 ## Load from memory
