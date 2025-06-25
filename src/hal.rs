@@ -271,8 +271,8 @@ mod arch_api_impl {
     // write GICD_PADDR and GICR_PADDR down temporarily
     cfg_if::cfg_if! {
         if #[cfg(target_platform = "aarch64-dyn")] {
-            pub const GICD_PADDR: usize = 0xfd400000;
-            pub const GICR_PADDR: usize = 0xfd460000;
+            pub const GICD_PADDR: usize = 0x08000000;
+            pub const GICR_PADDR: usize = 0x08000000;
         } else {
             pub const GICD_PADDR: usize = 0x08000000;
             pub const GICR_PADDR: usize = 0x080a0000;
