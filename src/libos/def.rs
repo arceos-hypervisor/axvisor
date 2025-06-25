@@ -183,7 +183,7 @@ impl EPTPList {
     }
 }
 
-pub fn get_instance_file_from_shared_pages(
+pub fn get_contents_from_shared_pages(
     file_size: usize,
     pages_start_gva: usize,
     pages_count: usize,

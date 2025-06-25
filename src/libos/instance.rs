@@ -22,7 +22,7 @@ use equation_defs::{
     MAX_CPUS_NUM, MAX_INSTANCES_NUM, SHIM_INSTANCE_ID,
 };
 
-use crate::libos::config::get_gate_process_data;
+use crate::libos::config::{get_eqloader_data, get_gate_process_data};
 use crate::libos::def::{
     EPTP_LIST_REGION_SIZE, EPTPList, GP_ALL_EPTP_LIST_REGIN_GPA, GP_ALL_EPTP_LIST_REGION_GVA,
     GP_ALL_INSTANCE_PERCPU_REGION_GPA, GP_ALL_INSTANCE_PERCPU_REGION_GVA,
@@ -176,9 +176,9 @@ impl<H: PagingHandler> Instance<H> {
             GuestMappingType::CoarseGrainedSegmentation2M,
         )?;
 
-        // Load elf data for shim process.
+        // Load elf data for gate process.
         let gate_process_data = get_gate_process_data();
-        let _ctx = shim_addrspace.setup_user_elf(gate_process_data)?;
+        let _ctx = shim_addrspace.setup_user_elf(gate_process_data, None)?;
 
         let init_ept_root_hpa = shim_addrspace.ept_root_hpa();
 
@@ -247,12 +247,24 @@ impl<H: PagingHandler> Instance<H> {
             GuestAddrSpace::new(FIRST_PROCESS_ID, instance_region_base, mapping_type)?;
 
         let task_context = match itype {
-            InstanceType::LibOS => {
-                // init_addrspace.setup_kernel_stack_frame()?;
-
-                // Init process's context frame.
+            InstanceType::LibOSStatic => {
+                // Parse Process's ELF segments directly from the raw file.
                 // Load ELF data for libos process and setup libos process's stack region.
-                init_addrspace.setup_user_elf(raw_file.as_ref())?
+                // Since the libos process is staticly linked, we can load it directly.
+                init_addrspace.setup_user_elf(raw_file.as_ref(), None)?
+            }
+            InstanceType::LibOSDynamic => {
+                // Since the libos process is dynamically linked,
+                // the passed `raw_file` is just the execution metadata
+                // (e.g., the arguments and environment variables)
+                // in a position-independent memory layout format.
+
+                // We have to create the instance booted from the eqloader,
+                // which will execute the dynamic linker and load the actual libos's ELF
+                // file through syscall proxy and shared regions.
+
+                let eq_loader = get_eqloader_data();
+                init_addrspace.setup_user_elf(eq_loader, Some(raw_file.as_slice()))?
             }
             InstanceType::Kernel => {
                 init_addrspace.setup_kernel_stack_frame()?;
@@ -769,10 +781,6 @@ pub fn create_instance(
         })?;
 
     crate::libos::percpu::set_next_instance_id_of_cpu(target_core, iid)?;
-
-    // TODO: remove this when we have a better way to send IPI.
-    use std::os::arceos::modules::axhal::irq::{IPI_IRQ_NUM, send_ipi_one};
-    send_ipi_one(target_core, IPI_IRQ_NUM);
 
     Ok(iid)
 }

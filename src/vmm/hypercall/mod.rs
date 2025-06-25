@@ -4,7 +4,9 @@ use axerrno::{AxResult, ax_err, ax_err_type};
 use axhvc::{HyperCallCode, HyperCallResult};
 use axvcpu::AxVcpuAccessGuestState;
 
-use crate::libos::def::get_instance_file_from_shared_pages;
+use equation_defs::{GuestMappingType, InstanceType};
+
+use crate::libos::def::get_contents_from_shared_pages;
 use crate::vmm::{VCpuRef, VMRef};
 
 pub struct HyperCall {
@@ -72,8 +74,8 @@ impl HyperCall {
             HyperCallCode::HDebug => self.debug(),
             HyperCallCode::HInitShim => self.init_shim(),
             HyperCallCode::HCreateInstance => self.create_instance(
-                self.args[0],
-                self.args[1],
+                self.args[0].into(),
+                self.args[1].into(),
                 self.args[2],
                 self.args[3],
                 self.args[4],
@@ -129,18 +131,18 @@ impl HyperCall {
 
     fn create_instance(
         &self,
-        instance_type: u64,
-        mapping_type: u64,
+        instance_type: InstanceType,
+        mapping_type: GuestMappingType,
         file_size: u64,
         shared_pages_base_gva: u64,
         shared_pages_num: u64,
     ) -> HyperCallResult {
         info!(
-            "HCreateInstance type {}, mapping type {}, file size {} Bytes, shared_pages_base_gva {:#x} shared_pages_num {}",
+            "HCreateInstance type {:?}, mapping type {:?}, file size {} Bytes, shared_pages_base_gva {:#x} shared_pages_num {}",
             instance_type, mapping_type, file_size, shared_pages_base_gva, shared_pages_num
         );
 
-        let instance_file = get_instance_file_from_shared_pages(
+        let instance_file = get_contents_from_shared_pages(
             file_size as _,
             shared_pages_base_gva as _,
             shared_pages_num as _,
@@ -148,10 +150,6 @@ impl HyperCall {
             &self.vm,
         )?;
 
-        crate::libos::instance::create_instance(
-            instance_type.into(),
-            mapping_type.into(),
-            instance_file,
-        )
+        crate::libos::instance::create_instance(instance_type, mapping_type, instance_file)
     }
 }

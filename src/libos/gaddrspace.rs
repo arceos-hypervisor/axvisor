@@ -362,7 +362,11 @@ impl<
     /// Setup the entry point and stack region.
     ///
     /// Returns the entry point of the ELF file.
-    pub fn setup_user_elf(&mut self, elf_data: &[u8]) -> AxResult<TaskContext> {
+    pub fn setup_user_elf(
+        &mut self,
+        elf_data: &[u8],
+        args_data: Option<&[u8]>,
+    ) -> AxResult<TaskContext> {
         use xmas_elf::program::{Flags, SegmentData, Type};
         use xmas_elf::{ElfFile, header};
 
@@ -395,6 +399,7 @@ impl<
             self.process_id()
         );
 
+        // Map and copy the ELF segments into the guest address space.
         for ph in elf.program_iter() {
             if ph.get_type() != Ok(Type::Load) {
                 continue;
@@ -449,7 +454,7 @@ impl<
             }
         }
 
-        // Setup shim process's stack region.
+        // Setup user process's stack region.
         self.guest_map_alloc(
             USER_STACK_BASE,
             USER_STACK_SIZE,
@@ -457,47 +462,79 @@ impl<
             true,
         )?;
 
-        // TODO: this is extremely silly.
-        self.process_inner_region_mut().user_stack_top =
-            USER_STACK_BASE.as_usize() + USER_STACK_SIZE;
-        self.process_inner_region_mut().user_entry = elf.header.pt2.entry_point() as usize;
-
         let user_entry = elf.header.pt2.entry_point() as usize;
-        let user_sp = GuestVirtAddr::from_usize(USER_STACK_BASE.as_usize() + USER_STACK_SIZE - 1);
+        let user_sp_top = GuestVirtAddr::from_usize(USER_STACK_BASE.as_usize() + USER_STACK_SIZE);
 
-        let (usp_gpa, _gflags, _gpgsize) = self.guest_query(user_sp).map_err(|paging_err| {
-            error!(
-                "Failed to query {:?} from guest page table: {:?}",
-                user_sp, paging_err
-            );
-            ax_err_type!(BadAddress, "GVA not mapped to GPA")
-        })?;
+        // Note: the `user_stack_top` and `user_entry` stored in `ProcessInnerRegion`
+        // are only used for shim kernel to enter the gate process.
+        self.process_inner_region_mut().user_stack_top = user_sp_top.into();
+        self.process_inner_region_mut().user_entry = user_entry;
 
-        let (usp_hpa, _hflags, _hpgsize) = self
-            .ept_addrspace
-            .translate(usp_gpa)
-            .ok_or_else(|| ax_err_type!(BadAddress, "GPA not mapped"))?;
-        let usp_hva = H::phys_to_virt(usp_hpa);
+        // Below we setup the user task context.
+        let mut cur_sp_top = user_sp_top;
 
-        let mut ctx = TaskContext::new();
-        use equation_defs::task::context::ContextSwitchFrame;
+        info!("user stack top: {:?}", user_sp_top);
+
+        // Setup the arguments and environment variables in user stack.
+        let args_content_len = if let Some(args_data) = args_data {
+            // Copy the arguments data to the user stack.
+            let args_size = args_data.len();
+            if args_size > USER_STACK_SIZE {
+                error!("Arguments data size exceeds user stack size");
+                return ax_err!(InvalidInput, "Arguments data size exceeds user stack size");
+            }
+
+            let args_ptr_gva = user_sp_top.sub(args_size).align_down(size_of::<u64>());
+
+            // Copy the arguments data to the top of the user stack.
+            self.copy_into_guest(
+                HostVirtAddr::from_ptr_of(args_data.as_ptr()),
+                args_ptr_gva,
+                args_size,
+            )?;
+            cur_sp_top = args_ptr_gva;
+            args_size
+        } else {
+            0
+        };
+
+        warn!("Args at user stack: {:?}", cur_sp_top);
 
         // Setup the user task context.
-        let offset = unsafe {
-            // x86_64 calling convention: the stack must be 16-byte aligned before
-            // calling a function. That means when entering a new task (`ret` in `context_switch`
-            // is executed), (stack pointer + 8) should be 16-byte aligned.
-            let frame_ptr = (usp_hva.as_mut_ptr() as *mut u64).sub(1);
-            let frame_ptr = (frame_ptr as *mut ContextSwitchFrame).sub(1);
-            core::ptr::write(frame_ptr, ContextSwitchFrame {
-                rip: user_entry as _,
-                r15: EQUATION_MAGIC_NUMBER as _,
-                ..Default::default()
-            });
-            usp_hva.as_usize() - frame_ptr as usize
+        // Note: this is only used for user processed other than the gate process.
+        // Because only gate process will be executed from the shim kernel,
+        // while other user processes will be switched from the gate process
+        // through "instance switch" happened in ring 3.
+
+        use equation_defs::task::context::ContextSwitchFrame;
+        // x86_64 calling convention: the stack must be 16-byte aligned before
+        // calling a function. That means when entering a new task (`ret` in `context_switch`
+        // is executed), (stack pointer + 8) should be 16-byte aligned.
+        cur_sp_top = cur_sp_top
+            .align_down(size_of::<u64>())
+            .sub(size_of::<u64>());
+        // Allocate a context switch frame on the user stack.
+        let frame_ptr_gva = cur_sp_top.sub(size_of::<ContextSwitchFrame>());
+        // Construct the context switch frame.
+        let ctx_frame = ContextSwitchFrame {
+            rip: user_entry as _,
+            r15: EQUATION_MAGIC_NUMBER as _, // Magic number for Equation.
+            r14: args_content_len as _,      // Length of the arguments data, zero if no arguments.
+            ..Default::default()
         };
-        ctx.rsp = (user_sp.as_usize() - offset) as _;
-        ctx.kstack_top = HostVirtAddr::from_usize(user_sp.as_usize() + 1);
+        // Copy the context switch frame to the user stack.
+        self.copy_into_guest(
+            HostVirtAddr::from_ptr_of(&ctx_frame),
+            frame_ptr_gva,
+            size_of::<ContextSwitchFrame>(),
+        )?;
+        cur_sp_top = frame_ptr_gva;
+
+        info!("Context switch frame at user stack: {:?}", cur_sp_top);
+        let mut ctx = TaskContext::new();
+        ctx.rsp = cur_sp_top.as_usize() as _;
+        // `kstack_top` is unused?
+        ctx.kstack_top = HostVirtAddr::from_usize(user_sp_top.as_usize());
 
         Ok(ctx)
     }
