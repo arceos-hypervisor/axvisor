@@ -144,11 +144,13 @@ pub(crate) fn enable_virtualization() {
                 );
 
                 vmm::init_timer_percpu();
-
+                info!("1");
                 let percpu = unsafe { AXVM_PER_CPU.current_ref_mut_raw() };
+                info!("2");
                 percpu
                     .init(this_cpu_id())
                     .expect("Failed to initialize percpu state");
+                info!("3");
                 percpu
                     .hardware_enable()
                     .expect("Failed to enable virtualization");
