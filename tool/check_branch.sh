@@ -1,4 +1,4 @@
-cd ../arm_vcpu && git checkout inject_interrupt_vgicv3_ivc
+cd crates/arm_vcpu && git checkout inject_interrupt_vgicv3_ivc
 cd ../arm_vgic && git checkout inject_interrupt_vgicv3
 cd ../axaddrspace && git checkout 4_level_paging
 cd ../axdevice && git checkout ivc
