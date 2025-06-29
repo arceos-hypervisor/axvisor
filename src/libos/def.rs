@@ -18,6 +18,9 @@ pub const GUEST_MEM_REGION_BASE_GPA: GuestPhysAddr =
 pub const SHIM_BASE_GPA: GuestPhysAddr = GuestPhysAddr::from_usize(SHIM_BASE_PA);
 pub const GUEST_PT_ROOT_GPA: GuestPhysAddr = GuestPhysAddr::from_usize(GUEST_PT_ROOT_PA);
 
+pub const GUEST_FILE_BACKED_REGION_BASE_GPA: GuestPhysAddr =
+    GuestPhysAddr::from_usize(FILE_BACKED_REGION_BASE_PA);
+
 pub const INSTANCE_REGION_BASE_GPA: GuestPhysAddr =
     GuestPhysAddr::from_usize(INSTANCE_REGION_BASE_PA);
 pub const PROCESS_INNER_REGION_BASE_GPA: GuestPhysAddr =

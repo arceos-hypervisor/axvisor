@@ -26,8 +26,9 @@ use crate::libos::config::{get_eqloader_data, get_gate_process_data};
 use crate::libos::def::{
     EPTP_LIST_REGION_SIZE, EPTPList, GP_ALL_EPTP_LIST_REGIN_GPA, GP_ALL_EPTP_LIST_REGION_GVA,
     GP_ALL_INSTANCE_PERCPU_REGION_GPA, GP_ALL_INSTANCE_PERCPU_REGION_GVA,
-    GP_PERCPU_EPT_LIST_REGION_GVA, INSTANCE_REGION_SIZE, PERCPU_EPTP_LIST_REGION_GPA,
-    PERCPU_REGION_BASE_GPA, PERCPU_REGION_BASE_GVA, PERCPU_REGION_SIZE,
+    GP_PERCPU_EPT_LIST_REGION_GVA, GUEST_MEM_REGION_BASE_GPA, INSTANCE_REGION_SIZE,
+    PERCPU_EPTP_LIST_REGION_GPA, PERCPU_REGION_BASE_GPA, PERCPU_REGION_BASE_GVA,
+    PERCPU_REGION_SIZE,
 };
 use crate::libos::gaddrspace::{GuestAddrSpace, init_shim_kernel};
 use crate::libos::percpu::EqOSPerCpu;
@@ -79,6 +80,7 @@ fn free_instance_id(id: usize) -> AxResult {
 }
 
 pub struct Instance<H: PagingHandler> {
+    itype: InstanceType,
     /// The region for instance inner data, which is shared by all processes in the instance,
     /// it stores the instance ID.
     instance_region_base: HostPhysAddr,
@@ -204,6 +206,7 @@ impl<H: PagingHandler> Instance<H> {
         pid_bitmap.set(pid, true);
 
         Ok(Arc::new(Self {
+            itype: InstanceType::Shim,
             pid_bitmap: Mutex::new(pid_bitmap),
             processes: Mutex::new(processes),
             instance_region_base,
@@ -216,14 +219,11 @@ impl<H: PagingHandler> Instance<H> {
     /// Create a new instance alone with its first process.
     /// The first process is initialized by the ELF segments in `elf_regions`
     /// with a newly constructed `GuestAddrSpace`.
-    pub fn create(
-        itype: InstanceType,
-        mapping_type: GuestMappingType,
-        raw_file: Vec<u8>,
-    ) -> AxResult<(Arc<Self>, TaskContext)> {
+    pub fn create(itype: InstanceType, mapping_type: GuestMappingType) -> AxResult<Arc<Self>> {
         let id = get_instance_id()?;
 
         if id == SHIM_INSTANCE_ID {
+            free_instance_id(id)?;
             return ax_err!(BadState, "Shim instance should be created first");
         }
 
@@ -245,39 +245,6 @@ impl<H: PagingHandler> Instance<H> {
 
         let mut init_addrspace =
             GuestAddrSpace::new(FIRST_PROCESS_ID, instance_region_base, mapping_type)?;
-
-        let task_context = match itype {
-            InstanceType::LibOSStatic => {
-                // Parse Process's ELF segments directly from the raw file.
-                // Load ELF data for libos process and setup libos process's stack region.
-                // Since the libos process is staticly linked, we can load it directly.
-                init_addrspace.setup_user_elf(raw_file.as_ref(), None)?
-            }
-            InstanceType::LibOSDynamic => {
-                // Since the libos process is dynamically linked,
-                // the passed `raw_file` is just the execution metadata
-                // (e.g., the arguments and environment variables)
-                // in a position-independent memory layout format.
-
-                // We have to create the instance booted from the eqloader,
-                // which will execute the dynamic linker and load the actual libos's ELF
-                // file through syscall proxy and shared regions.
-
-                let eq_loader = get_eqloader_data();
-                init_addrspace.setup_user_elf(eq_loader, Some(raw_file.as_slice()))?
-            }
-            InstanceType::Kernel => {
-                init_addrspace.setup_kernel_stack_frame()?;
-                let (rsp_gva, kstack_top_gva) = init_addrspace
-                    .process_inner_region_mut()
-                    .kernel_context_rsp_stack_top_gva();
-                TaskContext {
-                    kstack_top: HostVirtAddr::from_usize(kstack_top_gva),
-                    rsp: rsp_gva as _,
-                    fs_base: 0,
-                }
-            }
-        };
 
         let init_ept_root_hpa = init_addrspace.ept_root_hpa();
 
@@ -305,16 +272,86 @@ impl<H: PagingHandler> Instance<H> {
             EPTPointer::from_table_phys(init_ept_root_hpa),
         );
 
-        Ok((
+        Ok(
             Arc::new(Self {
+                itype,
                 pid_bitmap: Mutex::new(Bitmap::mask(FIRST_PROCESS_ID)),
                 instance_region_base,
                 eptp_list_region,
                 eptp_list_dirty: AtomicBool::new(false),
                 processes: Mutex::new(processes),
             }),
-            task_context,
-        ))
+            // task_context,
+        )
+    }
+
+    pub fn init_process_check_mm_region_allocated(&self, offset_of_granularity: usize) -> bool {
+        self.processes
+            .lock()
+            .first_entry()
+            .expect("Instance should have at least one process")
+            .get()
+            .addrspace()
+            .check_mm_region_allocated(offset_of_granularity)
+    }
+
+    pub fn init_process_alloc_mm_region(&self) -> AxResult<HostPhysAddr> {
+        self.processes
+            .lock()
+            .first_entry()
+            .expect("Instance should have at least one process")
+            .get_mut()
+            .addrspace_mut()
+            .alloc_mm_region()
+    }
+
+    pub fn init_process_sync_mmap(
+        &self,
+        vaddr: GuestVirtAddr,
+        page_index: usize,
+        size: usize,
+        flags: MappingFlags,
+    ) -> AxResult {
+        self.processes
+            .lock()
+            .first_entry()
+            .expect("Instance should have at least one process")
+            .get_mut()
+            .addrspace_mut()
+            .guest_sync_map(vaddr, page_index, size, flags)
+    }
+
+    pub fn setup_elf(&self, elf_data: &[u8]) {
+        match self.itype {
+            InstanceType::LibOSStatic => {
+                // Static libos instance, no need to setup ELF.
+                info!("No need to setup ELF for static libos instance");
+                let init_addrspace = self
+                    .processes
+                    .lock()
+                    .first_entry()
+                    .expect("Instance should have at least one process")
+                    .get_mut()
+                    .addrspace_mut()
+                    .setup_user_elf(elf_data.as_ref(), None);
+                // Parse Process's ELF segments directly from the raw file.
+                // Load ELF data for libos process and setup libos process's stack region.
+                // Since the libos process is staticly linked, we can load it directly.
+                // init_addrspace
+            }
+            InstanceType::LibOSDynamic => {
+                // Dynamic libos instance, no need to setup ELF.
+                info!("No need to setup ELF for dynamic libos instance");
+            }
+            InstanceType::Kernel => {
+                // Kernel instance, no need to setup ELF.
+                info!("No need to setup ELF for kernel instance");
+            }
+            InstanceType::Shim => {
+                // Shim instance, no need to setup ELF.
+                info!("No need to setup ELF for shim instance");
+            }
+        }
     }
 
     pub fn alloc_pid(&self) -> Option<usize> {
@@ -694,6 +731,9 @@ impl<H: PagingHandler> Drop for Instance<H> {
         if self.id() == 0 {
             warn!("You are dropping gate instance, you'd better know what you are doing!");
         }
+        let _ = free_instance_id(self.id()).inspect_err(|e| {
+            warn!("Failed to free instance ID {}: {:?}", self.id(), e);
+        });
     }
 }
 
@@ -742,45 +782,41 @@ fn pick_cpu_for_instance() -> AxResult<usize> {
 /// to the instance type and binary/executable file.
 ///
 /// This function will return the instance ID if the instance is created successfully.
-pub fn create_instance(
-    itype: InstanceType,
-    mapping_type: GuestMappingType,
-    raw_file: Vec<u8>,
-) -> AxResult<usize> {
-    let (instance_ref, task_context) =
-        Instance::<PagingHandlerImpl>::create(itype, mapping_type, raw_file)?;
+pub fn create_instance(itype: InstanceType, mapping_type: GuestMappingType) -> AxResult<usize> {
+    let instance_ref = Instance::<PagingHandlerImpl>::create(itype, mapping_type)?;
     let iid = instance_ref.id();
+
     INSTANCES.lock().insert(iid, instance_ref);
 
-    let init_task = EqTask {
-        instance_id: iid,
-        process_id: FIRST_PROCESS_ID,
-        task_id: FIRST_PROCESS_ID,
-        context: task_context,
-    };
+    // let init_task = EqTask {
+    //     instance_id: iid,
+    //     process_id: FIRST_PROCESS_ID,
+    //     task_id: FIRST_PROCESS_ID,
+    //     context: TaskContext::new(),
+    // };
 
-    let target_core = pick_cpu_for_instance()?;
+    // let target_core = pick_cpu_for_instance()?;
 
-    info!(
-        "Creating instance {} on core {} with task {:?}",
-        iid, target_core, init_task
-    );
-    // Add the init task to the run queue of the target core.
-    unsafe {
-        INSTANCE_REGION_POOL[iid]
-            .as_mut_ptr_of::<InstanceRegion>()
-            .as_mut()
-    }
-    .expect("Failed to get instance region")
-    .percpu_regions[target_core]
-        .run_queue
-        .insert(init_task)
-        .map_err(|e| {
-            warn!("Failed to insert init task into run queue: {:?}", e);
-            ax_err_type!(BadState, "Failed to insert init task into run queue")
-        })?;
+    // info!(
+    //     "Creating instance {} on core {} with task {:?}",
+    //     iid, target_core, init_task
+    // );
+    // // Add the init task to the run queue of the target core.
+    // unsafe {
+    //     INSTANCE_REGION_POOL[iid]
+    //         .as_mut_ptr_of::<InstanceRegion>()
+    //         .as_mut()
+    // }
+    // .expect("Failed to get instance region")
+    // .percpu_regions[target_core]
+    //     .run_queue
+    //     .insert(init_task)
+    //     .map_err(|e| {
+    //         warn!("Failed to insert init task into run queue: {:?}", e);
+    //         ax_err_type!(BadState, "Failed to insert init task into run queue")
+    //     })?;
 
-    crate::libos::percpu::set_next_instance_id_of_cpu(target_core, iid)?;
+    // crate::libos::percpu::set_next_instance_id_of_cpu(target_core, iid)?;
 
     Ok(iid)
 }
@@ -877,7 +913,6 @@ fn remove_instance(id: usize) -> AxResult {
     let mut instances = INSTANCES.lock();
     if let Some(_instance) = instances.remove(&id) {
         // Drop the instance reference.
-        free_instance_id(id)?;
         Ok(())
     } else {
         Err(ax_err_type!(InvalidInput, "Instance ID not found"))

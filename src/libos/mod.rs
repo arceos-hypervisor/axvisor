@@ -2,7 +2,7 @@ pub mod def;
 pub mod instance;
 mod percpu;
 pub mod process;
-mod region;
+pub mod region;
 
 mod gaddrspace;
 mod gpt;

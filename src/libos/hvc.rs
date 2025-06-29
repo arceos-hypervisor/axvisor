@@ -64,9 +64,6 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
             HyperCallCode::HClone => self.clone(),
             HyperCallCode::HRead => self.read(self.args[0], self.args[1], self.args[2]),
             HyperCallCode::HWrite => self.write(self.args[0], self.args[1], self.args[2]),
-            HyperCallCode::HMMAP => {
-                self.mmap(self.args[0], self.args[1], self.args[2], self.args[3])
-            }
             _ => {
                 unimplemented!();
             }
@@ -114,14 +111,6 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
             );
         }
         Ok(new_pid)
-    }
-
-    fn mmap(&self, addr: u64, len: u64, prot: u64, flags: u64) -> HyperCallResult {
-        info!(
-            "HMMAP addr:{:#x} len:{} prot:{} flags:{}",
-            addr, len, prot, flags
-        );
-        Ok(0)
     }
 }
 

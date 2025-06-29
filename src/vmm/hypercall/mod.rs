@@ -1,12 +1,17 @@
 use core::sync::atomic::{AtomicUsize, Ordering};
 
+use axaddrspace::{GuestPhysAddr, GuestVirtAddr, MappingFlags};
 use axerrno::{AxResult, ax_err, ax_err_type};
 use axhvc::{HyperCallCode, HyperCallResult};
 use axvcpu::AxVcpuAccessGuestState;
 
 use equation_defs::{GuestMappingType, InstanceType};
+use memory_addr::PAGE_SIZE_4K;
+use memory_addr::{MemoryAddr, PAGE_SIZE_1G, PAGE_SIZE_2M};
 
 use crate::libos::def::get_contents_from_shared_pages;
+use crate::libos::instance;
+use crate::libos::region;
 use crate::vmm::{VCpuRef, VMRef};
 
 pub struct HyperCall {
@@ -33,23 +38,23 @@ impl HyperCall {
 
     pub fn execute(&self) -> HyperCallResult {
         // First, check if the vcpu is allowed to execute the hypercall.
-        if self.code.is_privileged() ^ self.vcpu.get_arch_vcpu().guest_is_privileged() {
-            warn!(
-                "{} vcpu trying to execute {} hypercall {:?}",
-                if self.vcpu.get_arch_vcpu().guest_is_privileged() {
-                    "Privileged"
-                } else {
-                    "Unprivileged"
-                },
-                if self.code.is_privileged() {
-                    "privileged"
-                } else {
-                    "unprivileged"
-                },
-                self.code
-            );
-            return ax_err!(PermissionDenied);
-        }
+        // if self.code.is_privileged() ^ self.vcpu.get_arch_vcpu().guest_is_privileged() {
+        //     warn!(
+        //         "{} vcpu trying to execute {} hypercall {:?}",
+        //         if self.vcpu.get_arch_vcpu().guest_is_privileged() {
+        //             "Privileged"
+        //         } else {
+        //             "Unprivileged"
+        //         },
+        //         if self.code.is_privileged() {
+        //             "privileged"
+        //         } else {
+        //             "unprivileged"
+        //         },
+        //         self.code
+        //     );
+        //     return ax_err!(PermissionDenied);
+        // }
         debug!("VMM Hypercall: {:?} args: {:x?}", self.code, self.args);
 
         if self.vcpu.get_arch_vcpu().guest_is_privileged() {
@@ -63,6 +68,26 @@ impl HyperCall {
         match self.code {
             HyperCallCode::HypervisorDisable => self.hypervisor_disable(),
             HyperCallCode::HyperVisorDebug => self.debug(),
+            HyperCallCode::HCreateInstance => self.create_instance(
+                self.args[0].into(),
+                self.args[1].into(),
+                self.args[2] as usize,
+            ),
+            HyperCallCode::HLoadMMap => self.instance_load_mmap(
+                self.args[0] as usize,
+                self.args[1] as usize,
+                self.args[2] as usize,
+                self.args[3] as usize,
+                self.args[4] as usize,
+                self.args[5] as usize,
+            ),
+            HyperCallCode::HSetupInstance => self.setup_instance(
+                self.args[0] as usize,
+                self.args[1] as usize,
+                self.args[2] as usize,
+                self.args[3] as usize,
+                self.args[4] as usize,
+            ),
             _ => {
                 unimplemented!()
             }
@@ -73,12 +98,12 @@ impl HyperCall {
         match self.code {
             HyperCallCode::HDebug => self.debug(),
             HyperCallCode::HInitShim => self.init_shim(),
-            HyperCallCode::HCreateInstance => self.create_instance(
-                self.args[0].into(),
-                self.args[1].into(),
-                self.args[2],
-                self.args[3],
-                self.args[4],
+            HyperCallCode::HSetupInstance => self.setup_instance(
+                self.args[0] as usize,
+                self.args[1] as usize,
+                self.args[2] as usize,
+                self.args[3] as usize,
+                self.args[4] as usize,
             ),
             _ => {
                 unimplemented!();
@@ -125,7 +150,7 @@ impl HyperCall {
     }
 
     fn init_shim(&self) -> HyperCallResult {
-        crate::libos::instance::init_shim()?;
+        instance::init_shim()?;
         Ok(0)
     }
 
@@ -133,23 +158,152 @@ impl HyperCall {
         &self,
         instance_type: InstanceType,
         mapping_type: GuestMappingType,
-        file_size: u64,
-        shared_pages_base_gva: u64,
-        shared_pages_num: u64,
+        shm_base_gpa_ptr: usize,
     ) -> HyperCallResult {
         info!(
-            "HCreateInstance type {:?}, mapping type {:?}, file size {} Bytes, shared_pages_base_gva {:#x} shared_pages_num {}",
-            instance_type, mapping_type, file_size, shared_pages_base_gva, shared_pages_num
+            "HCreateInstance type {:?}, mapping type {:?}, shm_base_ptr {:#x}",
+            instance_type, mapping_type, shm_base_gpa_ptr
         );
+        let instance_id = instance::create_instance(instance_type, mapping_type)?;
 
-        let instance_file = get_contents_from_shared_pages(
-            file_size as _,
-            shared_pages_base_gva as _,
-            shared_pages_num as _,
-            &self.vcpu,
-            &self.vm,
+        let shm_base = region::get_shm_region_by_instance_id(instance_id);
+
+        info!("Instance [{instance_id}] host SHM region at {shm_base:#x}");
+        let shm_base_gpa_ptr = GuestPhysAddr::from_usize(shm_base_gpa_ptr);
+        self.vm.write_to_guest_of(shm_base_gpa_ptr, &shm_base)?;
+
+        Ok(instance_id)
+    }
+
+    fn instance_load_mmap(
+        &self,
+        instance_id: usize,
+        gva: usize,
+        linux_gpa: usize,
+        len: usize,
+        flags: usize,
+        prot: usize,
+    ) -> HyperCallResult {
+        info!(
+            "Instance[{instance_id}] HLoadMmap addr:{gva:#x} gpa {linux_gpa:#x} len:{len:#x} flags:{flags:#x} prot:{prot:#x}",
+        );
+        let instance_ref = instance::get_instances_by_id(instance_id).ok_or_else(|| {
+            warn!("Instance with ID {} not found", instance_id);
+            ax_err_type!(InvalidInput, "Instance not found")
+        })?;
+
+        let page_index =
+            (linux_gpa - region::get_shm_region_by_instance_id(instance_id)) / PAGE_SIZE_4K;
+        let gpa_aligned = GuestPhysAddr::from_usize(linux_gpa).align_down(PAGE_SIZE_2M);
+        // First, check if the 2MB region is mapped for the instance.
+        let offset_of_granularity =
+            region::count_2mb_region_offset(instance_id, gpa_aligned.as_usize())?;
+
+        if !instance_ref.init_process_check_mm_region_allocated(offset_of_granularity) {
+            let shm_base_hpa = instance_ref.init_process_alloc_mm_region()?;
+            // Map the SHM region to the host Linux.
+            self.vm
+                .map_region(
+                    gpa_aligned,
+                    shm_base_hpa,
+                    PAGE_SIZE_2M,
+                    MappingFlags::READ | MappingFlags::WRITE,
+                    true, // Allow huge pages
+                )
+                .map_err(|e| {
+                    warn!("Failed to map SHM region: {:?}", e);
+                    ax_err_type!(InvalidInput, "Failed to map SHM region")
+                })?;
+        }
+
+        // TODO: handle map shared.
+
+        let flags = linux_mm_flags_to_mapping_flags(flags);
+
+        instance_ref.init_process_sync_mmap(
+            GuestVirtAddr::from_usize(gva),
+            page_index,
+            len,
+            flags,
         )?;
 
-        crate::libos::instance::create_instance(instance_type, mapping_type, instance_file)
+        Ok(0)
     }
+
+    fn setup_instance(
+        &self,
+        instance_id: usize,
+        file_size: usize,
+        shared_pages_base_gva: usize,
+        shared_pages_num: usize,
+        entry: usize,
+    ) -> HyperCallResult {
+        info!(
+            "HSetupInstance instance_id {}, file_size {}, shared_pages_base_gva {:#x}, shared_pages_num {}",
+            instance_id, file_size, shared_pages_base_gva, shared_pages_num
+        );
+
+        let instance_file = if file_size > 0 {
+            get_contents_from_shared_pages(
+                file_size,
+                shared_pages_base_gva,
+                shared_pages_num,
+                &self.vcpu,
+                &self.vm,
+            )?
+        } else {
+            vec![0; 0]
+        };
+
+        use pi_memory_layout::ArgsLayoutRef;
+        // Print the stack layout for debugging purposes
+        let layout = ArgsLayoutRef::new(instance_file.as_ref(), None);
+
+        for (i, arg) in unsafe { layout.argv_iter() }.enumerate() {
+            warn!("  [{i}] {}", arg.to_str().unwrap());
+        }
+        for (i, env) in unsafe { layout.envv_iter() }.enumerate() {
+            warn!("  [env {i}] {}", env.to_str().unwrap());
+        }
+        for auxv in unsafe { layout.auxv_iter() } {
+            warn!("  [auxv] {:?}", auxv);
+        }
+
+        // instance::get_instances_by_id(instance_id)
+        //     .ok_or_else(|| {
+        //         warn!("Instance with ID {} not found", instance_id);
+        //         ax_err_type!(InvalidInput, "Instance not found")
+        //     })?
+        //     .setup_elf(&instance_file);
+
+        Ok(0)
+    }
+}
+
+/*
+ * vm_flags in vm_area_struct, see mm_types.h.
+ * When changing, update also include/trace/events/mmflags.h
+ * #define VM_NONE		0x00000000
+ * #define VM_READ		0x00000001	/* currently active flags */
+ * #define VM_WRITE	    0x00000002
+ * #define VM_EXEC		0x00000004
+ * #define VM_SHARED	0x00000008
+ */
+const VM_READ: usize = 0x00000001;
+const VM_WRITE: usize = 0x00000002;
+const VM_EXEC: usize = 0x00000004;
+const VM_SHARED: usize = 0x00000008;
+
+fn linux_mm_flags_to_mapping_flags(flags: usize) -> MappingFlags {
+    let mut mapping_flags = MappingFlags::empty();
+    if flags & VM_READ != 0 {
+        mapping_flags |= MappingFlags::READ;
+    }
+    if flags & VM_WRITE != 0 {
+        mapping_flags |= MappingFlags::WRITE;
+    }
+    if flags & VM_EXEC != 0 {
+        mapping_flags |= MappingFlags::EXECUTE;
+    }
+    mapping_flags
 }
