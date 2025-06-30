@@ -1,10 +1,7 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
 use core::sync::atomic::{AtomicUsize, Ordering};
-use std::os::arceos::{
-    api::task::{AxCpuMask, ax_wait_queue_wake},
-    modules::{axhal::time::busy_wait, axtask},
-};
+use std::os::arceos::{api::{self, task::{ax_wait_queue_wake, AxCpuMask}}, modules::{axhal, axtask}};
 
 use axaddrspace::GuestPhysAddr;
 use axtask::{AxTaskRef, TaskExtRef, TaskInner, WaitQueue};
@@ -230,6 +227,24 @@ pub fn setup_vm_primary_vcpu(vm: VMRef) {
     }
 }
 
+/// Finds the [`AxTaskRef`] associated with the specified vCPU of the specified VM.
+pub fn find_vcpu_task(vm_id: usize, vcpu_id: usize) -> Option<AxTaskRef> {
+    with_vcpu_task(vm_id, vcpu_id, |task| task.clone())
+}
+
+/// Executes the provided closure with the [`AxTaskRef`] associated with the specified vCPU of the specified VM.
+pub fn with_vcpu_task<T, F: FnOnce(&AxTaskRef) -> T>(
+    vm_id: usize,
+    vcpu_id: usize,
+    f: F,
+) -> Option<T> {
+    unsafe { VM_VCPU_TASK_WAIT_QUEUE.get(&vm_id) }
+        .unwrap()
+        .vcpu_task_list
+        .get(vcpu_id)
+        .map(f)
+}
+
 /// Allocates arceos task for vcpu, set the task's entry function to [`vcpu_run()`],
 /// also initializes the CPU mask if the VCpu has a dedicated physical CPU set.
 ///
@@ -320,6 +335,9 @@ fn vcpu_run() {
                 }
                 AxVCpuExitReason::ExternalInterrupt { vector } => {
                     debug!("VM[{}] run VCpu[{}] get irq {}", vm_id, vcpu_id, vector);
+                    // TODO: maybe move this irq dispatcher to lower layer to accelerate the interrupt handling
+                    axhal::irq::handler_irq(vector as usize);
+                    super::timer::check_events();
                 }
                 AxVCpuExitReason::Halt => {
                     debug!("VM[{}] run VCpu[{}] Halt", vm_id, vcpu_id);
@@ -367,6 +385,40 @@ fn vcpu_run() {
                 AxVCpuExitReason::SystemDown => {
                     warn!("VM[{}] run VCpu[{}] SystemDown", vm_id, vcpu_id);
                     vm.shutdown().expect("VM shutdown failed");
+                }
+                AxVCpuExitReason::SendIPI { target_cpu, target_cpu_aux, send_to_all, send_to_self, vector } => {
+                    if send_to_all || send_to_self {
+                        unimplemented!("SendIPI with send_to_all or send_to_self is not implemented yet");
+                    }
+
+                    #[cfg(target_arch = "aarch64")]
+                    {
+                        let aff3 = (target_cpu >> 24) & 0xff;
+                        let aff2 = (target_cpu >> 16) & 0xff;
+                        let aff1 = (target_cpu >> 8) & 0xff;
+                        let irm = send_to_all as u64;
+
+                        let icc_sgi1r_value = 
+                            (vector as u64) << 24 |
+                            aff3 << 48 |
+                            aff2 << 32 |
+                            aff1 << 16 |
+                            irm << 40 |
+                            target_cpu_aux;
+
+                        debug!(
+                            "VM[{}] run VCpu[{}] SendIPI, target_cpu={:#x}, target_cpu_aux={:#x}, vector={}, icc_sgi1r_value={:#x}",
+                            vm_id, vcpu_id, target_cpu, target_cpu_aux, vector, icc_sgi1r_value
+                        );
+
+                        unsafe {
+                            core::arch::asm!(
+                                "msr icc_sgi1r_el1, {0}",
+                                in(reg) icc_sgi1r_value,
+                                options(nostack, nomem, preserves_flags)
+                            );
+                        }
+                    }
                 }
                 _ => {
                     warn!("Unhandled VM-Exit");

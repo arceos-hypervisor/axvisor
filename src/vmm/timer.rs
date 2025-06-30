@@ -59,7 +59,7 @@ where
     let mut timers = timer_list.lock();
     let token = TOKEN.fetch_add(1, Ordering::Release);
     let event = VmmTimerEvent::new(token, handler);
-    timers.set(TimeValue::from_nanos(deadline), event);
+    timers.set(TimeValue::from_nanos(deadline as u64), event);
     token
 }
 
@@ -101,4 +101,5 @@ pub fn init_percpu() {
     info!("Initing HV Timer...");
     let timer_list = unsafe { TIMER_LIST.current_ref_mut_raw() };
     timer_list.init_once(SpinNoIrq::new(TimerList::new()));
+    info!("Inited HV Timer...");
 }

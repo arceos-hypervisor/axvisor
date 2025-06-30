@@ -5,12 +5,16 @@ use axerrno::AxResult;
 
 use axvm::config::AxVMCrateConfig;
 use memory_addr::PhysAddr;
-use crate::vmm::fdt::updated_fdt;
 
 #[cfg(target_arch = "aarch64")]
 use crate::utils::cache::cache_clean_invalidate_d;
 use crate::vmm::VMRef;
 use crate::vmm::config::config;
+
+struct LoadRange {
+    start: PhysAddr,
+    size: usize,
+}
 
 /// Loads the VM image files.
 pub fn load_vm_images(config: AxVMCrateConfig, vm: VMRef) -> AxResult {
@@ -39,16 +43,9 @@ fn flush_vm_images_aarch64(ls: &[LoadRange]) {
     }
 }
 
-#[derive(Debug)]
-pub struct LoadRange {
-    pub start: PhysAddr,
-    pub size: usize,
-}
-
 /// Load VM images from memory
 /// into the guest VM's memory space based on the VM configuration.
 fn load_vm_images_from_memory(config: AxVMCrateConfig, vm: VMRef) -> AxResult<Vec<LoadRange>> {
-    let vm_config = config.clone();
     info!("Loading VM[{}] images from memory", config.base.id);
     let mut load_ranges = Vec::new();
 
@@ -72,8 +69,6 @@ fn load_vm_images_from_memory(config: AxVMCrateConfig, vm: VMRef) -> AxResult<Ve
             )
             .expect("Failed to load DTB images"),
         );
-
-        load_ranges.append(&mut updated_fdt(vm_config, buffer.len(), vm.clone())?);
     }
 
     // Load BIOS image
@@ -86,6 +81,18 @@ fn load_vm_images_from_memory(config: AxVMCrateConfig, vm: VMRef) -> AxResult<Ve
             )
             .expect("Failed to load BIOS images"),
         );
+    }
+    #[cfg(target_arch = "aarch64")]
+    {
+        for mem_region in &config.kernel.memory_regions {
+            debug!(
+                "flush all guest cache GPA: 0x{:x}, Size: 0x{:x}",
+                mem_region.gpa, mem_region.size
+            );
+            unsafe {
+                cache_clean_invalidate_d(mem_region.gpa, mem_region.size);
+            }
+        }
     }
 
     Ok(load_ranges)
@@ -156,7 +163,6 @@ mod fs {
         vm: VMRef,
     ) -> AxResult<Vec<LoadRange>> {
         info!("Loading VM images from filesystem");
-        let vm_config = config.clone();
         let mut load_ranges = Vec::new();
         // Load kernel image.
         load_ranges.append(&mut load_vm_image(
@@ -191,10 +197,7 @@ mod fs {
         // Load DTB image if needed.
         // Todo: generate DTB file for guest VM.
         if let Some(dtb_path) = config.kernel.dtb_path {
-            let (_, dtb_size) = open_image_file(dtb_path.as_str())?;
-            info!("DTB file size {}", dtb_size);
             if let Some(dtb_load_addr) = config.kernel.dtb_load_addr {
-                info!("DTB load addr 0x{:x}", dtb_load_addr);
                 load_ranges.append(&mut load_vm_image(
                     dtb_path,
                     GuestPhysAddr::from(dtb_load_addr),
@@ -203,9 +206,6 @@ mod fs {
             } else {
                 return ax_err!(NotFound, "DTB load addr is missed");
             }
- 
-            load_ranges.append(&mut updated_fdt(vm_config, dtb_size, vm.clone())?);
-
         };
         Ok(load_ranges)
     }
