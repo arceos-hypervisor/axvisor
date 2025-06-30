@@ -33,36 +33,38 @@ axstd = {git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm-
 ]}
 
 # System dependent modules provided by ArceOS-Hypervisor.
-axvm = { git = "https://github.com/arceos-hypervisor/axvm.git" }
-axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git" }
+axvm = { git = "https://github.com/arceos-hypervisor/axvm.git", branch = "inject_interrupt_vgicv3_ivc" }
+axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "inject_interrupt_vgicv3_ivc" }
 axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git" }
 axhvc = { git = "https://github.com/arceos-hypervisor/axhvc.git" }
 
 # System independent crates provided by ArceOS, these crates could be imported by remote url. 
 axerrno = "0.1.0"
 crate_interface = "0.1"
+cpumask = "0.1.0"
+kernel_guard = "0.1"
 memory_addr = "0.4"
-page_table_entry = {version = "0.5", features = ["arm-el2"]}
+page_table_entry = { version = "0.5", features = ["arm-el2"] }
 page_table_multiarch = "0.5"
-percpu = {version = "0.2", features = ["arm-el2"]}
+percpu = { git = "https://github.com/arceos-hypervisor/percpu.git", branch = "custom-base", features = ["arm-el2"] }
 
 axplat-aarch64-dyn = {git = "https://github.com/arceos-hypervisor/axplat-aarch64-dyn", branch = "vmm", features = ["irq", "smp", "hv"]}
+axdevice = { git = "https://github.com/arceos-hypervisor/axdevice.git", branch = "inject_interrupt_vgicv3" }
+axdevice_base = { git = "https://github.com/arceos-hypervisor/axdevice_crates.git", branch = "inject_interrupt" }
+axvisor_api = { git = "https://github.com/arceos-hypervisor/axvisor_api.git", branch = "inject_interrupt" }
 
 [build-dependencies]
 axconfig = {git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm-dev"}
+#axconfig = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "debin/timer_api" }
 prettyplease = "0.2"
 quote = "1.0"
 syn = "2.0"
 
 
-[patch."https://github.com/arceos-hypervisor/arceos.git".axstd]
-path = "crates/arceos/ulib/axstd"
-[patch."https://github.com/arceos-hypervisor/arceos.git".axhal]
-path = "crates/arceos/modules/axhal"
-[patch."https://github.com/arceos-hypervisor/axvm.git".axvm]
-path = "crates/axvm"
-[patch."https://github.com/arceos-hypervisor/axvcpu.git".axvcpu]
-path = "crates/axvcpu"
+# [patch."https://github.com/arceos-hypervisor/axvm.git".axvm]
+# path = "crates/axvm"
+# [patch."https://github.com/arceos-hypervisor/axvcpu.git".axvcpu]
+# path = "crates/axvcpu"
 [patch."https://github.com/arceos-hypervisor/axaddrspace.git".axaddrspace]
 path = "crates/axaddrspace"
 [patch."https://github.com/arceos-hypervisor/arm_vcpu.git".arm_vcpu]
@@ -75,11 +77,3 @@ path = "crates/arm_vgic"
 path = "crates/axdevice_crates/axdevice_base"
 [patch."https://github.com/arceos-hypervisor/axhvc.git".axhvc]
 path = "crates/axhvc"
-[patch."https://github.com/arceos-hypervisor/axvmconfig.git".axvmconfig]
-path = "crates/axvmconfig"
-[patch."https://github.com/arceos-hypervisor/range-alloc.git".range-alloc]
-path = "crates/range-alloc"
-
-[patch.crates-io]
-page_table_multiarch = {path = "crates/page_table_multiarch/page_table_multiarch"}
-page_table_entry = {path = "crates/page_table_multiarch/page_table_entry"}

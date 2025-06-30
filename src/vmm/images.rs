@@ -8,6 +8,11 @@ use crate::utils::cache::cache_clean_invalidate_d;
 use crate::vmm::VMRef;
 use crate::vmm::config::config;
 
+struct LoadRange {
+    start: PhysAddr,
+    size: usize,
+}
+
 /// Loads the VM image files.
 pub fn load_vm_images(config: AxVMCrateConfig, vm: VMRef) -> AxResult {
     match config.kernel.image_location.as_deref() {

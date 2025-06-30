@@ -1,10 +1,17 @@
-use std::os::arceos::{self, modules::axhal::percpu::this_cpu_id};
+use std::os::arceos::{
+    self,
+    modules::{
+        axtask::{self, TaskExtRef},
+        axhal::percpu::this_cpu_id,
+    },
+};
 
+use axerrno::{AxResult, ax_err_type};
 use memory_addr::{PAGE_SIZE_4K, align_up_4k};
 use page_table_multiarch::PagingHandler;
 
 use arceos::modules::{axalloc, axhal};
-use axaddrspace::{HostPhysAddr, HostVirtAddr};
+use axaddrspace::{AxMmHal, HostPhysAddr, HostVirtAddr};
 use axvcpu::AxVCpuHal;
 use axvm::{AxVMHal, AxVMPerCpu};
 
@@ -45,11 +52,34 @@ impl AxVMHal for AxVMHalImpl {
     fn current_time_nanos() -> u64 {
         axhal::time::monotonic_time_nanos()
     }
+
+    fn current_vm_id() -> usize {
+        axtask::current().task_ext().vm.id()
+    }
+
+    fn current_vcpu_id() -> usize {
+        axtask::current().task_ext().vcpu.id()
+    }
+
+    fn current_pcpu_id() -> usize {
+        axhal::cpu::this_cpu_id()
+    }
+
+    fn vcpu_resides_on(vm_id: usize, vcpu_id: usize) -> AxResult<usize> {
+        vmm::with_vcpu_task(vm_id, vcpu_id, |task| task.cpu_id() as usize)
+            .ok_or_else(|| ax_err_type!(NotFound))
+    }
+
+    fn inject_irq_to_vcpu(vm_id: usize, vcpu_id: usize, irq: usize) -> axerrno::AxResult {
+        vmm::with_vm_and_vcpu_on_pcpu(vm_id, vcpu_id, move |_, vcpu| {
+            vcpu.inject_interrupt(irq).unwrap();
+        })
+    }
 }
 
-pub struct AxVCpuHalImpl;
+pub struct AxMmHalImpl;
 
-impl AxVCpuHal for AxVCpuHalImpl {
+impl AxMmHal for AxMmHalImpl {
     fn alloc_frame() -> Option<HostPhysAddr> {
         <AxVMHalImpl as AxVMHal>::PagingHandler::alloc_frame()
     }
@@ -66,6 +96,12 @@ impl AxVCpuHal for AxVCpuHalImpl {
     fn virt_to_phys(vaddr: axaddrspace::HostVirtAddr) -> axaddrspace::HostPhysAddr {
         std::os::arceos::modules::axhal::mem::virt_to_phys(vaddr)
     }
+}
+
+pub struct AxVCpuHalImpl;
+
+impl AxVCpuHal for AxVCpuHalImpl {
+    type MmHal = AxMmHalImpl;
 
     #[cfg(target_arch = "aarch64")]
     fn irq_fetch() -> usize {
@@ -119,9 +155,168 @@ pub(crate) fn enable_virtualization() {
         });
     }
 
+    info!("Waiting for all cores to enable hardware virtualization...");
+
     // Wait for all cores to enable virtualization.
     while CORES.load(Ordering::Acquire) != config::plat::CPU_NUM {
         // Use `yield_now` instead of `core::hint::spin_loop` to avoid deadlock.
         thread::yield_now();
+    }
+
+    info!("All cores have enabled hardware virtualization support.");
+}
+
+#[axvisor_api::api_mod_impl(axvisor_api::memory)]
+mod memory_api_impl {
+    use super::*;
+
+    extern fn alloc_frame() -> Option<HostPhysAddr> {
+        <AxMmHalImpl as AxMmHal>::alloc_frame()
+    }
+
+    extern fn alloc_contiguous_frames(
+        num_frames: usize,
+        frame_align_pow2: usize,
+    ) -> Option<HostPhysAddr> {
+        arceos::modules::axalloc::global_allocator()
+            .alloc_pages(num_frames, PAGE_SIZE_4K << frame_align_pow2)
+            .map(|vaddr| <AxMmHalImpl as AxMmHal>::virt_to_phys(vaddr.into()))
+            .ok()
+    }
+
+    extern fn dealloc_frame(paddr: HostPhysAddr) {
+        <AxMmHalImpl as AxMmHal>::dealloc_frame(paddr)
+    }
+
+    extern fn dealloc_contiguous_frames(paddr: HostPhysAddr, num_frames: usize) {
+        arceos::modules::axalloc::global_allocator().dealloc_pages(paddr.as_usize(), num_frames);
+    }
+
+    extern fn phys_to_virt(paddr: HostPhysAddr) -> HostVirtAddr {
+        <AxMmHalImpl as AxMmHal>::phys_to_virt(paddr)
+    }
+
+    extern fn virt_to_phys(vaddr: HostVirtAddr) -> HostPhysAddr {
+        <AxMmHalImpl as AxMmHal>::virt_to_phys(vaddr)
+    }
+}
+
+#[axvisor_api::api_mod_impl(axvisor_api::time)]
+mod time_api_impl {
+    use super::*;
+    use axvisor_api::time::{CancelToken, Nanos, Ticks, TimeValue};
+
+    extern fn current_ticks() -> Ticks {
+        axhal::time::current_ticks()
+    }
+
+    extern fn ticks_to_nanos(ticks: Ticks) -> Nanos {
+        axhal::time::ticks_to_nanos(ticks)
+    }
+
+    extern fn nanos_to_ticks(nanos: Nanos) -> Ticks {
+        axhal::time::nanos_to_ticks(nanos)
+    }
+
+    extern fn register_timer(
+        deadline: TimeValue,
+        handler: alloc::boxed::Box<dyn FnOnce(TimeValue) + Send + 'static>,
+    ) -> CancelToken {
+        vmm::timer::register_timer(deadline.as_nanos() as u64, |t| handler(t))
+    }
+
+    extern fn cancel_timer(token: CancelToken) {
+        vmm::timer::cancel_timer(token)
+    }
+}
+
+#[axvisor_api::api_mod_impl(axvisor_api::vmm)]
+mod vmm_api_impl {
+    use super::*;
+    use axvisor_api::vmm::{InterruptVector, VCpuId, VMId};
+
+    extern fn current_vm_id() -> usize {
+        <AxVMHalImpl as AxVMHal>::current_vm_id()
+    }
+
+    extern fn current_vcpu_id() -> usize {
+        <AxVMHalImpl as AxVMHal>::current_vcpu_id()
+    }
+
+    extern fn vcpu_num(vm_id: VMId) -> Option<usize> {
+        vmm::with_wm(vm_id, |vm| vm.vcpu_num())
+    }
+
+    extern fn active_vcpus(vm_id: VMId) -> Option<usize> {
+        todo!("active_vcpus")
+    }
+
+    extern fn inject_interrupt(vm_id: VMId, vcpu_id: VCpuId, vector: InterruptVector) {
+        <AxVMHalImpl as AxVMHal>::inject_irq_to_vcpu(vm_id, vcpu_id, vector as usize).unwrap();
+    }
+
+    extern fn notify_vcpu_timer_expired(vm_id: VMId, vcpu_id: VCpuId) {
+        todo!("notify_vcpu_timer_expired")
+        // vmm::timer::notify_timer_expired(vm_id, vcpu_id);
+    }
+}
+
+#[axvisor_api::api_mod_impl(axvisor_api::arch)]
+mod arch_api_impl {
+    // write GICD_PADDR and GICR_PADDR down temporarily
+    cfg_if::cfg_if! {
+        if #[cfg(target_platform = "aarch64-dyn")] {
+            pub const GICD_PADDR: usize = 0x08000000;
+            pub const GICR_PADDR: usize = 0x08000000;
+        } else {
+            pub const GICD_PADDR: usize = 0x08000000;
+            pub const GICR_PADDR: usize = 0x080a0000;
+        }
+    }
+    
+    #[cfg(target_arch = "aarch64")]
+    extern fn hardware_inject_virtual_interrupt(irq: axvisor_api::vmm::InterruptVector) {
+        use axstd::os::arceos::modules::axhal;
+        axhal::irq::inject_interrupt(irq as usize);
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    extern fn read_vgicd_typer() -> u32 {
+        // use axstd::os::arceos::modules::axhal::irq::MyVgic;
+        // MyVgic::get_gicd().lock().get_typer()
+
+        use std::os::arceos::modules::{axconfig, axhal};
+        use memory_addr::pa;
+
+        let typer_phys_addr = GICD_PADDR + 0x4;
+        let typer_virt_addr = axhal::mem::phys_to_virt(pa!(typer_phys_addr));
+
+        unsafe {
+            core::ptr::read_volatile(typer_virt_addr.as_ptr_of::<u32>())
+        }
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    extern fn read_vgicd_iidr() -> u32 {
+        // use axstd::os::arceos::modules::axhal::irq::MyVgic;
+        // MyVgic::get_gicd().lock().get_iidr()
+        0
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    extern fn get_host_gicd_base() -> memory_addr::PhysAddr {
+        GICD_PADDR.into()
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    extern fn get_host_gicr_base() -> memory_addr::PhysAddr {
+        GICR_PADDR.into()
+    }
+}
+
+#[axvisor_api::api_mod_impl(axvisor_api::host)]
+mod host_api_impl {
+    extern fn get_host_cpu_num() -> usize {
+        std::os::arceos::modules::axconfig::SMP
     }
 }
