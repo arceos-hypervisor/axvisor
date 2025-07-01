@@ -7,7 +7,7 @@ use axvcpu::AxVcpuAccessGuestState;
 
 use equation_defs::{GuestMappingType, InstanceType};
 use memory_addr::PAGE_SIZE_4K;
-use memory_addr::{MemoryAddr, PAGE_SIZE_1G, PAGE_SIZE_2M};
+use memory_addr::{MemoryAddr, PAGE_SIZE_2M};
 
 use crate::libos::def::get_contents_from_shared_pages;
 use crate::libos::instance;
@@ -81,13 +81,6 @@ impl HyperCall {
                 self.args[4] as usize,
                 self.args[5] as usize,
             ),
-            HyperCallCode::HSetupInstance => self.setup_instance(
-                self.args[0] as usize,
-                self.args[1] as usize,
-                self.args[2] as usize,
-                self.args[3] as usize,
-                self.args[4] as usize,
-            ),
             _ => {
                 unimplemented!()
             }
@@ -102,8 +95,6 @@ impl HyperCall {
                 self.args[0] as usize,
                 self.args[1] as usize,
                 self.args[2] as usize,
-                self.args[3] as usize,
-                self.args[4] as usize,
             ),
             _ => {
                 unimplemented!();
@@ -218,7 +209,7 @@ impl HyperCall {
 
         // TODO: handle map shared.
 
-        let flags = linux_mm_flags_to_mapping_flags(flags);
+        let flags = vm_flags::linux_mm_flags_to_mapping_flags(flags);
 
         instance_ref.init_process_sync_mmap(
             GuestVirtAddr::from_usize(gva),
@@ -230,80 +221,52 @@ impl HyperCall {
         Ok(0)
     }
 
-    fn setup_instance(
-        &self,
-        instance_id: usize,
-        file_size: usize,
-        shared_pages_base_gva: usize,
-        shared_pages_num: usize,
-        entry: usize,
-    ) -> HyperCallResult {
-        info!(
-            "HSetupInstance instance_id {}, file_size {}, shared_pages_base_gva {:#x}, shared_pages_num {}",
-            instance_id, file_size, shared_pages_base_gva, shared_pages_num
-        );
+    fn setup_instance(&self, instance_id: usize, entry: usize, stack: usize) -> HyperCallResult {
+        info!("HSetupInstance instance_id: {instance_id} entry: {entry:#x} stack: {stack:#x}");
 
-        let instance_file = if file_size > 0 {
-            get_contents_from_shared_pages(
-                file_size,
-                shared_pages_base_gva,
-                shared_pages_num,
-                &self.vcpu,
-                &self.vm,
-            )?
-        } else {
-            vec![0; 0]
-        };
-
-        use pi_memory_layout::ArgsLayoutRef;
-        // Print the stack layout for debugging purposes
-        let layout = ArgsLayoutRef::new(instance_file.as_ref(), None);
-
-        for (i, arg) in unsafe { layout.argv_iter() }.enumerate() {
-            warn!("  [{i}] {}", arg.to_str().unwrap());
-        }
-        for (i, env) in unsafe { layout.envv_iter() }.enumerate() {
-            warn!("  [env {i}] {}", env.to_str().unwrap());
-        }
-        for auxv in unsafe { layout.auxv_iter() } {
-            warn!("  [auxv] {:?}", auxv);
-        }
-
-        // instance::get_instances_by_id(instance_id)
-        //     .ok_or_else(|| {
-        //         warn!("Instance with ID {} not found", instance_id);
-        //         ax_err_type!(InvalidInput, "Instance not found")
-        //     })?
-        //     .setup_elf(&instance_file);
+        instance::get_instances_by_id(instance_id)
+            .ok_or_else(|| {
+                warn!("Instance with ID {} not found", instance_id);
+                ax_err_type!(InvalidInput, "Instance not found")
+            })?
+            .setup_init_task(entry, stack)?;
 
         Ok(0)
     }
 }
 
-/*
- * vm_flags in vm_area_struct, see mm_types.h.
- * When changing, update also include/trace/events/mmflags.h
- * #define VM_NONE		0x00000000
- * #define VM_READ		0x00000001	/* currently active flags */
- * #define VM_WRITE	    0x00000002
- * #define VM_EXEC		0x00000004
- * #define VM_SHARED	0x00000008
- */
-const VM_READ: usize = 0x00000001;
-const VM_WRITE: usize = 0x00000002;
-const VM_EXEC: usize = 0x00000004;
-const VM_SHARED: usize = 0x00000008;
+#[allow(unused)]
+mod vm_flags {
+    use axaddrspace::MappingFlags;
 
-fn linux_mm_flags_to_mapping_flags(flags: usize) -> MappingFlags {
-    let mut mapping_flags = MappingFlags::empty();
-    if flags & VM_READ != 0 {
-        mapping_flags |= MappingFlags::READ;
+    /*
+     * vm_flags in vm_area_struct, see mm_types.h.
+     * When changing, update also include/trace/events/mmflags.h
+     * #define VM_NONE		0x00000000
+     * #define VM_READ		0x00000001	/* currently active flags */
+     * #define VM_WRITE	    0x00000002
+     * #define VM_EXEC		0x00000004
+     * #define VM_SHARED	0x00000008
+     */
+    const VM_READ: usize = 0x00000001;
+    const VM_WRITE: usize = 0x00000002;
+    const VM_EXEC: usize = 0x00000004;
+    const VM_SHARED: usize = 0x00000008;
+
+    pub fn linux_mm_flags_to_mapping_flags(flags: usize) -> MappingFlags {
+        let mut mapping_flags = MappingFlags::empty();
+        if flags & VM_READ != 0 {
+            mapping_flags |= MappingFlags::READ;
+        }
+        if flags & VM_WRITE != 0 {
+            mapping_flags |= MappingFlags::WRITE;
+        }
+        if flags & VM_EXEC != 0 {
+            mapping_flags |= MappingFlags::EXECUTE;
+        }
+
+        mapping_flags |= MappingFlags::USER;
+
+        mapping_flags
     }
-    if flags & VM_WRITE != 0 {
-        mapping_flags |= MappingFlags::WRITE;
-    }
-    if flags & VM_EXEC != 0 {
-        mapping_flags |= MappingFlags::EXECUTE;
-    }
-    mapping_flags
 }

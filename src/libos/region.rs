@@ -22,7 +22,7 @@ pub fn count_2mb_region_offset(instance_id: usize, gpa: usize) -> AxResult<usize
         return ax_err!(
             InvalidInput,
             format!(
-                "GPA {} is out of SHM region bounds: [{}, {})",
+                "GPA {} is out of SHM region bounds: [{:#x}, {:#x})",
                 gpa,
                 shm_region_base,
                 shm_region_base + PAGE_SIZE_1G
@@ -31,7 +31,7 @@ pub fn count_2mb_region_offset(instance_id: usize, gpa: usize) -> AxResult<usize
     }
 
     // Ensure the GPA is aligned to 2MB.
-    if (gpa % PAGE_SIZE_2M != 0) {
+    if gpa % PAGE_SIZE_2M != 0 {
         return ax_err!(InvalidInput, "GPA must be aligned to 2MB");
     }
 

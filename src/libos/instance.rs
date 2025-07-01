@@ -18,11 +18,11 @@ use axvcpu::AxVcpuAccessGuestState;
 use equation_defs::context::TaskContext;
 use equation_defs::task::EqTask;
 use equation_defs::{
-    FIRST_PROCESS_ID, GuestMappingType, INSTANCE_PERCPU_REGION_SIZE, InstanceRegion, InstanceType,
-    MAX_CPUS_NUM, MAX_INSTANCES_NUM, SHIM_INSTANCE_ID,
+    EQUATION_MAGIC_NUMBER, FIRST_PROCESS_ID, GuestMappingType, INSTANCE_PERCPU_REGION_SIZE,
+    InstanceRegion, InstanceType, MAX_CPUS_NUM, MAX_INSTANCES_NUM, SHIM_INSTANCE_ID,
 };
 
-use crate::libos::config::{get_eqloader_data, get_gate_process_data};
+use crate::libos::config::get_gate_process_data;
 use crate::libos::def::{
     EPTP_LIST_REGION_SIZE, EPTPList, GP_ALL_EPTP_LIST_REGIN_GPA, GP_ALL_EPTP_LIST_REGION_GVA,
     GP_ALL_INSTANCE_PERCPU_REGION_GPA, GP_ALL_INSTANCE_PERCPU_REGION_GVA,
@@ -354,6 +354,60 @@ impl<H: PagingHandler> Instance<H> {
         }
     }
 
+    pub fn setup_init_task(&self, entry: usize, stack: usize) -> AxResult {
+        let iid = self.id();
+        info!(
+            "Setting up init task for instance {}: entry: {:#x}, stack: {:#x}",
+            iid, entry, stack
+        );
+
+        let init_task_ctx = self
+            .processes
+            .lock()
+            .first_entry()
+            .expect("Instance should have at least one process")
+            .get_mut()
+            .addrspace_mut()
+            .setup_init_task(entry, stack)?;
+
+        warn!(
+            "Init task setup for instance {}: {:#x?}",
+            iid, init_task_ctx
+        );
+
+        let init_task = EqTask {
+            instance_id: iid,
+            process_id: FIRST_PROCESS_ID,
+            task_id: FIRST_PROCESS_ID,
+            context: init_task_ctx,
+        };
+
+        let target_core = pick_cpu_for_instance()?;
+
+        info!(
+            "Running Instance[{}] on core {} with task {:#x?}",
+            iid, target_core, init_task
+        );
+        // Add the init task to the run queue of the target core.
+        unsafe {
+            INSTANCE_REGION_POOL[iid]
+                .as_mut_ptr_of::<InstanceRegion>()
+                .as_mut()
+        }
+        .expect("Failed to get instance region")
+        .percpu_regions[target_core]
+            .run_queue
+            .insert(init_task)
+            .map_err(|e| {
+                warn!("Failed to insert init task into run queue: {:?}", e);
+                ax_err_type!(BadState, "Failed to insert init task into run queue")
+            })?;
+
+        crate::libos::percpu::set_next_instance_id_of_cpu(target_core, iid)?;
+
+        Ok(())
+    }
+
     pub fn alloc_pid(&self) -> Option<usize> {
         let mut pid_bitmap = self.pid_bitmap.lock();
 
@@ -519,6 +573,26 @@ impl<H: PagingHandler> Instance<H> {
 }
 
 impl<H: PagingHandler> Instance<H> {
+    fn set_gate_process_user_entry(
+        &self,
+        eptp: &HostPhysAddr,
+        entry: usize,
+        ustack_top: usize,
+    ) -> AxResult {
+        let mut processes = self.processes.lock();
+        let process_inner_region = processes
+            .get_mut(eptp)
+            .ok_or_else(|| {
+                warn!("EPTP {:?} not found in processes", eptp);
+                ax_err_type!(InvalidInput, "Invalid EPTP")
+            })?
+            .addrspace_mut()
+            .process_inner_region_mut();
+        process_inner_region.user_entry = entry;
+        process_inner_region.user_stack_top = ustack_top;
+        Ok(())
+    }
+
     fn init_gate_processes(&self) -> AxResult {
         info!("Instance {}: init gate processes", self.id());
 
@@ -849,6 +923,19 @@ pub(super) fn shutdown_instance<H: PagingHandler>(
     // directly after next vCPU.run().
     let gate_task = instance_ref.instance_region().percpu_regions[cpu_id].gate_task();
 
+    let is_privileged = vcpu.get_arch_vcpu().guest_is_privileged();
+
+    warn!(
+        "CPU[{}] Instance[{}] is shutting down from {} mode",
+        cpu_id,
+        instance_id,
+        if is_privileged {
+            "privileged"
+        } else {
+            "unprivileged"
+        }
+    );
+
     // Update the vCPU's EPT pointer to the gate EPTP list entry.
     let gate_eptp = curcpu
         .get_gate_eptp_list_entry()
@@ -856,24 +943,62 @@ pub(super) fn shutdown_instance<H: PagingHandler>(
     vcpu.get_arch_vcpu()
         .set_ept_pointer(gate_eptp)
         .expect("Failed to set EPT pointer for vCPU");
+
+    use crate::libos::config::{SHIM_GATE_ENTRY, SHIM_USER_ENTRY};
+    let (entry, rsp) = if is_privileged {
+        // If the vCPU is in privileged mode, we can return to the gate task
+        // through `SHIM_USER_ENTRY` in kernel mode.
+        // The stack pointer is set to the top of the gate task's kernel stack.
+        // pub unsafe extern "C" fn equation_user_entry() -> ! {
+        // Move rax (cpu_id) to rdi (first argument)
+        // "mov rdi, rax",
+        // Move r15 (magic_number) to rsi (second argument)
+        // "mov rsi, r15",
+        // Call equation_user_run(rdi, rsi)
+        // "jmp equation_user_run",
+        vcpu.get_arch_vcpu()
+            .regs_mut()
+            .set_reg_of_index(15, EQUATION_MAGIC_NUMBER as u64);
+        let shim_instance =
+            get_instances_by_id(SHIM_INSTANCE_ID).expect("Failed to get shim instance");
+        shim_instance.set_gate_process_user_entry(
+            &gate_eptp.into_ept_root(),
+            SHIM_GATE_ENTRY,
+            gate_task.context.rsp as usize,
+        )?;
+
+        (SHIM_USER_ENTRY, gate_task.context.kstack_top.as_usize())
+    } else {
+        // If the vCPU is in unprivileged mode, we need to switch to the gate task's stack
+        // and `SHIM_GATE_ENTRY` in user mode.
+        // The stack pointer is set to the top of the gate task's user stack.
+        // SHIM_GATE_ENTRY:
+        // // Stack pointer `rsp` is prepared by AxVisor.
+        // // Restore callee-saved registers
+        // "pop     r15",
+        // "pop     r14",
+        // "pop     r13",
+        // "pop     r12",
+        // "pop     rbx",
+        // "pop     rbp",
+        // // cpu_id is in `rax` (return value),
+        // "ret",
+        (SHIM_GATE_ENTRY, gate_task.context.rsp as usize)
+    };
+
     // Set the vCPU's stack pointer to the gate task's stack pointer.
-    vcpu.get_arch_vcpu()
-        .set_stack_pointer(gate_task.context.rsp as usize);
+    vcpu.get_arch_vcpu().set_stack_pointer(rsp);
     // Set the vCPU's instruction pointer to the gate entry point.
-    use crate::libos::config::SHIM_GATE_ENTRY;
-    vcpu.get_arch_vcpu().set_instr_pointer(SHIM_GATE_ENTRY);
+    vcpu.get_arch_vcpu().set_instr_pointer(entry);
     vcpu.get_arch_vcpu().set_return_value(cpu_id);
-    // SHIM_GATE_ENTRY:
-    // // Stack pointer `rsp` is prepared by AxVisor.
-    // // Restore callee-saved registers
-    // "pop     r15",
-    // "pop     r14",
-    // "pop     r13",
-    // "pop     r12",
-    // "pop     rbx",
-    // "pop     rbp",
-    // // cpu_id is in `rax` (return value),
-    // "ret",
+
+    debug!(
+        "CPU[{}] return to {} gate task: {:#x?}, entry {:#x}",
+        if is_privileged { "kernel" } else { "user" },
+        cpu_id,
+        gate_task,
+        entry
+    );
 
     // Notify other CPUs to stop running this instance.
     if instance_ref.instance_region().running_tasks_count() > 0 {

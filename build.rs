@@ -256,7 +256,6 @@ fn gen_libos_configs() -> io::Result<()> {
     let shim_elf_path = "deps/shim/shim.elf";
     let shim_bin_path = "deps/shim/shim.bin";
     let gp_path = "deps/shim/gate_process.elf";
-    let loader_path = "deps/shim/eqloader.elf";
 
     writeln!(
         output_file,
@@ -285,21 +284,8 @@ fn gen_libos_configs() -> io::Result<()> {
     )?;
     writeln!(output_file, "}}\n")?;
 
-    writeln!(output_file, "/// Get eqloader raw ELF data.")?;
-    writeln!(
-        output_file,
-        "pub fn get_eqloader_data() -> &'static [u8] {{"
-    )?;
-    writeln!(
-        output_file,
-        "    include_bytes_align_as!(u64, \"{}\")",
-        Path::new(loader_path).canonicalize()?.to_str().unwrap()
-    )?;
-    writeln!(output_file, "}}\n")?;
-
     println!("cargo:rerun-if-changed={}", shim_elf_path);
     println!("cargo:rerun-if-changed={}", gp_path);
-    println!("cargo:rerun-if-changed={}", loader_path);
 
     // Execute the readelf command to get the symbol values
     let output = Command::new("readelf")

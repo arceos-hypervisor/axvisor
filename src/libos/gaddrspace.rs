@@ -547,6 +547,45 @@ impl<
 
         Ok(ctx)
     }
+
+    pub(super) fn setup_init_task(
+        &mut self,
+        user_entry: usize,
+        stack_top: usize,
+    ) -> AxResult<TaskContext> {
+        info!("Setup init task for process {}", self.process_id());
+        use equation_defs::task::context::ContextSwitchFrame;
+        let user_sp_top = GuestVirtAddr::from_usize(stack_top);
+
+        let mut cur_sp_top = user_sp_top;
+        // x86_64 calling convention: the stack must be 16-byte aligned before
+        // calling a function. That means when entering a new task (`ret` in `context_switch`
+        // is executed), (stack pointer + 8) should be 16-byte aligned.
+        cur_sp_top = cur_sp_top
+            .align_down(size_of::<u64>())
+            .sub(size_of::<u64>());
+        // Allocate a context switch frame on the user stack.
+        let frame_ptr_gva = cur_sp_top.sub(size_of::<ContextSwitchFrame>());
+        // Construct the context switch frame.
+        let ctx_frame = ContextSwitchFrame {
+            rip: user_entry as _,
+            ..Default::default()
+        };
+        // Copy the context switch frame to the user stack.
+        self.copy_into_guest(
+            HostVirtAddr::from_ptr_of(&ctx_frame),
+            frame_ptr_gva,
+            size_of::<ContextSwitchFrame>(),
+        )?;
+        cur_sp_top = frame_ptr_gva;
+        info!("Context switch frame at user stack: {:?}", cur_sp_top);
+        let mut ctx = TaskContext::new();
+        ctx.rsp = cur_sp_top.as_usize() as _;
+        // `kstack_top` is unused?
+        ctx.kstack_top = HostVirtAddr::from_usize(user_sp_top.as_usize());
+
+        Ok(ctx)
+    }
 }
 
 impl<
