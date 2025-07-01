@@ -267,7 +267,7 @@ mod arch_api_impl {
     cfg_if::cfg_if! {
         if #[cfg(target_platform = "aarch64-dyn")] {
             pub const GICD_PADDR: usize = 0x08000000;
-            pub const GICR_PADDR: usize = 0x08000000;
+            pub const GICR_PADDR: usize = 0x080a0000;
         } else {
             pub const GICD_PADDR: usize = 0x08000000;
             pub const GICR_PADDR: usize = 0x080a0000;
