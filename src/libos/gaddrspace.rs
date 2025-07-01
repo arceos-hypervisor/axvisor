@@ -1,9 +1,9 @@
 use alloc::sync::Arc;
-use x86_64::registers::debug;
 use core::ops::AddAssign;
 use std::collections::btree_map::BTreeMap;
 use std::os::arceos::modules::axhal::paging::PagingHandlerImpl;
 use std::vec::Vec;
+use x86_64::registers::debug;
 
 use axerrno::{AxError, AxResult, ax_err, ax_err_type};
 use lazyinit::LazyInit;
@@ -21,7 +21,7 @@ use equation_defs::bitmap_allocator::PageAllocator;
 use equation_defs::task::context::TaskContext;
 use equation_defs::{
     EQUATION_MAGIC_NUMBER, FILE_BACKED_REGION_BASE_PA, GuestMappingType, INSTANCE_REGION_SIZE,
-    InstanceRegion, MMFrameAllocator, PTFrameAllocator,
+    InstanceRegion, MMFrameAllocator, PTFrameAllocator, USER_HEAP_BASE_VA,
 };
 
 use crate::libos::config::{
@@ -808,6 +808,9 @@ impl<
             GUEST_PT_ROOT_GPA.as_usize(),
             PAGE_SIZE_2M,
         );
+
+        process_inner_region.heap_base = USER_HEAP_BASE_VA;
+        process_inner_region.heap_top = USER_HEAP_BASE_VA;
 
         // Alloc the page table root frame first.
         let guest_pg_root = guest_addrspace.alloc_pt_frame().map_err(|e| {
