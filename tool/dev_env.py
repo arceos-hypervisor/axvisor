@@ -28,16 +28,9 @@ def main():
 
     # 克隆其他仓库到 crates 目录
     repos = [
-        "arceos",
-        "axvm",
-        "axvcpu",
         "axaddrspace",
-        "arm_vcpu",
         "axdevice",
-        "arm_vgic",
-        "arm_gicv2",
         "axdevice_crates",
-        "axhvc",
     ]
 
     for one in repos:
@@ -59,26 +52,12 @@ def main():
 
     cargo_toml += """
 
-[patch."https://github.com/arceos-hypervisor/arceos.git".axstd]
-path = "crates/arceos/ulib/axstd"
-[patch."https://github.com/arceos-hypervisor/arceos.git".axhal]
-path = "crates/arceos/modules/axhal"
-[patch."https://github.com/arceos-hypervisor/axvm.git".axvm]
-path = "crates/axvm"
-[patch."https://github.com/arceos-hypervisor/axvcpu.git".axvcpu]
-path = "crates/axvcpu"
 [patch."https://github.com/arceos-hypervisor/axaddrspace.git".axaddrspace]
 path = "crates/axaddrspace"
-[patch."https://github.com/arceos-hypervisor/arm_vcpu.git".arm_vcpu]
-path = "crates/arm_vcpu"
 [patch."https://github.com/arceos-hypervisor/axdevice.git".axdevice]
 path = "crates/axdevice"
-[patch."https://github.com/arceos-hypervisor/arm_vgic.git".arm_vgic]
-path = "crates/arm_vgic"
 [patch."https://github.com/arceos-hypervisor/axdevice_crates.git".axdevice_base]
 path = "crates/axdevice_crates/axdevice_base"
-[patch."https://github.com/arceos-hypervisor/arm_gicv2.git".arm_gicv2]
-path = "crates/arm_gicv2"
 """
 
     with open("Cargo.toml", "w") as file:
