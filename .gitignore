@@ -21,5 +21,7 @@ rusty-tags.vi
 /Cargo.toml.bk
 /deps
 
+/logs
+
 # tools should be downloaded from github
 tools/*

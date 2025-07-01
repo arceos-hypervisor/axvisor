@@ -209,13 +209,19 @@ impl HyperCall {
 
         // TODO: handle map shared.
 
-        let flags = vm_flags::linux_mm_flags_to_mapping_flags(flags);
+        let vm_flags = vm_flags::linux_mm_flags_to_mapping_flags(flags);
+        let prot_flags = vm_flags::linux_page_prot_to_mapping_flags(prot);
+
+        warn!(
+            "Instance[{instance_id}] HLoadMmap vm_flags: {:?} prot_flags: {:?}",
+            vm_flags, prot_flags
+        );
 
         instance_ref.init_process_sync_mmap(
             GuestVirtAddr::from_usize(gva),
             page_index,
             len,
-            flags,
+            prot_flags,
         )?;
 
         Ok(0)
@@ -248,13 +254,19 @@ mod vm_flags {
      * #define VM_EXEC		0x00000004
      * #define VM_SHARED	0x00000008
      */
+    const VM_NONE: usize = 0x00000000;
     const VM_READ: usize = 0x00000001;
     const VM_WRITE: usize = 0x00000002;
     const VM_EXEC: usize = 0x00000004;
     const VM_SHARED: usize = 0x00000008;
 
+    pub const PROT_NONE: usize = 0;
+    pub const PROT_READ: usize = 1;
+    pub const PROT_WRITE: usize = 2;
+    pub const PROT_EXEC: usize = 4;
+
     pub fn linux_mm_flags_to_mapping_flags(flags: usize) -> MappingFlags {
-        let mut mapping_flags = MappingFlags::empty();
+        let mut mapping_flags = MappingFlags::from_bits_retain(VM_NONE);
         if flags & VM_READ != 0 {
             mapping_flags |= MappingFlags::READ;
         }
@@ -262,6 +274,23 @@ mod vm_flags {
             mapping_flags |= MappingFlags::WRITE;
         }
         if flags & VM_EXEC != 0 {
+            mapping_flags |= MappingFlags::EXECUTE;
+        }
+
+        mapping_flags |= MappingFlags::USER;
+
+        mapping_flags
+    }
+
+    pub fn linux_page_prot_to_mapping_flags(prot: usize) -> MappingFlags {
+        let mut mapping_flags = MappingFlags::from_bits_retain(PROT_NONE);
+        if prot & PROT_READ != 0 {
+            mapping_flags |= MappingFlags::READ;
+        }
+        if prot & PROT_WRITE != 0 {
+            mapping_flags |= MappingFlags::WRITE;
+        }
+        if prot & PROT_EXEC != 0 {
             mapping_flags |= MappingFlags::EXECUTE;
         }
 

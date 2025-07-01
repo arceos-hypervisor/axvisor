@@ -1,4 +1,5 @@
 use alloc::sync::Arc;
+use x86_64::registers::debug;
 use core::ops::AddAssign;
 use std::collections::btree_map::BTreeMap;
 use std::os::arceos::modules::axhal::paging::PagingHandlerImpl;
@@ -553,17 +554,19 @@ impl<
         user_entry: usize,
         stack_top: usize,
     ) -> AxResult<TaskContext> {
-        info!("Setup init task for process {}", self.process_id());
+        debug!("Setup init task for process {}", self.process_id());
         use equation_defs::task::context::ContextSwitchFrame;
         let user_sp_top = GuestVirtAddr::from_usize(stack_top);
 
         let mut cur_sp_top = user_sp_top;
+
+        debug!("APP AuxLayout at stack top: {:?}", user_sp_top);
+
         // x86_64 calling convention: the stack must be 16-byte aligned before
         // calling a function. That means when entering a new task (`ret` in `context_switch`
         // is executed), (stack pointer + 8) should be 16-byte aligned.
-        cur_sp_top = cur_sp_top
-            .align_down(size_of::<u64>())
-            .sub(size_of::<u64>());
+        // We DO NOT need to decrement the stack pointer by 8 bytes here!!!
+
         // Allocate a context switch frame on the user stack.
         let frame_ptr_gva = cur_sp_top.sub(size_of::<ContextSwitchFrame>());
         // Construct the context switch frame.
@@ -578,7 +581,7 @@ impl<
             size_of::<ContextSwitchFrame>(),
         )?;
         cur_sp_top = frame_ptr_gva;
-        info!("Context switch frame at user stack: {:?}", cur_sp_top);
+        debug!("Context switch frame at user stack: {:?}", cur_sp_top);
         let mut ctx = TaskContext::new();
         ctx.rsp = cur_sp_top.as_usize() as _;
         // `kstack_top` is unused?

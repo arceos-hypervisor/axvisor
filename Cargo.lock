@@ -566,6 +566,7 @@ dependencies = [
  "timer_list",
  "toml",
  "x86",
+ "x86_64 0.15.2",
  "xmas-elf",
 ]
 
