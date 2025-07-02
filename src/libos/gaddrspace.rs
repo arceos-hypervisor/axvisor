@@ -18,6 +18,8 @@ use page_table_multiarch::{
 use axaddrspace::npt::{EPTEntry, EPTMetadata};
 use axaddrspace::{AddrSpace, GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr};
 use equation_defs::bitmap_allocator::PageAllocator;
+use equation_defs::get_scf_queue_buff_region_by_iid_pid;
+use equation_defs::scf::SyscallQueueBufferMetadata;
 use equation_defs::task::context::TaskContext;
 use equation_defs::{
     EQUATION_MAGIC_NUMBER, FILE_BACKED_REGION_BASE_PA, GuestMappingType, INSTANCE_REGION_SIZE,
@@ -123,12 +125,15 @@ pub struct GuestAddrSpace<
     /// This region is used to store instance information, perCPU run queue, etc.
     instance_region_base: HostPhysAddr,
 
+    scf_queue_region: Option<HostPhysicalRegion<H>>,
+
     // Below are used for guest addrspace.
     gva_range: AddrRange<GuestVirtAddr>,
 
     /// Guest mapping type.
     guest_mapping: GuestMapping<H>,
     /// Guest virtual address areas in GVA.
+    /// This fields only stores GVA areas that mapped through `guest_map_alloc()`.
     gva_areas: BTreeMap<GuestVirtAddr, (AddrRange<GuestVirtAddr>, MappingFlags)>,
 
     /// Guest Page Table levels.
@@ -208,6 +213,29 @@ impl<
             false,
         )?;
 
+        // handle SCF queue region.
+        let forked_scf_queue_region = if self.scf_queue_region.is_some() {
+            let scf_queue_region = HostPhysicalRegion::allocate(PAGE_SIZE_2M, Some(PAGE_SIZE_4K))?;
+
+            let scf_queue_region_base = GuestPhysAddr::from_usize(
+                get_scf_queue_buff_region_by_iid_pid(self.instance_id(), pid),
+            );
+
+            // Map the SCF queue region.
+            // Do not allocate a new SCF queue region, since it is shared by all processes in the same instance.
+            forked_addrspace.map_linear(
+                scf_queue_region_base,
+                scf_queue_region.base(),
+                scf_queue_region.size(),
+                MappingFlags::READ | MappingFlags::WRITE,
+                true,
+            )?;
+
+            Some(scf_queue_region)
+        } else {
+            None
+        };
+
         let forked_guest_mapping = match self.guest_mapping {
             GuestMapping::One2OneMapping { page_pos } => GuestMapping::One2OneMapping { page_pos },
             GuestMapping::CoarseGrainedSegmentation {
@@ -284,6 +312,7 @@ impl<
         Ok(Self {
             ept_addrspace: forked_addrspace,
             process_inner_region: forked_process_inner_region,
+            scf_queue_region: forked_scf_queue_region,
             instance_region_base: self.instance_region_base,
             gva_range: self.gva_range.clone(),
             guest_mapping: forked_guest_mapping,
@@ -652,8 +681,29 @@ impl<
         process_id: usize,
         instance_region_base: HostPhysAddr,
         gmt: GuestMappingType,
+        scf: bool,
     ) -> AxResult<Self> {
-        info!("Generate GuestAddrSpace with {:?}", gmt);
+        let instance_id = unsafe {
+            H::phys_to_virt(instance_region_base)
+                .as_ptr_of::<InstanceRegion>()
+                .as_ref()
+        }
+        .ok_or_else(|| {
+            error!(
+                "Failed to get instance region from base address: {:?}",
+                instance_region_base
+            );
+            ax_err_type!(
+                InvalidInput,
+                "Failed to get instance region from base address"
+            )
+        })?
+        .instance_id as usize;
+
+        info!(
+            "Generate GuestAddrSpace for Instance {} process {} with {:?}",
+            instance_id, process_id, gmt
+        );
 
         let mut ept_addrspace = AddrSpace::new_empty(
             GuestPhysAddr::from_usize(0),
@@ -666,6 +716,11 @@ impl<
             ax_err_type!(BadState, "Failed to get shim kernel region")
         })?;
 
+        debug!(
+            "Mapping shim kernel region base: {:?} size {:#x}",
+            shim_region.base(),
+            shim_region.size()
+        );
         // Todo: distinguish data, text, rodata, bss sections.
         ept_addrspace.map_linear(
             SHIM_BASE_GPA,
@@ -675,23 +730,16 @@ impl<
             true,
         )?;
 
-        debug!(
-            "Process inner region size {}",
-            core::mem::size_of::<ProcessInnerRegion>()
-        );
-
         // Allocate and map the process inner region.
         let process_inner_region =
             HostPhysicalRegion::allocate(PROCESS_INNER_REGION_SIZE, Some(PAGE_SIZE_4K))?;
-
         let process_inner_region_size_aligned = process_inner_region.size();
 
         debug!(
-            "Process inner region base: {:?} size {:#x}",
+            "Mapping Process inner region base: {:?} size {:#x}",
             process_inner_region.base(),
             process_inner_region.size()
         );
-
         ept_addrspace.map_linear(
             PROCESS_INNER_REGION_BASE_GPA,
             process_inner_region.base(),
@@ -700,8 +748,50 @@ impl<
             false,
         )?;
 
-        // Map the instance inner region.
+        // Allocate and map the syscall-forward shared queue region (if required).
+        let scf_queue_region = if scf {
+            let scf_queue_region = HostPhysicalRegion::allocate(PAGE_SIZE_2M, Some(PAGE_SIZE_4K))?;
+            debug!(
+                "Mapping SCF queue region base: {:?} size {:#x}",
+                scf_queue_region.base(),
+                scf_queue_region.size()
+            );
+            let scf_queue_base = GuestPhysAddr::from_usize(get_scf_queue_buff_region_by_iid_pid(
+                instance_id,
+                process_id,
+            ));
+            ept_addrspace.map_linear(
+                scf_queue_base,
+                scf_queue_region.base(),
+                scf_queue_region.size(),
+                MappingFlags::READ | MappingFlags::WRITE,
+                true,
+            )?;
+
+            let meta = unsafe {
+                H::phys_to_virt(scf_queue_region.base())
+                    .as_mut_ptr_of::<SyscallQueueBufferMetadata>()
+                    .as_mut()
+                    .ok_or_else(|| {
+                        ax_err_type!(
+                            InvalidInput,
+                            "Failed to get SyscallQueueBufferMetadata from base address"
+                        )
+                    })?
+            };
+            meta.set_magic();
+
+            Some(scf_queue_region)
+        } else {
+            None
+        };
+
+        // Map the instance region.
         // The instance region is shared by all processes in the same instance.
+        debug!(
+            "Mapping Instance region base: {:?} size {:#x}",
+            instance_region_base, INSTANCE_REGION_SIZE
+        );
         ept_addrspace.map_linear(
             INSTANCE_REGION_BASE_GPA,
             instance_region_base,
@@ -732,16 +822,6 @@ impl<
 
                 // DO NOT Map the first memory region for now.
                 let mut mm_regions = BTreeMap::new();
-                // let first_mm_region =
-                //     HostPhysicalRegion::allocate_ref(mm_region_granularity, None)?;
-                // ept_addrspace.map_linear(
-                //     GUEST_MEM_REGION_BASE_GPA,
-                //     first_mm_region.base(),
-                //     mm_region_granularity,
-                //     MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
-                //     true,
-                // )?;
-                // mm_regions.insert(GUEST_MEM_REGION_BASE_GPA, first_mm_region);
 
                 // Map the first page table region.
                 let first_pt_region = HostPhysicalRegion::allocate(PAGE_SIZE_2M, None)?;
@@ -780,6 +860,7 @@ impl<
             ept_addrspace,
             process_inner_region,
             instance_region_base,
+            scf_queue_region,
             guest_mapping,
             gva_range: AddrRange::from_start_size(
                 GuestVirtAddr::from_usize(0),
@@ -795,12 +876,11 @@ impl<
         process_inner_region.is_primary = true;
         process_inner_region.process_id = process_id;
         process_inner_region.mm_region_granularity = region_granularity;
-        // Just init mm_frame_allocator with 0 size.
         process_inner_region.mm_frame_allocator.init_with_page_size(
             PAGE_SIZE_4K,
             region_granularity,
             GUEST_MEM_REGION_BASE_GPA.as_usize(),
-            0,
+            0, // Just init mm_frame_allocator with 0 size!!!
         );
         process_inner_region.pt_frame_allocator.init_with_page_size(
             PAGE_SIZE_4K,
@@ -809,6 +889,8 @@ impl<
             PAGE_SIZE_2M,
         );
 
+        // Set the heap base and top in the process inner region.
+        // The mapping will not be extablished until user process requests it through `brk` or `sbrk`.
         process_inner_region.heap_base = USER_HEAP_BASE_VA;
         process_inner_region.heap_top = USER_HEAP_BASE_VA;
 
@@ -848,7 +930,7 @@ impl<
             GuestMappingType::CoarseGrainedSegmentation1G
             | GuestMappingType::CoarseGrainedSegmentation2M => {
                 // Map shim kernel sections.
-                info!("Map shim kernel sections");
+                info!("Maping shim kernel sections");
                 // Text section.
                 guest_addrspace
                     .guest_map_region(
@@ -921,7 +1003,7 @@ impl<
                     )
                     .map_err(paging_err_to_ax_err)?;
 
-                info!("Mapping shim page table region");
+                info!("Mapping instance page table region");
                 // Map guest page table region.
                 guest_addrspace
                     .guest_map_region(
@@ -934,7 +1016,7 @@ impl<
                     )
                     .map_err(paging_err_to_ax_err)?;
 
-                info!("Mapping instance inner region");
+                info!("Mapping instance inner region with user permission");
                 // Map instance region and process inner region.
                 guest_addrspace
                     .guest_map_region(

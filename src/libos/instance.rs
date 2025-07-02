@@ -176,6 +176,7 @@ impl<H: PagingHandler> Instance<H> {
             pid,
             instance_region_base,
             GuestMappingType::CoarseGrainedSegmentation2M,
+            false, // No SCF queue region for shim instance
         )?;
 
         // Load elf data for gate process.
@@ -244,7 +245,7 @@ impl<H: PagingHandler> Instance<H> {
         info!("Instance {}: region {:?}", id, instance_region_ref);
 
         let mut init_addrspace =
-            GuestAddrSpace::new(FIRST_PROCESS_ID, instance_region_base, mapping_type)?;
+            GuestAddrSpace::new(FIRST_PROCESS_ID, instance_region_base, mapping_type, true)?;
 
         let init_ept_root_hpa = init_addrspace.ept_root_hpa();
 
@@ -272,17 +273,14 @@ impl<H: PagingHandler> Instance<H> {
             EPTPointer::from_table_phys(init_ept_root_hpa),
         );
 
-        Ok(
-            Arc::new(Self {
-                itype,
-                pid_bitmap: Mutex::new(Bitmap::mask(FIRST_PROCESS_ID)),
-                instance_region_base,
-                eptp_list_region,
-                eptp_list_dirty: AtomicBool::new(false),
-                processes: Mutex::new(processes),
-            }),
-            // task_context,
-        )
+        Ok(Arc::new(Self {
+            itype,
+            pid_bitmap: Mutex::new(Bitmap::mask(FIRST_PROCESS_ID)),
+            instance_region_base,
+            eptp_list_region,
+            eptp_list_dirty: AtomicBool::new(false),
+            processes: Mutex::new(processes),
+        }))
     }
 
     pub fn init_process_check_mm_region_allocated(&self, offset_of_granularity: usize) -> bool {
@@ -861,37 +859,6 @@ pub fn create_instance(itype: InstanceType, mapping_type: GuestMappingType) -> A
     let iid = instance_ref.id();
 
     INSTANCES.lock().insert(iid, instance_ref);
-
-    // let init_task = EqTask {
-    //     instance_id: iid,
-    //     process_id: FIRST_PROCESS_ID,
-    //     task_id: FIRST_PROCESS_ID,
-    //     context: TaskContext::new(),
-    // };
-
-    // let target_core = pick_cpu_for_instance()?;
-
-    // info!(
-    //     "Creating instance {} on core {} with task {:?}",
-    //     iid, target_core, init_task
-    // );
-    // // Add the init task to the run queue of the target core.
-    // unsafe {
-    //     INSTANCE_REGION_POOL[iid]
-    //         .as_mut_ptr_of::<InstanceRegion>()
-    //         .as_mut()
-    // }
-    // .expect("Failed to get instance region")
-    // .percpu_regions[target_core]
-    //     .run_queue
-    //     .insert(init_task)
-    //     .map_err(|e| {
-    //         warn!("Failed to insert init task into run queue: {:?}", e);
-    //         ax_err_type!(BadState, "Failed to insert init task into run queue")
-    //     })?;
-
-    // crate::libos::percpu::set_next_instance_id_of_cpu(target_core, iid)?;
-
     Ok(iid)
 }
 

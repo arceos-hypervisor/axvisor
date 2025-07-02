@@ -5,7 +5,7 @@ use axerrno::{AxResult, ax_err, ax_err_type};
 use axhvc::{HyperCallCode, HyperCallResult};
 use axvcpu::AxVcpuAccessGuestState;
 
-use equation_defs::{GuestMappingType, InstanceType};
+use equation_defs::{FIRST_PROCESS_ID, GuestMappingType, InstanceType, scf};
 use memory_addr::PAGE_SIZE_4K;
 use memory_addr::{MemoryAddr, PAGE_SIZE_2M};
 
@@ -72,6 +72,7 @@ impl HyperCall {
                 self.args[0].into(),
                 self.args[1].into(),
                 self.args[2] as usize,
+                self.args[3] as usize,
             ),
             HyperCallCode::HLoadMMap => self.instance_load_mmap(
                 self.args[0] as usize,
@@ -150,6 +151,7 @@ impl HyperCall {
         instance_type: InstanceType,
         mapping_type: GuestMappingType,
         shm_base_gpa_ptr: usize,
+        scf_base_gpa_ptr: usize,
     ) -> HyperCallResult {
         info!(
             "HCreateInstance type {:?}, mapping type {:?}, shm_base_ptr {:#x}",
@@ -157,11 +159,15 @@ impl HyperCall {
         );
         let instance_id = instance::create_instance(instance_type, mapping_type)?;
 
-        let shm_base = region::get_shm_region_by_instance_id(instance_id);
+        let shm_base = equation_defs::get_shm_region_by_instance_id(instance_id);
+        let scf_buf_base =
+            equation_defs::get_scf_queue_buff_region_by_iid_pid(instance_id, FIRST_PROCESS_ID);
 
         info!("Instance [{instance_id}] host SHM region at {shm_base:#x}");
         let shm_base_gpa_ptr = GuestPhysAddr::from_usize(shm_base_gpa_ptr);
+        let scf_base_gpa_ptr = GuestPhysAddr::from_usize(scf_base_gpa_ptr);
         self.vm.write_to_guest_of(shm_base_gpa_ptr, &shm_base)?;
+        self.vm.write_to_guest_of(scf_base_gpa_ptr, &scf_buf_base)?;
 
         Ok(instance_id)
     }
@@ -184,7 +190,7 @@ impl HyperCall {
         })?;
 
         let page_index =
-            (linux_gpa - region::get_shm_region_by_instance_id(instance_id)) / PAGE_SIZE_4K;
+            (linux_gpa - equation_defs::get_shm_region_by_instance_id(instance_id)) / PAGE_SIZE_4K;
         let gpa_aligned = GuestPhysAddr::from_usize(linux_gpa).align_down(PAGE_SIZE_2M);
         // First, check if the 2MB region is mapped for the instance.
         let offset_of_granularity =

@@ -3,17 +3,13 @@
 use alloc::sync::Arc;
 
 use allocator::{AllocResult, BaseAllocator, BitmapPageAllocator, PageAllocator};
+use axaddrspace::HostPhysAddr;
 use axerrno::{AxResult, ax_err, ax_err_type};
 use kspin::SpinNoIrq;
 use memory_addr::{MemoryAddr, PAGE_SIZE_1G, PAGE_SIZE_2M, PAGE_SIZE_4K, align_up_4k};
 use page_table_multiarch::PagingHandler;
 
-use axaddrspace::HostPhysAddr;
-
-pub fn get_shm_region_by_instance_id(instance_id: usize) -> usize {
-    // Shim instance does not need a shared memory region.
-    0xd0000_0000 + PAGE_SIZE_1G * (instance_id - 1)
-}
+use equation_defs::get_shm_region_by_instance_id;
 
 pub fn count_2mb_region_offset(instance_id: usize, gpa: usize) -> AxResult<usize> {
     let shm_region_base = get_shm_region_by_instance_id(instance_id);
