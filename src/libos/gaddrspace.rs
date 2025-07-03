@@ -32,8 +32,8 @@ use crate::libos::config::{
 };
 use crate::libos::def::{
     GUEST_FILE_BACKED_REGION_BASE_GPA, GUEST_MEM_REGION_BASE_GPA, GUEST_PT_ROOT_GPA,
-    INSTANCE_REGION_BASE_GPA, PROCESS_INNER_REGION_BASE_GPA, SHIM_BASE_GPA, USER_STACK_BASE,
-    USER_STACK_SIZE,
+    INSTANCE_REGION_BASE_GPA, PROCESS_INNER_REGION_BASE_GPA, SCF_QUEUE_BUFF_BASE_GVA,
+    SHIM_BASE_GPA, USER_STACK_BASE, USER_STACK_SIZE,
 };
 use crate::libos::def::{
     GUEST_MEMORY_REGION_BASE_GVA, GUEST_PT_BASE_GVA, INSTANCE_REGION_BASE_GVA,
@@ -149,6 +149,12 @@ impl<
     H: PagingHandler,
 > GuestAddrSpace<M, EPTE, GPTE, H>
 {
+    pub fn scf_region_range(&self) -> Option<(HostPhysAddr, usize)> {
+        self.scf_queue_region
+            .as_ref()
+            .map(|region| (region.base(), region.size()))
+    }
+
     pub fn fork(&mut self, pid: usize) -> AxResult<Self> {
         let mut forked_addrspace = AddrSpace::new_empty(
             GuestPhysAddr::from_usize(0),
@@ -779,7 +785,7 @@ impl<
                         )
                     })?
             };
-            meta.set_magic();
+            meta.initialize(scf_queue_region.size());
 
             Some(scf_queue_region)
         } else {
@@ -1043,6 +1049,23 @@ impl<
                         false,
                     )
                     .map_err(paging_err_to_ax_err)?;
+                // Map the syscall-forward shared queue region if required.
+                if let Some(scf_queue_region) = &guest_addrspace.scf_queue_region {
+                    info!("Mapping SCF queue region with user permission");
+                    let scf_queue_base_gpa = GuestPhysAddr::from_usize(
+                        get_scf_queue_buff_region_by_iid_pid(instance_id, process_id),
+                    );
+                    guest_addrspace
+                        .guest_map_region(
+                            SCF_QUEUE_BUFF_BASE_GVA,
+                            |gva| scf_queue_base_gpa.add(gva.sub_addr(SCF_QUEUE_BUFF_BASE_GVA)),
+                            scf_queue_region.size(),
+                            MappingFlags::READ | MappingFlags::WRITE | MappingFlags::USER,
+                            true,
+                            false,
+                        )
+                        .map_err(paging_err_to_ax_err)?;
+                }
             }
         }
 

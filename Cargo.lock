@@ -818,6 +818,7 @@ name = "equation_defs"
 version = "0.1.0"
 dependencies = [
  "allocator",
+ "axerrno",
  "axhvc",
  "bit_field",
  "bitmap-allocator",

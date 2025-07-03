@@ -158,16 +158,43 @@ impl HyperCall {
             instance_type, mapping_type, shm_base_gpa_ptr
         );
         let instance_id = instance::create_instance(instance_type, mapping_type)?;
+        let instance_ref = instance::get_instances_by_id(instance_id).ok_or_else(|| {
+            warn!("Instance with ID {} not found", instance_id);
+            ax_err_type!(InvalidInput, "Instance not found")
+        })?;
 
-        let shm_base = equation_defs::get_shm_region_by_instance_id(instance_id);
         let scf_buf_base =
             equation_defs::get_scf_queue_buff_region_by_iid_pid(instance_id, FIRST_PROCESS_ID);
+        let scf_buf_base_gpa = GuestPhysAddr::from_usize(scf_buf_base);
+        let (scf_buf_base_hpa, scf_buf_size) = instance_ref
+            .init_process_get_scf_queue_region()
+            .ok_or_else(|| {
+                warn!(
+                    "Failed to get SCF queue region for instance {}",
+                    instance_id
+                );
+                ax_err_type!(InvalidInput, "Failed to get SCF queue region")
+            })?;
+        // Map the SCF buffer region to the host Linux.
+        self.vm
+            .map_region(
+                scf_buf_base_gpa,
+                scf_buf_base_hpa,
+                scf_buf_size,
+                MappingFlags::READ | MappingFlags::WRITE,
+                true, // Allow huge pages
+            )
+            .map_err(|e| {
+                warn!("Failed to map SCF buffer region: {:?}", e);
+                ax_err_type!(InvalidInput, "Failed to map SHM region")
+            })?;
+        let scf_base_gpa_ptr = GuestPhysAddr::from_usize(scf_base_gpa_ptr);
+        self.vm.write_to_guest_of(scf_base_gpa_ptr, &scf_buf_base)?;
 
+        let shm_base = equation_defs::get_shm_region_by_instance_id(instance_id);
         info!("Instance [{instance_id}] host SHM region at {shm_base:#x}");
         let shm_base_gpa_ptr = GuestPhysAddr::from_usize(shm_base_gpa_ptr);
-        let scf_base_gpa_ptr = GuestPhysAddr::from_usize(scf_base_gpa_ptr);
         self.vm.write_to_guest_of(shm_base_gpa_ptr, &shm_base)?;
-        self.vm.write_to_guest_of(scf_base_gpa_ptr, &scf_buf_base)?;
 
         Ok(instance_id)
     }

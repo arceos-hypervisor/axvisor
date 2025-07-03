@@ -319,6 +319,16 @@ impl<H: PagingHandler> Instance<H> {
             .guest_sync_map(vaddr, page_index, size, flags)
     }
 
+    pub fn init_process_get_scf_queue_region(&self) -> Option<(HostPhysAddr, usize)> {
+        self.processes
+            .lock()
+            .first_entry()
+            .expect("Instance should have at least one process")
+            .get()
+            .addrspace()
+            .scf_region_range()
+    }
+
     pub fn setup_elf(&self, elf_data: &[u8]) {
         match self.itype {
             InstanceType::LibOSStatic => {

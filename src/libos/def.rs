@@ -45,6 +45,8 @@ pub const INSTANCE_REGION_BASE_GVA: GuestVirtAddr =
     GuestVirtAddr::from_usize(INSTANCE_REGION_BASE_VA as usize);
 pub const PERCPU_REGION_BASE_GVA: GuestVirtAddr =
     GuestVirtAddr::from_usize(PERCPU_REGION_BASE_VA as usize);
+pub const SCF_QUEUE_BUFF_BASE_GVA: GuestVirtAddr =
+    GuestVirtAddr::from_usize(SCF_QUEUE_BUFF_BASE_VA as usize);
 
 pub const GP_ALL_EPTP_LIST_REGION_GVA: GuestVirtAddr =
     GuestVirtAddr::from_usize(GP_ALL_EPTP_LIST_REGION_VA as usize);
