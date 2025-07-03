@@ -18,12 +18,6 @@ pub fn updated_fdt(config: AxVMCrateConfig, dtb_size: usize, vm: VMRef) -> AxRes
         .expect("Failed to parse FDT");
 
     for node in fdt.all_nodes() {
-        if node.level <= old_node_level {
-            for _ in node.level..=old_node_level {
-                let end_node = child_node.pop().unwrap();
-                new_fdt.end_node(end_node).unwrap();
-            }
-        }
         
         if node.name() == "/" {
             child_node.push(new_fdt.begin_node("").unwrap());
@@ -31,6 +25,12 @@ pub fn updated_fdt(config: AxVMCrateConfig, dtb_size: usize, vm: VMRef) -> AxRes
             // Skip memory nodes, will add them later
             continue;
         } else {
+            if node.level <= old_node_level {
+                for _ in node.level..=old_node_level {
+                    let end_node = child_node.pop().unwrap();
+                    new_fdt.end_node(end_node).unwrap();
+                }
+            }
             child_node.push(new_fdt.begin_node(node.name()).unwrap());
         }
 
