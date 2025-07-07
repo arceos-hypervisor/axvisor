@@ -153,7 +153,7 @@ include scripts/make/qemu.mk
 include scripts/make/test.mk
 ifeq ($(PLAT_NAME), aarch64-raspi4)
   include scripts/make/raspi4.mk
-else ifeq ($(PLAT_NAME), aarch64-bsta1000b-virt-hv)
+else ifeq ($(PLAT_NAME), aarch64-bsta1000b-hv)
   include scripts/make/bsta1000b-fada.mk
 else ifeq ($(PLAT_NAME), aarch64-rk3588j-hv)
   include scripts/make/rk3588.mk
