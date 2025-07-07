@@ -18,13 +18,13 @@ use page_table_multiarch::{
 use axaddrspace::npt::{EPTEntry, EPTMetadata};
 use axaddrspace::{AddrSpace, GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr};
 use equation_defs::bitmap_allocator::PageAllocator;
-use equation_defs::get_scf_queue_buff_region_by_iid_pid;
 use equation_defs::scf::SyscallQueueBufferMetadata;
 use equation_defs::task::context::TaskContext;
 use equation_defs::{
     EQUATION_MAGIC_NUMBER, FILE_BACKED_REGION_BASE_PA, GuestMappingType, INSTANCE_REGION_SIZE,
     InstanceRegion, MMFrameAllocator, PTFrameAllocator, USER_HEAP_BASE_VA,
 };
+use equation_defs::{USER_MEMORY_VA_BASE, get_scf_queue_buff_region_by_iid_pid};
 
 use crate::libos::config::{
     SHIM_EKERNEL, SHIM_ERODATA, SHIM_ETEXT, SHIM_MMIO_REGIONS, SHIM_PHYS_VIRT_OFFSET, SHIM_SDATA,
@@ -40,7 +40,8 @@ use crate::libos::def::{
     PROCESS_INNER_REGION_BASE_GVA,
 };
 use crate::libos::def::{PROCESS_INNER_REGION_SIZE, ProcessInnerRegion};
-use crate::libos::gpt::{
+use crate::libos::mm::area::GuestMemoryArea;
+use crate::libos::mm::gpt::{
     ENTRY_COUNT, GuestEntry, MoreGenericPTE, p1_index, p2_index, p3_index, p4_index, p5_index,
 };
 use crate::libos::region::{HostPhysicalRegion, HostPhysicalRegionRef};
@@ -48,7 +49,7 @@ use crate::libos::region::{HostPhysicalRegion, HostPhysicalRegionRef};
 pub type EqAddrSpace<H> = GuestAddrSpace<EPTMetadata, EPTEntry, GuestEntry, H>;
 
 // Copy from `axmm`.
-pub(super) fn paging_err_to_ax_err(err: PagingError) -> AxError {
+pub(crate) fn paging_err_to_ax_err(err: PagingError) -> AxError {
     warn!("Paging error: {:?}", err);
     match err {
         PagingError::NoMemory => AxError::NoMemory,
@@ -71,7 +72,7 @@ enum GuestMapping<H: PagingHandler> {
         /// Stores the host physical address of allocated regions for page table memory.
         pt_regions: Vec<HostPhysicalRegion<H>>,
         /// Stores the host physical address of allocated regions for file-backed memory.
-        file_regions: BTreeMap<GuestPhysAddr, HostPhysicalRegionRef<H>>,
+        pgcache_regions: Vec<HostPhysicalRegionRef<H>>,
     },
 }
 
@@ -79,7 +80,7 @@ enum GuestMapping<H: PagingHandler> {
 /// according to our design, all instances share the same shim kernel.
 static GLOBAL_SHIM_REGION: LazyInit<HostPhysicalRegion<PagingHandlerImpl>> = LazyInit::new();
 
-pub(super) fn init_shim_kernel() -> AxResult {
+pub(crate) fn init_shim_kernel() -> AxResult {
     if GLOBAL_SHIM_REGION.is_inited() {
         return ax_err!(AlreadyExists, "Shim kernel region already initialized");
     }
@@ -134,7 +135,7 @@ pub struct GuestAddrSpace<
     guest_mapping: GuestMapping<H>,
     /// Guest virtual address areas in GVA.
     /// This fields only stores GVA areas that mapped through `guest_map_alloc()`.
-    gva_areas: BTreeMap<GuestVirtAddr, (AddrRange<GuestVirtAddr>, MappingFlags)>,
+    gva_areas: BTreeMap<GuestVirtAddr, GuestMemoryArea>,
 
     /// Guest Page Table levels.
     levels: usize,
@@ -247,12 +248,12 @@ impl<
             GuestMapping::CoarseGrainedSegmentation {
                 ref mm_regions,
                 ref pt_regions,
-                ref file_regions,
+                ref pgcache_regions,
             } => {
                 let mut new_mm_regions = BTreeMap::new();
                 let mut new_pt_region_base = GUEST_PT_ROOT_GPA;
                 let mut new_pt_regions = Vec::new();
-                let mut new_file_regions = BTreeMap::new();
+                let mut new_pgcache_regions = Vec::new();
 
                 let mm_region_granularity = self.process_inner_region().mm_region_granularity;
 
@@ -310,7 +311,7 @@ impl<
                 GuestMapping::CoarseGrainedSegmentation {
                     mm_regions: new_mm_regions,
                     pt_regions: new_pt_regions,
-                    file_regions: new_file_regions,
+                    pgcache_regions: new_pgcache_regions,
                 }
             }
         };
@@ -346,7 +347,7 @@ impl<
             GuestMapping::CoarseGrainedSegmentation {
                 ref mut mm_regions,
                 pt_regions: _,
-                file_regions: _,
+                pgcache_regions: _,
             } => {
                 let fault_mm_region_base = addr.align_down(mm_region_granularity);
 
@@ -584,7 +585,7 @@ impl<
         Ok(ctx)
     }
 
-    pub(super) fn setup_init_task(
+    pub fn setup_init_task(
         &mut self,
         user_entry: usize,
         stack_top: usize,
@@ -841,23 +842,12 @@ impl<
 
                 // Map the first file-backed region.
                 // This region is used for file-backed memory, such as shared memory.
-                let mut file_regions = BTreeMap::new();
-                let first_file_region =
-                    HostPhysicalRegion::allocate_ref(PAGE_SIZE_2M, Some(PAGE_SIZE_4K))?;
-                ept_addrspace.map_linear(
-                    GUEST_FILE_BACKED_REGION_BASE_GPA,
-                    first_file_region.base(),
-                    PAGE_SIZE_2M,
-                    MappingFlags::READ | MappingFlags::WRITE,
-                    true,
-                )?;
-                file_regions.insert(GUEST_FILE_BACKED_REGION_BASE_GPA, first_file_region);
-
+                let pgcache_regions = Vec::new();
                 region_granularity = mm_region_granularity;
                 GuestMapping::CoarseGrainedSegmentation {
                     mm_regions,
                     pt_regions: vec![first_pt_region],
-                    file_regions,
+                    pgcache_regions,
                 }
             }
         };
@@ -899,6 +889,7 @@ impl<
         // The mapping will not be extablished until user process requests it through `brk` or `sbrk`.
         process_inner_region.heap_base = USER_HEAP_BASE_VA;
         process_inner_region.heap_top = USER_HEAP_BASE_VA;
+        process_inner_region.mm_base_addr = USER_MEMORY_VA_BASE;
 
         // Alloc the page table root frame first.
         let guest_pg_root = guest_addrspace.alloc_pt_frame().map_err(|e| {
@@ -1095,17 +1086,18 @@ impl<
             .map_linear(start_gpa, start_hpa, size, flags, allow_huge)
     }
 
-    pub fn guest_sync_map(
+    pub fn guest_sync_pgcache_mmap(
         &mut self,
         start: GuestVirtAddr,
         page_index: usize,
         size: usize,
         flags: MappingFlags,
+        unmap_overlap: bool,
     ) -> AxResult {
         let mapped_gva_range = AddrRange::from_start_size(start, size);
 
         debug!(
-            "guest_sync_map [{:?}],({:#x} {:?}), page index {}",
+            "guest_sync_pgcache_mmap [{:?}],({:#x} {:?}), page index {}",
             mapped_gva_range, size, flags, page_index
         );
 
@@ -1124,9 +1116,17 @@ impl<
         }
 
         if self.gva_overlaps(mapped_gva_range) {
-            // TODO: unmap overlapping area
-            return ax_err!(AlreadyExists, "GVA range overlaps with existing area");
+            if unmap_overlap {
+                self.guest_unmap_area(start, size)?;
+            } else {
+                return ax_err!(AlreadyExists, "GVA range overlaps with existing area");
+            }
         }
+
+        if mapped_gva_range.end.as_usize() > self.process_inner_region().mm_base_addr {
+            self.process_inner_region_mut().mm_base_addr = mapped_gva_range.end.as_usize();
+        }
+
         match self.guest_mapping {
             GuestMapping::One2OneMapping { page_pos: _ } => {
                 unimplemented!()
@@ -1134,33 +1134,44 @@ impl<
             GuestMapping::CoarseGrainedSegmentation {
                 mm_regions: _,
                 pt_regions: _,
-                file_regions: _,
+                ref pgcache_regions,
             } => {
                 let start_addr = start;
                 let end_addr = start_addr.add(size);
-                let mut cur_index = page_index;
 
-                for addr in PageIter4K::new(start_addr, end_addr).unwrap() {
-                    self.alloc_memory_frame().and_then(|gpa_frame| {
-                        let cur_base = GUEST_MEM_REGION_BASE_GPA.add(cur_index * PAGE_SIZE_4K);
-                        if cur_base != gpa_frame {
-                            error!(
-                                "GPA frame mismatch: expected {:?}, got {:?}",
-                                cur_base, gpa_frame
-                            );
-                            return ax_err!(BadState, "GPA frame mismatch");
-                        }
-                        cur_index += 1;
-                        self.map(addr, gpa_frame, PageSize::Size4K, flags)
-                            .map_err(paging_err_to_ax_err)
-                    })?;
+                if pgcache_regions.is_empty() {
+                    return ax_err!(BadState, "No pgcache regions available");
                 }
+
+                let region_index = page_index / (pgcache_regions[0].size() / PAGE_SIZE_4K);
+                if !self.check_pgcache_region_allocated(region_index) {
+                    return ax_err!(
+                        BadState,
+                        format!("PGCache region {} not allocated", region_index)
+                    );
+                }
+
+                let pgcache_base_gpa = GuestPhysAddr::from_usize(
+                    equation_defs::get_pgcache_region_by_instance_id(self.instance_id()),
+                );
+
+                let base = pgcache_base_gpa.add(page_index * PAGE_SIZE_4K);
+
+                self.guest_map_region(
+                    start_addr,
+                    |gva| base.add(gva.sub_addr(start)),
+                    size,
+                    flags,
+                    true,
+                    false,
+                )
+                .map_err(paging_err_to_ax_err)?;
             }
         }
 
         assert!(
             self.gva_areas
-                .insert(start, (mapped_gva_range, flags))
+                .insert(start, GuestMemoryArea::new(mapped_gva_range, flags))
                 .is_none(),
             "GVA range already exists, something is wrong!!!"
         );
@@ -1212,7 +1223,7 @@ impl<
             GuestMapping::CoarseGrainedSegmentation {
                 mm_regions: _,
                 pt_regions: _,
-                file_regions: _,
+                pgcache_regions: _,
             } => {
                 if populate {
                     let start_addr = start;
@@ -1220,7 +1231,7 @@ impl<
 
                     for addr in PageIter4K::new(start_addr, end_addr).unwrap() {
                         self.alloc_memory_frame().and_then(|gpa_frame| {
-                            self.map(addr, gpa_frame, PageSize::Size4K, flags)
+                            self.guest_map(addr, gpa_frame, PageSize::Size4K, flags)
                                 .map_err(paging_err_to_ax_err)
                         })?;
                     }
@@ -1241,7 +1252,7 @@ impl<
 
         assert!(
             self.gva_areas
-                .insert(start, (mapped_gva_range, flags))
+                .insert(start, GuestMemoryArea::new(mapped_gva_range, flags))
                 .is_none(),
             "GVA range already exists, something is wrong!!!"
         );
@@ -1450,7 +1461,7 @@ impl<
             GuestMapping::CoarseGrainedSegmentation {
                 mm_regions: _,
                 pt_regions: _,
-                file_regions: _,
+                pgcache_regions: _,
             } => {
                 let ept_root = self.ept_addrspace.page_table_root();
                 let mm_allocator = self.mm_frame_allocator();
@@ -1497,7 +1508,7 @@ impl<
             GuestMapping::CoarseGrainedSegmentation {
                 mm_regions: _,
                 pt_regions: _,
-                file_regions: _,
+                pgcache_regions: _,
             } => {
                 let pt_allocator = self.pt_frame_allocator();
 
@@ -1523,23 +1534,25 @@ impl<
         Ok(allocated_frame_base)
     }
 
-    pub fn check_mm_region_allocated(&self, offset_of_granularity: usize) -> bool {
-        return match self.guest_mapping {
+    pub fn check_pgcache_region_allocated(&self, offset_of_granularity: usize) -> bool {
+        match self.guest_mapping {
             GuestMapping::One2OneMapping { page_pos: _ } => {
                 warn!("Do not need to check memory region for one-to-one mapping");
                 false
             }
             GuestMapping::CoarseGrainedSegmentation {
-                ref mm_regions,
+                mm_regions: _,
                 pt_regions: _,
-                file_regions: _,
+                ref pgcache_regions,
             } => {
-                let mm_region_granularity = self.process_inner_region().mm_region_granularity;
-                let mm_region_base =
-                    GUEST_MEM_REGION_BASE_GPA.add(offset_of_granularity * mm_region_granularity);
-                mm_regions.contains_key(&mm_region_base)
+                if pgcache_regions.is_empty() {
+                    warn!("No pgcache regions available");
+                    false
+                } else {
+                    offset_of_granularity < pgcache_regions.len()
+                }
             }
-        };
+        }
     }
 
     pub fn alloc_mm_region(&mut self) -> AxResult<HostPhysAddr> {
@@ -1555,7 +1568,7 @@ impl<
             GuestMapping::CoarseGrainedSegmentation {
                 ref mut mm_regions,
                 pt_regions: _,
-                file_regions: _,
+                pgcache_regions: _,
             } => {
                 let allocated_region =
                     HostPhysicalRegion::allocate_ref(mm_region_granularity, None)?;
@@ -1597,6 +1610,52 @@ impl<
         }
     }
 
+    pub fn alloc_pgcache_region(&mut self) -> AxResult<HostPhysAddr> {
+        let pg_region_granularity = PAGE_SIZE_2M;
+        let instance_id = self.instance_id();
+        match self.guest_mapping {
+            GuestMapping::One2OneMapping { page_pos: _ } => {
+                warn!("Do not need to check memory region for one-to-one mapping");
+                ax_err!(
+                    BadState,
+                    "Do not need to check memory region for one-to-one mapping"
+                )
+            }
+            GuestMapping::CoarseGrainedSegmentation {
+                mm_regions: _,
+                pt_regions: _,
+                ref mut pgcache_regions,
+            } => {
+                let allocated_region =
+                    HostPhysicalRegion::allocate_ref(pg_region_granularity, None)?;
+                let current_pgcache_region_count = pgcache_regions.len();
+                let allocated_region_hpa = allocated_region.base();
+
+                let allocated_region_gpa_base = GuestPhysAddr::from_usize(
+                    equation_defs::get_pgcache_region_by_instance_id(instance_id)
+                        .add(current_pgcache_region_count * pg_region_granularity),
+                );
+
+                self.ept_addrspace.map_linear(
+                    allocated_region_gpa_base,
+                    allocated_region.base(),
+                    pg_region_granularity,
+                    MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
+                    true,
+                )?;
+                pgcache_regions.push(allocated_region);
+
+                info!(
+                    "Allocating pgcache region at [{:?} ~ {:?}]",
+                    allocated_region_gpa_base,
+                    allocated_region_gpa_base.add(pg_region_granularity),
+                );
+
+                Ok(allocated_region_hpa)
+            }
+        }
+    }
+
     fn check_pt_region(&mut self) -> AxResult {
         Ok(())
     }
@@ -1611,13 +1670,13 @@ impl<
 {
     /// Returns whether the given address range overlaps with any existing area.
     pub fn gva_overlaps(&self, range: AddrRange<GuestVirtAddr>) -> bool {
-        if let Some((_, (before, _flags))) = self.gva_areas.range(..range.start).last() {
-            if before.overlaps(range) {
+        if let Some((_, before)) = self.gva_areas.range(..range.start).last() {
+            if before.va_range().overlaps(range) {
                 return true;
             }
         }
-        if let Some((_, (after, _flags))) = self.gva_areas.range(range.start..).next() {
-            if after.overlaps(range) {
+        if let Some((_, after)) = self.gva_areas.range(range.start..).next() {
+            if after.va_range().overlaps(range) {
                 return true;
             }
         }
@@ -1646,7 +1705,7 @@ impl<
     ///
     /// Returns [`Err(PagingError::AlreadyMapped)`](PagingError::AlreadyMapped)
     /// if the mapping is already present.
-    fn map(
+    fn guest_map(
         &mut self,
         vaddr: GuestVirtAddr,
         target: GuestPhysAddr,
@@ -1669,6 +1728,85 @@ impl<
             return Err(PagingError::AlreadyMapped);
         }
         *entry = MoreGenericPTE::new_page(target.align_down(page_size), flags, page_size.is_huge());
+        Ok(())
+    }
+
+    pub fn guest_unmap_area(&mut self, start: GuestVirtAddr, size: usize) -> AxResult {
+        let range = AddrRange::try_from_start_size(start, size).ok_or(AxError::InvalidInput)?;
+        if range.is_empty() {
+            return Ok(());
+        }
+
+        let end = range.end;
+
+        // Unmap entire areas that are contained by the range.
+        let mut unmap_areas = Vec::new();
+        self.gva_areas.retain(|_, area| {
+            if area.va_range().contained_in(range) {
+                debug!("Unmapping GVA range: {:?}", area);
+                unmap_areas.push(area.clone());
+                false // Remove this area
+            } else {
+                true // Keep this area
+            }
+        });
+
+        // Shrink right if the area intersects with the left boundary.
+        if let Some((&before_start, before)) = self.gva_areas.range_mut(..range.start).last() {
+            let before_end = before.end();
+            if before_end > start {
+                if before_end <= end {
+                    // the unmapped area is at the end of `before`
+                    warn!(
+                        "range {:?} is at the end of before area {:?}",
+                        range, before
+                    );
+
+                    let unmap_area = before.shrink_right(start.sub_addr(before_start));
+                    warn!("Shrinking right range {:?}", unmap_area);
+                    unmap_areas.push(unmap_area);
+                } else {
+                    // the unmapped area is in the middle `before`, need to split.
+                    debug!(
+                        "range {:?} is in the middle of before area {:?}",
+                        range, before
+                    );
+                    let right_part = before.split(end).unwrap();
+
+                    let unmap_area = before.shrink_right(start.sub_addr(before_start));
+
+                    warn!("Shrinking middle range {:?}", unmap_area);
+                    unmap_areas.push(unmap_area);
+
+                    assert_eq!(right_part.start().as_usize(), end.as_usize());
+                    self.gva_areas.insert(end, right_part);
+                }
+            }
+        }
+        // Shrink left if the area intersects with the right boundary.
+        if let Some((&after_start, after)) = self.gva_areas.range_mut(start..).next() {
+            let after_end = after.end();
+            if after_start < end {
+                warn!(
+                    "range {:?} is at the start of after area {:?}",
+                    range, after
+                );
+                let mut new_area = self.gva_areas.remove(&after_start).unwrap();
+                let unmap_area = new_area.shrink_left(after_end.sub_addr(end));
+                warn!("Shrinking left range {:?}", unmap_area);
+                unmap_areas.push(unmap_area);
+                assert_eq!(new_area.start(), end);
+                self.gva_areas.insert(end, new_area);
+            }
+        }
+
+        for vaddr_range in unmap_areas {
+            debug!("Unmapping GVA range: {:?}", vaddr_range);
+            for vaddr in PageIter4K::new(vaddr_range.start(), vaddr_range.end()).unwrap() {
+                let (_paddr, _page_size) = self.unmap(vaddr).map_err(paging_err_to_ax_err)?;
+            }
+        }
+
         Ok(())
     }
 
@@ -1762,12 +1900,14 @@ impl<
             } else {
                 PageSize::Size4K
             };
-            let _tlb = self.map(vaddr, paddr, page_size, flags).inspect_err(|e| {
-                error!(
-                    "failed to map page: {:#x?}({:?}) -> {:#x?}, {:?}",
-                    vaddr_usize, page_size, paddr, e
-                )
-            })?;
+            let _tlb = self
+                .guest_map(vaddr, paddr, page_size, flags)
+                .inspect_err(|e| {
+                    error!(
+                        "failed to map page: {:#x?}({:?}) -> {:#x?}, {:?}",
+                        vaddr_usize, page_size, paddr, e
+                    )
+                })?;
             if flush_tlb_by_page {
                 unimplemented!("flush_tlb_by_page");
             }
@@ -2041,7 +2181,7 @@ impl<M: PagingMetaData, EPTE: GenericPTE, GPTE: MoreGenericPTE, H: PagingHandler
             GuestMapping::CoarseGrainedSegmentation {
                 mm_regions: _,
                 pt_regions: _,
-                file_regions: _,
+                pgcache_regions: _,
             } => {
                 debug!("CoarseGrainedSegmentation drop");
             }

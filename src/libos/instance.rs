@@ -30,7 +30,7 @@ use crate::libos::def::{
     PERCPU_EPTP_LIST_REGION_GPA, PERCPU_REGION_BASE_GPA, PERCPU_REGION_BASE_GVA,
     PERCPU_REGION_SIZE,
 };
-use crate::libos::gaddrspace::{GuestAddrSpace, init_shim_kernel};
+use crate::libos::mm::gaddrspace::{GuestAddrSpace, init_shim_kernel, paging_err_to_ax_err};
 use crate::libos::percpu::EqOSPerCpu;
 use crate::libos::process::Process;
 use crate::libos::region::{HostPhysicalRegion, HostPhysicalRegionRef};
@@ -283,32 +283,36 @@ impl<H: PagingHandler> Instance<H> {
         }))
     }
 
-    pub fn init_process_check_mm_region_allocated(&self, offset_of_granularity: usize) -> bool {
+    pub fn init_process_check_pgcache_region_allocated(
+        &self,
+        offset_of_granularity: usize,
+    ) -> bool {
         self.processes
             .lock()
             .first_entry()
             .expect("Instance should have at least one process")
             .get()
             .addrspace()
-            .check_mm_region_allocated(offset_of_granularity)
+            .check_pgcache_region_allocated(offset_of_granularity)
     }
 
-    pub fn init_process_alloc_mm_region(&self) -> AxResult<HostPhysAddr> {
+    pub fn init_process_alloc_pgcache_region(&self) -> AxResult<HostPhysAddr> {
         self.processes
             .lock()
             .first_entry()
             .expect("Instance should have at least one process")
             .get_mut()
             .addrspace_mut()
-            .alloc_mm_region()
+            .alloc_pgcache_region()
     }
 
-    pub fn init_process_sync_mmap(
+    pub fn init_process_sync_pgcache_mmap(
         &self,
         vaddr: GuestVirtAddr,
         page_index: usize,
         size: usize,
         flags: MappingFlags,
+        unmap_overlap: bool,
     ) -> AxResult {
         self.processes
             .lock()
@@ -316,7 +320,7 @@ impl<H: PagingHandler> Instance<H> {
             .expect("Instance should have at least one process")
             .get_mut()
             .addrspace_mut()
-            .guest_sync_map(vaddr, page_index, size, flags)
+            .guest_sync_pgcache_mmap(vaddr, page_index, size, flags, unmap_overlap)
     }
 
     pub fn init_process_get_scf_queue_region(&self) -> Option<(HostPhysAddr, usize)> {
@@ -669,7 +673,7 @@ impl<H: PagingHandler> Instance<H> {
                     false,
                     false,
                 )
-                .map_err(super::gaddrspace::paging_err_to_ax_err)?;
+                .map_err(paging_err_to_ax_err)?;
             // GPA -> HPA
             gp_as.ept_map_linear(
                 PERCPU_REGION_BASE_GPA,
@@ -690,7 +694,7 @@ impl<H: PagingHandler> Instance<H> {
                     false,
                     false,
                 )
-                .map_err(super::gaddrspace::paging_err_to_ax_err)?;
+                .map_err(paging_err_to_ax_err)?;
             // GPA -> HPA
             let gp_eptp_list_base_hpa = vcpu.get_arch_vcpu().eptp_list_region();
             gp_as.ept_map_linear(
@@ -716,7 +720,7 @@ impl<H: PagingHandler> Instance<H> {
                     true,
                     false,
                 )
-                .map_err(super::gaddrspace::paging_err_to_ax_err)?;
+                .map_err(paging_err_to_ax_err)?;
             // GPA -> HPA
             gp_as.ept_map_linear(
                 GP_ALL_EPTP_LIST_REGIN_GPA,
@@ -764,7 +768,7 @@ impl<H: PagingHandler> Instance<H> {
                         false,
                         false,
                     )
-                    .map_err(super::gaddrspace::paging_err_to_ax_err)?;
+                    .map_err(paging_err_to_ax_err)?;
                 // GPA -> HPA
                 gp_as.ept_map_linear(
                     instance_percpu_region_base_gpa,

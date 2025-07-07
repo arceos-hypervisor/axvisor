@@ -5,6 +5,7 @@ use page_table_entry::MappingFlags;
 use page_table_entry::x86_64::PTF;
 
 use axaddrspace::GuestPhysAddr;
+use page_table_multiarch::PagingHandler;
 
 pub const ENTRY_COUNT: usize = 512;
 

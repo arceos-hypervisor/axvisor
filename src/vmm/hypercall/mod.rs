@@ -73,6 +73,8 @@ impl HyperCall {
                 self.args[1].into(),
                 self.args[2] as usize,
                 self.args[3] as usize,
+                self.args[4] as usize,
+                self.args[5] as usize,
             ),
             HyperCallCode::HLoadMMap => self.instance_load_mmap(
                 self.args[0] as usize,
@@ -150,12 +152,14 @@ impl HyperCall {
         &self,
         instance_type: InstanceType,
         mapping_type: GuestMappingType,
-        shm_base_gpa_ptr: usize,
+        pgcache_base_gpa_ptr: usize,
+        pgcache_size_gpa_ptr: usize,
         scf_base_gpa_ptr: usize,
+        scf_size_gpa_ptr: usize,
     ) -> HyperCallResult {
         info!(
-            "HCreateInstance type {:?}, mapping type {:?}, shm_base_ptr {:#x}",
-            instance_type, mapping_type, shm_base_gpa_ptr
+            "HCreateInstance type {:?}, mapping type {:?}, pgcache_base_gpa_ptr {:#x}",
+            instance_type, mapping_type, pgcache_base_gpa_ptr
         );
         let instance_id = instance::create_instance(instance_type, mapping_type)?;
         let instance_ref = instance::get_instances_by_id(instance_id).ok_or_else(|| {
@@ -189,12 +193,19 @@ impl HyperCall {
                 ax_err_type!(InvalidInput, "Failed to map SHM region")
             })?;
         let scf_base_gpa_ptr = GuestPhysAddr::from_usize(scf_base_gpa_ptr);
+        let scf_size_gpa_ptr = GuestPhysAddr::from_usize(scf_size_gpa_ptr);
         self.vm.write_to_guest_of(scf_base_gpa_ptr, &scf_buf_base)?;
+        self.vm.write_to_guest_of(scf_size_gpa_ptr, &scf_buf_size)?;
 
-        let shm_base = equation_defs::get_shm_region_by_instance_id(instance_id);
-        info!("Instance [{instance_id}] host SHM region at {shm_base:#x}");
-        let shm_base_gpa_ptr = GuestPhysAddr::from_usize(shm_base_gpa_ptr);
-        self.vm.write_to_guest_of(shm_base_gpa_ptr, &shm_base)?;
+        let pgcache_base = equation_defs::get_pgcache_region_by_instance_id(instance_id);
+        let pgcache_size = PAGE_SIZE_2M; // 2MB for each pgcache region.
+        info!("Instance [{instance_id}] host pgcache region at {pgcache_base:#x}");
+        let pgcache_base_gpa_ptr = GuestPhysAddr::from_usize(pgcache_base_gpa_ptr);
+        let pgcache_size_gpa_ptr = GuestPhysAddr::from_usize(pgcache_size_gpa_ptr);
+        self.vm
+            .write_to_guest_of(pgcache_base_gpa_ptr, &pgcache_base)?;
+        self.vm
+            .write_to_guest_of(pgcache_size_gpa_ptr, &pgcache_size)?;
 
         Ok(instance_id)
     }
@@ -209,27 +220,29 @@ impl HyperCall {
         prot: usize,
     ) -> HyperCallResult {
         info!(
-            "Instance[{instance_id}] HLoadMmap addr:{gva:#x} gpa {linux_gpa:#x} len:{len:#x} flags:{flags:#x} prot:{prot:#x}",
+            "I[{instance_id}] HLoadMmap addr:[{gva:#x}~{:#x}] gpa {linux_gpa:#x} len:{len:#x} flags:{flags:#x} prot:{prot:#x}",
+            gva + len
         );
         let instance_ref = instance::get_instances_by_id(instance_id).ok_or_else(|| {
             warn!("Instance with ID {} not found", instance_id);
             ax_err_type!(InvalidInput, "Instance not found")
         })?;
 
-        let page_index =
-            (linux_gpa - equation_defs::get_shm_region_by_instance_id(instance_id)) / PAGE_SIZE_4K;
+        let page_index = (linux_gpa
+            - equation_defs::get_pgcache_region_by_instance_id(instance_id))
+            / PAGE_SIZE_4K;
         let gpa_aligned = GuestPhysAddr::from_usize(linux_gpa).align_down(PAGE_SIZE_2M);
         // First, check if the 2MB region is mapped for the instance.
         let offset_of_granularity =
             region::count_2mb_region_offset(instance_id, gpa_aligned.as_usize())?;
 
-        if !instance_ref.init_process_check_mm_region_allocated(offset_of_granularity) {
-            let shm_base_hpa = instance_ref.init_process_alloc_mm_region()?;
+        if !instance_ref.init_process_check_pgcache_region_allocated(offset_of_granularity) {
+            let pgcache_region_base_hpa = instance_ref.init_process_alloc_pgcache_region()?;
             // Map the SHM region to the host Linux.
             self.vm
                 .map_region(
                     gpa_aligned,
-                    shm_base_hpa,
+                    pgcache_region_base_hpa,
                     PAGE_SIZE_2M,
                     MappingFlags::READ | MappingFlags::WRITE,
                     true, // Allow huge pages
@@ -241,20 +254,37 @@ impl HyperCall {
         }
 
         // TODO: handle map shared.
-
-        let vm_flags = vm_flags::linux_mm_flags_to_mapping_flags(flags);
         let prot_flags = vm_flags::linux_page_prot_to_mapping_flags(prot);
 
         warn!(
-            "Instance[{instance_id}] HLoadMmap vm_flags: {:?} prot_flags: {:?}",
-            vm_flags, prot_flags
+            "Instance[{instance_id}] HLoadMmap vm_flags: {}{} prot_flags: {:?}",
+            if vm_flags::linux_mm_flags_map_fixed(flags) {
+                "MAP_FIXED|"
+            } else {
+                ""
+            },
+            if vm_flags::linux_mm_flags_map_shared(flags) {
+                "MAP_SHARED "
+            } else if vm_flags::linux_mm_flags_map_private(flags) {
+                "MAP_PRIVATE "
+            } else {
+                "MAP_FILE "
+            },
+            prot_flags
         );
 
-        instance_ref.init_process_sync_mmap(
+        let unmap_overlap = if vm_flags::linux_mm_flags_map_fixed(flags) {
+            true // If MAP_FIXED is set, we do unmap the overlap.
+        } else {
+            false // Otherwise, we do not unmap the overlap.
+        };
+
+        instance_ref.init_process_sync_pgcache_mmap(
             GuestVirtAddr::from_usize(gva),
             page_index,
             len,
             prot_flags,
+            unmap_overlap,
         )?;
 
         Ok(0)
@@ -293,26 +323,26 @@ mod vm_flags {
     const VM_EXEC: usize = 0x00000004;
     const VM_SHARED: usize = 0x00000008;
 
+    pub const MAP_FILE: usize = 0x0000;
+    pub const MAP_SHARED: usize = 0x0001;
+    pub const MAP_PRIVATE: usize = 0x0002;
+    pub const MAP_FIXED: usize = 0x0010;
+
     pub const PROT_NONE: usize = 0;
     pub const PROT_READ: usize = 1;
     pub const PROT_WRITE: usize = 2;
     pub const PROT_EXEC: usize = 4;
 
-    pub fn linux_mm_flags_to_mapping_flags(flags: usize) -> MappingFlags {
-        let mut mapping_flags = MappingFlags::from_bits_retain(VM_NONE);
-        if flags & VM_READ != 0 {
-            mapping_flags |= MappingFlags::READ;
-        }
-        if flags & VM_WRITE != 0 {
-            mapping_flags |= MappingFlags::WRITE;
-        }
-        if flags & VM_EXEC != 0 {
-            mapping_flags |= MappingFlags::EXECUTE;
-        }
+    pub fn linux_mm_flags_map_fixed(flags: usize) -> bool {
+        flags & MAP_FIXED != 0
+    }
 
-        mapping_flags |= MappingFlags::USER;
+    pub fn linux_mm_flags_map_shared(flags: usize) -> bool {
+        flags & MAP_SHARED != 0
+    }
 
-        mapping_flags
+    pub fn linux_mm_flags_map_private(flags: usize) -> bool {
+        flags & MAP_PRIVATE != 0
     }
 
     pub fn linux_page_prot_to_mapping_flags(prot: usize) -> MappingFlags {

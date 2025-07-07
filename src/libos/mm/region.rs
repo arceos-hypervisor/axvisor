@@ -9,10 +9,10 @@ use kspin::SpinNoIrq;
 use memory_addr::{MemoryAddr, PAGE_SIZE_1G, PAGE_SIZE_2M, PAGE_SIZE_4K, align_up_4k};
 use page_table_multiarch::PagingHandler;
 
-use equation_defs::get_shm_region_by_instance_id;
+use equation_defs::get_pgcache_region_by_instance_id;
 
 pub fn count_2mb_region_offset(instance_id: usize, gpa: usize) -> AxResult<usize> {
-    let shm_region_base = get_shm_region_by_instance_id(instance_id);
+    let shm_region_base = get_pgcache_region_by_instance_id(instance_id);
 
     if gpa < shm_region_base || gpa >= shm_region_base + PAGE_SIZE_1G {
         return ax_err!(
