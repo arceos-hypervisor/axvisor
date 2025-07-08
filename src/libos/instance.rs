@@ -15,7 +15,6 @@ use page_table_multiarch::{PageSize, PagingHandler};
 use axaddrspace::npt::EPTPointer;
 use axaddrspace::{GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr, MappingFlags};
 use axvcpu::AxVcpuAccessGuestState;
-use equation_defs::context::TaskContext;
 use equation_defs::task::EqTask;
 use equation_defs::{
     EQUATION_MAGIC_NUMBER, FIRST_PROCESS_ID, GuestMappingType, INSTANCE_PERCPU_REGION_SIZE,
@@ -26,9 +25,8 @@ use crate::libos::config::get_gate_process_data;
 use crate::libos::def::{
     EPTP_LIST_REGION_SIZE, EPTPList, GP_ALL_EPTP_LIST_REGIN_GPA, GP_ALL_EPTP_LIST_REGION_GVA,
     GP_ALL_INSTANCE_PERCPU_REGION_GPA, GP_ALL_INSTANCE_PERCPU_REGION_GVA,
-    GP_PERCPU_EPT_LIST_REGION_GVA, GUEST_MEM_REGION_BASE_GPA, INSTANCE_REGION_SIZE,
-    PERCPU_EPTP_LIST_REGION_GPA, PERCPU_REGION_BASE_GPA, PERCPU_REGION_BASE_GVA,
-    PERCPU_REGION_SIZE,
+    GP_PERCPU_EPT_LIST_REGION_GVA, INSTANCE_REGION_SIZE, PERCPU_EPTP_LIST_REGION_GPA,
+    PERCPU_REGION_BASE_GPA, PERCPU_REGION_BASE_GVA, PERCPU_REGION_SIZE,
 };
 use crate::libos::mm::gaddrspace::{GuestAddrSpace, init_shim_kernel, paging_err_to_ax_err};
 use crate::libos::percpu::EqOSPerCpu;
@@ -80,7 +78,11 @@ fn free_instance_id(id: usize) -> AxResult {
 }
 
 pub struct Instance<H: PagingHandler> {
+    #[allow(unused)]
     itype: InstanceType,
+
+    running: AtomicBool,
+
     /// The region for instance inner data, which is shared by all processes in the instance,
     /// it stores the instance ID.
     instance_region_base: HostPhysAddr,
@@ -101,6 +103,10 @@ pub struct Instance<H: PagingHandler> {
 impl<H: PagingHandler> Instance<H> {
     pub fn id(&self) -> usize {
         self.instance_region().instance_id as usize
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.running.load(Ordering::Acquire)
     }
 
     pub fn instance_region(&self) -> &InstanceRegion {
@@ -208,6 +214,7 @@ impl<H: PagingHandler> Instance<H> {
 
         Ok(Arc::new(Self {
             itype: InstanceType::Shim,
+            running: AtomicBool::new(true),
             pid_bitmap: Mutex::new(pid_bitmap),
             processes: Mutex::new(processes),
             instance_region_base,
@@ -244,7 +251,7 @@ impl<H: PagingHandler> Instance<H> {
         }
         info!("Instance {}: region {:?}", id, instance_region_ref);
 
-        let mut init_addrspace =
+        let init_addrspace =
             GuestAddrSpace::new(FIRST_PROCESS_ID, instance_region_base, mapping_type, true)?;
 
         let init_ept_root_hpa = init_addrspace.ept_root_hpa();
@@ -275,6 +282,7 @@ impl<H: PagingHandler> Instance<H> {
 
         Ok(Arc::new(Self {
             itype,
+            running: AtomicBool::new(false),
             pid_bitmap: Mutex::new(Bitmap::mask(FIRST_PROCESS_ID)),
             instance_region_base,
             eptp_list_region,
@@ -313,6 +321,7 @@ impl<H: PagingHandler> Instance<H> {
         size: usize,
         flags: MappingFlags,
         unmap_overlap: bool,
+        running: bool,
     ) -> AxResult {
         self.processes
             .lock()
@@ -320,7 +329,7 @@ impl<H: PagingHandler> Instance<H> {
             .expect("Instance should have at least one process")
             .get_mut()
             .addrspace_mut()
-            .guest_sync_pgcache_mmap(vaddr, page_index, size, flags, unmap_overlap)
+            .guest_sync_pgcache_mmap(vaddr, page_index, size, flags, unmap_overlap, running)
     }
 
     pub fn init_process_get_scf_queue_region(&self) -> Option<(HostPhysAddr, usize)> {
@@ -331,39 +340,6 @@ impl<H: PagingHandler> Instance<H> {
             .get()
             .addrspace()
             .scf_region_range()
-    }
-
-    pub fn setup_elf(&self, elf_data: &[u8]) {
-        match self.itype {
-            InstanceType::LibOSStatic => {
-                // Static libos instance, no need to setup ELF.
-                info!("No need to setup ELF for static libos instance");
-                let init_addrspace = self
-                    .processes
-                    .lock()
-                    .first_entry()
-                    .expect("Instance should have at least one process")
-                    .get_mut()
-                    .addrspace_mut()
-                    .setup_user_elf(elf_data.as_ref(), None);
-                // Parse Process's ELF segments directly from the raw file.
-                // Load ELF data for libos process and setup libos process's stack region.
-                // Since the libos process is staticly linked, we can load it directly.
-                // init_addrspace
-            }
-            InstanceType::LibOSDynamic => {
-                // Dynamic libos instance, no need to setup ELF.
-                info!("No need to setup ELF for dynamic libos instance");
-            }
-            InstanceType::Kernel => {
-                // Kernel instance, no need to setup ELF.
-                info!("No need to setup ELF for kernel instance");
-            }
-            InstanceType::Shim => {
-                // Shim instance, no need to setup ELF.
-                info!("No need to setup ELF for shim instance");
-            }
-        }
     }
 
     pub fn setup_init_task(&self, entry: usize, stack: usize) -> AxResult {
@@ -414,6 +390,8 @@ impl<H: PagingHandler> Instance<H> {
                 warn!("Failed to insert init task into run queue: {:?}", e);
                 ax_err_type!(BadState, "Failed to insert init task into run queue")
             })?;
+
+        self.running.store(true, Ordering::Release);
 
         crate::libos::percpu::set_next_instance_id_of_cpu(target_core, iid)?;
 

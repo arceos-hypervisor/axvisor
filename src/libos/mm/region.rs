@@ -2,10 +2,9 @@
 
 use alloc::sync::Arc;
 
-use allocator::{AllocResult, BaseAllocator, BitmapPageAllocator, PageAllocator};
 use axaddrspace::HostPhysAddr;
 use axerrno::{AxResult, ax_err, ax_err_type};
-use kspin::SpinNoIrq;
+// use kspin::SpinNoIrq;
 use memory_addr::{MemoryAddr, PAGE_SIZE_1G, PAGE_SIZE_2M, PAGE_SIZE_4K, align_up_4k};
 use page_table_multiarch::PagingHandler;
 

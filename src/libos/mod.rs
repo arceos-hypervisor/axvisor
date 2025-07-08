@@ -1,8 +1,8 @@
 pub mod def;
+mod hvc;
 pub mod instance;
 mod percpu;
 pub mod process;
-mod hvc;
 
 #[allow(unused)]
 mod config;

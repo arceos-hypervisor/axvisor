@@ -1,15 +1,14 @@
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use axaddrspace::{GuestPhysAddr, GuestVirtAddr, MappingFlags};
-use axerrno::{AxResult, ax_err, ax_err_type};
+use axerrno::{AxResult, ax_err_type};
 use axhvc::{HyperCallCode, HyperCallResult};
 use axvcpu::AxVcpuAccessGuestState;
 
-use equation_defs::{FIRST_PROCESS_ID, GuestMappingType, InstanceType, scf};
+use equation_defs::{FIRST_PROCESS_ID, GuestMappingType, InstanceType};
 use memory_addr::PAGE_SIZE_4K;
 use memory_addr::{MemoryAddr, PAGE_SIZE_2M};
 
-use crate::libos::def::get_contents_from_shared_pages;
 use crate::libos::instance;
 use crate::libos::region;
 use crate::vmm::{VCpuRef, VMRef};
@@ -84,6 +83,19 @@ impl HyperCall {
                 self.args[4] as usize,
                 self.args[5] as usize,
             ),
+            HyperCallCode::HSetupInstance => self.setup_instance(
+                self.args[0] as usize,
+                self.args[1] as usize,
+                self.args[2] as usize,
+            ),
+            HyperCallCode::HSyncPageCacheRegion => self.instance_load_mmap(
+                self.args[0] as usize,
+                self.args[1] as usize,
+                self.args[2] as usize,
+                self.args[3] as usize,
+                self.args[4] as usize,
+                self.args[5] as usize,
+            ),
             _ => {
                 unimplemented!()
             }
@@ -94,11 +106,6 @@ impl HyperCall {
         match self.code {
             HyperCallCode::HDebug => self.debug(),
             HyperCallCode::HInitShim => self.init_shim(),
-            HyperCallCode::HSetupInstance => self.setup_instance(
-                self.args[0] as usize,
-                self.args[1] as usize,
-                self.args[2] as usize,
-            ),
             _ => {
                 unimplemented!();
             }
@@ -223,35 +230,18 @@ impl HyperCall {
             "I[{instance_id}] HLoadMmap addr:[{gva:#x}~{:#x}] gpa {linux_gpa:#x} len:{len:#x} flags:{flags:#x} prot:{prot:#x}",
             gva + len
         );
-        let instance_ref = instance::get_instances_by_id(instance_id).ok_or_else(|| {
-            warn!("Instance with ID {} not found", instance_id);
-            ax_err_type!(InvalidInput, "Instance not found")
-        })?;
+
+        // First, sync the page cache region for the instance too.
+        self.instance_sync_page_cache_region(instance_id, gva, linux_gpa, len, flags, prot)?;
 
         let page_index = (linux_gpa
             - equation_defs::get_pgcache_region_by_instance_id(instance_id))
             / PAGE_SIZE_4K;
-        let gpa_aligned = GuestPhysAddr::from_usize(linux_gpa).align_down(PAGE_SIZE_2M);
-        // First, check if the 2MB region is mapped for the instance.
-        let offset_of_granularity =
-            region::count_2mb_region_offset(instance_id, gpa_aligned.as_usize())?;
 
-        if !instance_ref.init_process_check_pgcache_region_allocated(offset_of_granularity) {
-            let pgcache_region_base_hpa = instance_ref.init_process_alloc_pgcache_region()?;
-            // Map the SHM region to the host Linux.
-            self.vm
-                .map_region(
-                    gpa_aligned,
-                    pgcache_region_base_hpa,
-                    PAGE_SIZE_2M,
-                    MappingFlags::READ | MappingFlags::WRITE,
-                    true, // Allow huge pages
-                )
-                .map_err(|e| {
-                    warn!("Failed to map SHM region: {:?}", e);
-                    ax_err_type!(InvalidInput, "Failed to map SHM region")
-                })?;
-        }
+        let instance_ref = instance::get_instances_by_id(instance_id).ok_or_else(|| {
+            warn!("Instance with ID {} not found", instance_id);
+            ax_err_type!(InvalidInput, "Instance not found")
+        })?;
 
         // TODO: handle map shared.
         let prot_flags = vm_flags::linux_page_prot_to_mapping_flags(prot);
@@ -285,7 +275,51 @@ impl HyperCall {
             len,
             prot_flags,
             unmap_overlap,
+            instance_ref.is_running(),
         )?;
+
+        Ok(0)
+    }
+
+    fn instance_sync_page_cache_region(
+        &self,
+        instance_id: usize,
+        gva: usize,
+        linux_gpa: usize,
+        len: usize,
+        flags: usize,
+        prot: usize,
+    ) -> HyperCallResult {
+        info!(
+            "I[{instance_id}] HSyncPageCacheRegion addr:[{gva:#x}~{:#x}] gpa {linux_gpa:#x} len:{len:#x} flags:{flags:#x} prot:{prot:#x}",
+            gva + len
+        );
+        let instance_ref = instance::get_instances_by_id(instance_id).ok_or_else(|| {
+            warn!("Instance with ID {} not found", instance_id);
+            ax_err_type!(InvalidInput, "Instance not found")
+        })?;
+
+        let gpa_aligned = GuestPhysAddr::from_usize(linux_gpa).align_down(PAGE_SIZE_2M);
+        // First, check if the 2MB region is mapped for the instance.
+        let offset_of_granularity =
+            region::count_2mb_region_offset(instance_id, gpa_aligned.as_usize())?;
+
+        if !instance_ref.init_process_check_pgcache_region_allocated(offset_of_granularity) {
+            let pgcache_region_base_hpa = instance_ref.init_process_alloc_pgcache_region()?;
+            // Map the SHM region to the host Linux.
+            self.vm
+                .map_region(
+                    gpa_aligned,
+                    pgcache_region_base_hpa,
+                    PAGE_SIZE_2M,
+                    MappingFlags::READ | MappingFlags::WRITE,
+                    true, // Allow huge pages
+                )
+                .map_err(|e| {
+                    warn!("Failed to map SHM region: {:?}", e);
+                    ax_err_type!(InvalidInput, "Failed to map SHM region")
+                })?;
+        }
 
         Ok(0)
     }

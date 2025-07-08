@@ -2,7 +2,6 @@ use core::fmt;
 
 use axaddrspace::{GuestVirtAddr, MappingFlags};
 use memory_addr::{AddrRange, MemoryAddr};
-use memory_set::{MappingError, MappingResult};
 
 /// A memory area represents a continuous range of virtual memory with the same
 /// flags for LibOS.
@@ -12,6 +11,7 @@ pub struct GuestMemoryArea {
     flags: MappingFlags,
 }
 
+#[allow(unused)]
 impl GuestMemoryArea {
     /// Creates a new memory area.
     pub fn new(va_range: AddrRange<GuestVirtAddr>, flags: MappingFlags) -> Self {
@@ -44,6 +44,7 @@ impl GuestMemoryArea {
     }
 }
 
+#[allow(unused)]
 impl GuestMemoryArea {
     /// Changes the flags.
     pub(crate) fn set_flags(&mut self, new_flags: MappingFlags) {

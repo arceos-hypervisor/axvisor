@@ -18,7 +18,7 @@ pub const GUEST_MEM_REGION_BASE_GPA: GuestPhysAddr =
 pub const SHIM_BASE_GPA: GuestPhysAddr = GuestPhysAddr::from_usize(SHIM_BASE_PA);
 pub const GUEST_PT_ROOT_GPA: GuestPhysAddr = GuestPhysAddr::from_usize(GUEST_PT_ROOT_PA);
 
-pub const GUEST_FILE_BACKED_REGION_BASE_GPA: GuestPhysAddr =
+pub const _GUEST_FILE_BACKED_REGION_BASE_GPA: GuestPhysAddr =
     GuestPhysAddr::from_usize(FILE_BACKED_REGION_BASE_PA);
 
 pub const INSTANCE_REGION_BASE_GPA: GuestPhysAddr =
@@ -188,6 +188,7 @@ impl EPTPList {
     }
 }
 
+#[allow(unused)]
 pub fn get_contents_from_shared_pages(
     file_size: usize,
     pages_start_gva: usize,
