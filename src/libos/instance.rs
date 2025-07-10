@@ -18,10 +18,11 @@ use axvcpu::AxVcpuAccessGuestState;
 use equation_defs::task::EqTask;
 use equation_defs::{
     EQUATION_MAGIC_NUMBER, FIRST_PROCESS_ID, GuestMappingType, INSTANCE_PERCPU_REGION_SIZE,
-    InstanceRegion, InstanceType, MAX_CPUS_NUM, MAX_INSTANCES_NUM, SHIM_INSTANCE_ID,
+    InstanceRegion, InstanceType, MAX_CPUS_NUM, MAX_INSTANCES_NUM, PAGE_CACHE_POOL_SIZE,
+    SCF_QUEUE_REGION_SIZE, SHIM_INSTANCE_ID,
 };
 
-use crate::libos::config::get_gate_process_data;
+use crate::libos::config::{get_eqloader_data, get_gate_process_data};
 use crate::libos::def::{
     EPTP_LIST_REGION_SIZE, EPTPList, GP_ALL_EPTP_LIST_REGIN_GPA, GP_ALL_EPTP_LIST_REGION_GVA,
     GP_ALL_INSTANCE_PERCPU_REGION_GPA, GP_ALL_INSTANCE_PERCPU_REGION_GVA,
@@ -98,6 +99,9 @@ pub struct Instance<H: PagingHandler> {
     /// Dirty flag for EPTP list, if `true`, the EPTP list has been modified.
     /// This flag is used to indicate that the EPTP list needs to be updated in the vCPUs.
     eptp_list_dirty: AtomicBool,
+
+    scf_region: Option<HostPhysicalRegion<H>>,
+    page_cache_region: Option<HostPhysicalRegion<H>>,
 }
 
 impl<H: PagingHandler> Instance<H> {
@@ -182,7 +186,8 @@ impl<H: PagingHandler> Instance<H> {
             pid,
             instance_region_base,
             GuestMappingType::CoarseGrainedSegmentation2M,
-            false, // No SCF queue region for shim instance
+            None, // No SCF queue region for shim instance
+            None, // No page cache region for shim instance
         )?;
 
         // Load elf data for gate process.
@@ -221,6 +226,8 @@ impl<H: PagingHandler> Instance<H> {
             eptp_list_region: dummy_eptp_list_region,
             // Shim instance's EPTP list is always NOT dirty.
             eptp_list_dirty: AtomicBool::new(false),
+            scf_region: None,        // No SCF queue region for shim instance
+            page_cache_region: None, // No page cache region for shim instance
         }))
     }
 
@@ -242,6 +249,7 @@ impl<H: PagingHandler> Instance<H> {
         let instance_region_base = instance_region_ref.base();
         let instance_region =
             unsafe { instance_region_ref.as_ptr_of::<InstanceRegion>().as_ref() }.unwrap();
+        // Instance ID should have been set in the instance region.
         if instance_region.instance_id != id as u64 {
             error!(
                 "Instance region ID mismatch: expected {}, got {}, there is some bug in instance region pool",
@@ -251,8 +259,30 @@ impl<H: PagingHandler> Instance<H> {
         }
         info!("Instance {}: region {:?}", id, instance_region_ref);
 
-        let init_addrspace =
-            GuestAddrSpace::new(FIRST_PROCESS_ID, instance_region_base, mapping_type, true)?;
+        // Allocate the syscall-forward shared queue region.
+        let scf_region = HostPhysicalRegion::allocate(SCF_QUEUE_REGION_SIZE, Some(PAGE_SIZE_4K))?;
+        debug!(
+            "Mapping SCF queue region base: {:?} size {:#x}",
+            scf_region.base(),
+            scf_region.size()
+        );
+
+        // Allocate the page cache region for the instance.
+        let page_cache_region =
+            HostPhysicalRegion::allocate(PAGE_CACHE_POOL_SIZE, Some(PAGE_SIZE_4K))?;
+        debug!(
+            "Mapping page cache region base: {:?} size {:#x}",
+            page_cache_region.base(),
+            page_cache_region.size()
+        );
+
+        let init_addrspace = GuestAddrSpace::new(
+            FIRST_PROCESS_ID,
+            instance_region_base,
+            mapping_type,
+            Some(scf_region.base()),
+            Some(page_cache_region.base()),
+        )?;
 
         let init_ept_root_hpa = init_addrspace.ept_root_hpa();
 
@@ -288,67 +318,32 @@ impl<H: PagingHandler> Instance<H> {
             eptp_list_region,
             eptp_list_dirty: AtomicBool::new(false),
             processes: Mutex::new(processes),
+            scf_region: Some(scf_region),
+            page_cache_region: Some(page_cache_region),
         }))
     }
 
-    pub fn init_process_check_pgcache_region_allocated(
-        &self,
-        offset_of_granularity: usize,
-    ) -> bool {
-        self.processes
-            .lock()
-            .first_entry()
-            .expect("Instance should have at least one process")
-            .get()
-            .addrspace()
-            .check_pgcache_region_allocated(offset_of_granularity)
+    pub fn get_scf_queue_region(&self) -> Option<(HostPhysAddr, usize)> {
+        self.scf_region
+            .as_ref()
+            .map(|region| (region.base(), region.size()))
     }
 
-    pub fn init_process_alloc_pgcache_region(&self) -> AxResult<HostPhysAddr> {
-        self.processes
-            .lock()
-            .first_entry()
-            .expect("Instance should have at least one process")
-            .get_mut()
-            .addrspace_mut()
-            .alloc_pgcache_region()
+    pub fn get_page_cache_region(&self) -> Option<(HostPhysAddr, usize)> {
+        self.page_cache_region
+            .as_ref()
+            .map(|region| (region.base(), region.size()))
     }
 
-    pub fn init_process_sync_pgcache_mmap(
-        &self,
-        vaddr: GuestVirtAddr,
-        page_index: usize,
-        size: usize,
-        flags: MappingFlags,
-        unmap_overlap: bool,
-        running: bool,
-    ) -> AxResult {
-        self.processes
-            .lock()
-            .first_entry()
-            .expect("Instance should have at least one process")
-            .get_mut()
-            .addrspace_mut()
-            .guest_sync_pgcache_mmap(vaddr, page_index, size, flags, unmap_overlap, running)
-    }
-
-    pub fn init_process_get_scf_queue_region(&self) -> Option<(HostPhysAddr, usize)> {
-        self.processes
-            .lock()
-            .first_entry()
-            .expect("Instance should have at least one process")
-            .get()
-            .addrspace()
-            .scf_region_range()
-    }
-
-    pub fn setup_init_task(&self, entry: usize, stack: usize) -> AxResult {
+    pub fn setup_init_task(&self, raw_args: &[u8]) -> AxResult {
         let iid = self.id();
         info!(
-            "Setting up init task for instance {}: entry: {:#x}, stack: {:#x}",
-            iid, entry, stack
+            "Setting up init task for instance {}: raw_args_size {}",
+            iid,
+            raw_args.len()
         );
 
+        let eq_loader = get_eqloader_data();
         let init_task_ctx = self
             .processes
             .lock()
@@ -356,7 +351,7 @@ impl<H: PagingHandler> Instance<H> {
             .expect("Instance should have at least one process")
             .get_mut()
             .addrspace_mut()
-            .setup_init_task(entry, stack)?;
+            .setup_user_elf(eq_loader, Some(raw_args))?;
 
         warn!(
             "Init task setup for instance {}: {:#x?}",

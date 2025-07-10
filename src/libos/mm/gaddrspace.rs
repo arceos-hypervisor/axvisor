@@ -21,10 +21,10 @@ use equation_defs::scf::SyscallQueueBufferMetadata;
 use equation_defs::task::context::TaskContext;
 use equation_defs::{
     EQUATION_MAGIC_NUMBER, GuestMappingType, INSTANCE_REGION_SIZE, InstanceRegion,
-    MMFrameAllocator, PTFrameAllocator, USER_EQALLOCATOR_BASE_VA, USER_EQALLOCATOR_SIZE,
-    USER_HEAP_BASE_VA,
+    MMFrameAllocator, PAGE_CACHE_POOL_SIZE, PTFrameAllocator, SCF_QUEUE_REGION_SIZE,
+    USER_HEAP_BASE_VA, get_pgcache_region_by_instance_id, instance_normal_region_pa_to_va,
 };
-use equation_defs::{get_scf_queue_buff_region_by_iid_pid, get_user_memory_va_range};
+use equation_defs::{get_scf_queue_buff_region_by_instance_id, get_user_memory_va_range};
 
 use crate::libos::config::{
     SHIM_EKERNEL, SHIM_ERODATA, SHIM_ETEXT, SHIM_MMIO_REGIONS, SHIM_PHYS_VIRT_OFFSET, SHIM_SDATA,
@@ -32,12 +32,11 @@ use crate::libos::config::{
 };
 use crate::libos::def::{
     GUEST_MEM_REGION_BASE_GPA, GUEST_PT_ROOT_GPA, INSTANCE_REGION_BASE_GPA,
-    PROCESS_INNER_REGION_BASE_GPA, SCF_QUEUE_BUFF_BASE_GVA, SHIM_BASE_GPA, USER_STACK_BASE,
-    USER_STACK_SIZE,
+    PAGE_CACHE_POOL_BASE_GVA, PROCESS_INNER_REGION_BASE_GPA, SCF_QUEUE_REGION_BASE_GVA,
+    SHIM_BASE_GPA, USER_STACK_BASE, USER_STACK_SIZE,
 };
 use crate::libos::def::{
-    GUEST_MEMORY_REGION_BASE_GVA, GUEST_PT_BASE_GVA, INSTANCE_REGION_BASE_GVA,
-    PROCESS_INNER_REGION_BASE_GVA,
+    GUEST_PT_BASE_GVA, INSTANCE_REGION_BASE_GVA, PROCESS_INNER_REGION_BASE_GVA,
 };
 use crate::libos::def::{PROCESS_INNER_REGION_SIZE, ProcessInnerRegion};
 use crate::libos::mm::area::GuestMemoryArea;
@@ -71,8 +70,6 @@ enum GuestMapping<H: PagingHandler> {
         mm_regions: BTreeMap<GuestPhysAddr, HostPhysicalRegionRef<H>>,
         /// Stores the host physical address of allocated regions for page table memory.
         pt_regions: Vec<HostPhysicalRegion<H>>,
-        /// Stores the host physical address of allocated regions for file-backed memory.
-        pgcache_regions: Vec<HostPhysicalRegionRef<H>>,
     },
 }
 
@@ -127,7 +124,10 @@ pub struct GuestAddrSpace<
     /// This region is used to store instance information, perCPU run queue, etc.
     instance_region_base: HostPhysAddr,
 
-    scf_queue_region: Option<HostPhysicalRegion<H>>,
+    /// SCF queue region, shared by all processes in the same instance.
+    scf_region_base: Option<HostPhysAddr>,
+    /// Page cache region, shared by all processes in the same instance.
+    page_cache_region_base: Option<HostPhysAddr>,
 
     // Below are used for guest addrspace.
     gva_range: AddrRange<GuestVirtAddr>,
@@ -151,12 +151,6 @@ impl<
     H: PagingHandler,
 > GuestAddrSpace<M, EPTE, GPTE, H>
 {
-    pub fn scf_region_range(&self) -> Option<(HostPhysAddr, usize)> {
-        self.scf_queue_region
-            .as_ref()
-            .map(|region| (region.base(), region.size()))
-    }
-
     pub fn fork(&mut self, pid: usize) -> AxResult<Self> {
         let mut forked_addrspace = AddrSpace::new_empty(
             GuestPhysAddr::from_usize(0),
@@ -221,40 +215,44 @@ impl<
             false,
         )?;
 
-        // handle SCF queue region.
-        let forked_scf_queue_region = if self.scf_queue_region.is_some() {
-            let scf_queue_region = HostPhysicalRegion::allocate(PAGE_SIZE_2M, Some(PAGE_SIZE_4K))?;
-
+        // handle SCF queue region and page cache region
+        if self.scf_region_base.is_some() {
             let scf_queue_region_base = GuestPhysAddr::from_usize(
-                get_scf_queue_buff_region_by_iid_pid(self.instance_id(), pid),
+                get_scf_queue_buff_region_by_instance_id(self.instance_id()),
             );
+            let page_cache_region_base =
+                GuestPhysAddr::from_usize(get_pgcache_region_by_instance_id(self.instance_id()));
 
             // Map the SCF queue region.
             // Do not allocate a new SCF queue region, since it is shared by all processes in the same instance.
             forked_addrspace.map_linear(
                 scf_queue_region_base,
-                scf_queue_region.base(),
-                scf_queue_region.size(),
+                self.scf_region_base.unwrap(),
+                SCF_QUEUE_REGION_SIZE,
                 MappingFlags::READ | MappingFlags::WRITE,
                 true,
             )?;
 
-            Some(scf_queue_region)
-        } else {
-            None
-        };
-
+            // Map the page cache region.
+            // Do not allocate a new page cache region, since it is shared by all processes in the same instance.
+            forked_addrspace.map_linear(
+                page_cache_region_base,
+                self.page_cache_region_base
+                    .expect("Page cache region must be set"),
+                PAGE_CACHE_POOL_SIZE,
+                MappingFlags::READ | MappingFlags::WRITE,
+                true,
+            )?;
+        }
         let forked_guest_mapping = match self.guest_mapping {
             GuestMapping::One2OneMapping { page_pos } => GuestMapping::One2OneMapping { page_pos },
             GuestMapping::CoarseGrainedSegmentation {
                 ref mm_regions,
                 ref pt_regions,
-                ref pgcache_regions,
             } => {
                 let mut new_mm_regions = BTreeMap::new();
                 let mut new_pt_region_base = GUEST_PT_ROOT_GPA;
                 let mut new_pt_regions = Vec::new();
-                let mut new_pgcache_regions = Vec::new();
 
                 let mm_region_granularity = self.process_inner_region().mm_region_granularity;
 
@@ -307,17 +305,9 @@ impl<
                     new_pt_region_base.add_assign(PAGE_SIZE_2M);
                 }
 
-                // For file-backed regions
-                for old_pgcache_region in pgcache_regions {
-                    // unimplemented for now.
-                    warn!("Handle file-backed region fork at {:?}", old_pgcache_region);
-                    new_pgcache_regions.push(old_pgcache_region.clone());
-                }
-
                 GuestMapping::CoarseGrainedSegmentation {
                     mm_regions: new_mm_regions,
                     pt_regions: new_pt_regions,
-                    pgcache_regions: new_pgcache_regions,
                 }
             }
         };
@@ -326,7 +316,8 @@ impl<
             region_granularity: self.region_granularity,
             ept_addrspace: forked_addrspace,
             process_inner_region: forked_process_inner_region,
-            scf_queue_region: forked_scf_queue_region,
+            scf_region_base: self.scf_region_base,
+            page_cache_region_base: self.page_cache_region_base,
             instance_region_base: self.instance_region_base,
             gva_range: self.gva_range.clone(),
             guest_mapping: forked_guest_mapping,
@@ -354,7 +345,6 @@ impl<
             GuestMapping::CoarseGrainedSegmentation {
                 ref mut mm_regions,
                 pt_regions: _,
-                pgcache_regions: _,
             } => {
                 let fault_mm_region_base = addr.align_down(mm_region_granularity);
 
@@ -582,6 +572,7 @@ impl<
         Ok(ctx)
     }
 
+    #[allow(dead_code)]
     pub fn setup_init_task(
         &mut self,
         user_entry: usize,
@@ -685,7 +676,8 @@ impl<
         process_id: usize,
         instance_region_base: HostPhysAddr,
         gmt: GuestMappingType,
-        scf: bool,
+        scf_region_base: Option<HostPhysAddr>,
+        page_cache_region_base: Option<HostPhysAddr>,
     ) -> AxResult<Self> {
         let instance_id = unsafe {
             H::phys_to_virt(instance_region_base)
@@ -709,6 +701,7 @@ impl<
             instance_id, process_id, gmt
         );
 
+        // Q: Set the right virtual address range according to process ID?
         let mut ept_addrspace = AddrSpace::new_empty(
             GuestPhysAddr::from_usize(0),
             0xffff << <EPTMetadata as PagingMetaData>::VA_MAX_BITS,
@@ -731,30 +724,6 @@ impl<
             false,
         )?;
 
-        // Allocate and map the syscall-forward shared queue region (if required).
-        let scf_queue_region = if scf {
-            let scf_queue_region = HostPhysicalRegion::allocate(PAGE_SIZE_2M, Some(PAGE_SIZE_4K))?;
-            debug!(
-                "Mapping SCF queue region base: {:?} size {:#x}",
-                scf_queue_region.base(),
-                scf_queue_region.size()
-            );
-            let scf_queue_base = GuestPhysAddr::from_usize(get_scf_queue_buff_region_by_iid_pid(
-                instance_id,
-                process_id,
-            ));
-            ept_addrspace.map_linear(
-                scf_queue_base,
-                scf_queue_region.base(),
-                scf_queue_region.size(),
-                MappingFlags::READ | MappingFlags::WRITE,
-                true,
-            )?;
-            Some(scf_queue_region)
-        } else {
-            None
-        };
-
         // Map the instance region.
         // The instance region is shared by all processes in the same instance.
         debug!(
@@ -769,6 +738,45 @@ impl<
             false,
         )?;
 
+        if let Some(scf_region_base) = scf_region_base {
+            // Map the SCF queue region.
+            // The SCF queue region is shared by all processes in the same instance.
+            let scf_region_base_gpa =
+                GuestPhysAddr::from_usize(get_scf_queue_buff_region_by_instance_id(instance_id));
+            debug!(
+                "Mapping SCF queue region [{:?}~{:?}] size {:#x}",
+                scf_region_base_gpa,
+                scf_region_base_gpa + SCF_QUEUE_REGION_SIZE,
+                SCF_QUEUE_REGION_SIZE
+            );
+            ept_addrspace.map_linear(
+                scf_region_base_gpa,
+                scf_region_base,
+                SCF_QUEUE_REGION_SIZE,
+                MappingFlags::READ | MappingFlags::WRITE,
+                true,
+            )?;
+        }
+        if let Some(page_cache_region_base) = page_cache_region_base {
+            // Map the page cache region.
+            // The page cache region is shared by all processes in the same instance.
+            let page_cache_region_base_gpa =
+                GuestPhysAddr::from_usize(get_pgcache_region_by_instance_id(instance_id));
+            debug!(
+                "Mapping Page Cache region [{:?}~{:?}] size {:#x}",
+                page_cache_region_base_gpa,
+                page_cache_region_base_gpa + PAGE_CACHE_POOL_SIZE,
+                PAGE_CACHE_POOL_SIZE
+            );
+            ept_addrspace.map_linear(
+                page_cache_region_base_gpa,
+                page_cache_region_base,
+                PAGE_CACHE_POOL_SIZE,
+                MappingFlags::READ | MappingFlags::WRITE,
+                true,
+            )?;
+        }
+
         let mut region_granularity = 0;
         let guest_mapping = match gmt {
             GuestMappingType::One2OneMapping => GuestMapping::One2OneMapping { page_pos: 0 },
@@ -782,7 +790,6 @@ impl<
                 GuestMapping::CoarseGrainedSegmentation {
                     mm_regions: BTreeMap::new(),
                     pt_regions: Vec::new(),
-                    pgcache_regions: Vec::new(),
                 }
             }
         };
@@ -792,7 +799,8 @@ impl<
             region_granularity,
             process_inner_region,
             instance_region_base,
-            scf_queue_region,
+            scf_region_base,
+            page_cache_region_base,
             guest_mapping,
             gva_range: AddrRange::from_start_size(
                 GuestVirtAddr::from_usize(0),
@@ -813,10 +821,8 @@ impl<
         // These setup methods should be called after `setup_pt_regions`.
         guest_addrspace.setup_shim_region()?;
         guest_addrspace.setup_process_inner_region()?;
-        guest_addrspace.setup_instance_region(process_id)?;
-        if scf {
-            guest_addrspace.setup_scf_region(process_id)?;
-        }
+        guest_addrspace.setup_instance_region()?;
+        guest_addrspace.setup_shm_region()?;
 
         match gmt {
             // If one-to-one mapping, map 512GB memory with 1GB huge page,
@@ -876,7 +882,6 @@ impl<
             GuestMapping::CoarseGrainedSegmentation {
                 mm_regions: _,
                 pt_regions: _,
-                pgcache_regions: _,
             } => {
                 // Map shim kernel sections.
                 info!("Maping shim kernel sections");
@@ -934,18 +939,18 @@ impl<
                     )?;
                 }
 
-                info!("Mapping shim course-grained memory region into high addr space");
+                // info!("Mapping shim course-grained memory region into high addr space");
 
-                // Map the guest normal memory region to high address space.
-                self.guest_map_region(
-                    GUEST_MEMORY_REGION_BASE_GVA,
-                    |_gva| GUEST_MEM_REGION_BASE_GPA,
-                    self.region_granularity,
-                    MappingFlags::READ | MappingFlags::WRITE,
-                    true,
-                    false,
-                )
-                .map_err(paging_err_to_ax_err)?;
+                // // Map the guest normal memory region to high address space.
+                // self.guest_map_region(
+                //     GUEST_MEMORY_REGION_BASE_GVA,
+                //     |_gva| GUEST_MEM_REGION_BASE_GPA,
+                //     self.region_granularity,
+                //     MappingFlags::READ | MappingFlags::WRITE,
+                //     true,
+                //     false,
+                // )
+                // .map_err(paging_err_to_ax_err)?;
             }
         }
 
@@ -996,11 +1001,6 @@ impl<
 
         info!("Process {} user memory gas initialized", process_id);
 
-        // We need to find a way to initialize the eqallocator.
-        // process_inner_region
-        //     .byte_allocator
-        //     .init(USER_EQALLOCATOR_BASE_VA, USER_EQALLOCATOR_SIZE);
-
         process_inner_region.dump_allocator_status();
         process_inner_region.dump_mm_regions();
 
@@ -1018,15 +1018,7 @@ impl<
             GuestMapping::CoarseGrainedSegmentation {
                 mm_regions: _,
                 pt_regions: _,
-                pgcache_regions: _,
             } => {
-                self.guest_map_alloc(
-                    GuestVirtAddr::from_usize(USER_EQALLOCATOR_BASE_VA),
-                    USER_EQALLOCATOR_SIZE,
-                    MappingFlags::READ | MappingFlags::WRITE,
-                    true,
-                )?;
-
                 // Map the process inner region in the guest address space.
                 self.guest_map_region(
                     PROCESS_INNER_REGION_BASE_GVA,
@@ -1046,7 +1038,7 @@ impl<
         Ok(())
     }
 
-    fn setup_instance_region(&mut self, _process_id: usize) -> AxResult {
+    fn setup_instance_region(&mut self) -> AxResult {
         match self.guest_mapping {
             GuestMapping::One2OneMapping { page_pos: _ } => {
                 // Do nothing, already mapped.
@@ -1054,7 +1046,6 @@ impl<
             GuestMapping::CoarseGrainedSegmentation {
                 mm_regions: _,
                 pt_regions: _,
-                pgcache_regions: _,
             } => {
                 info!("Mapping instance inner region with user permission");
                 // Map instance region.
@@ -1072,17 +1063,14 @@ impl<
         Ok(())
     }
 
-    fn setup_scf_region(&mut self, process_id: usize) -> AxResult {
+    /// Setup the shared memory region for the syscall-forwarding mechanism and page cache pool.
+    fn setup_shm_region(&mut self) -> AxResult {
         let instance_id = self.instance_id();
-        let (scf_queue_region_base, scf_queue_region_size) = {
-            let region = self.scf_queue_region.as_ref().ok_or_else(|| {
-                ax_err_type!(
-                    BadState,
-                    "Syscall-forward shared queue region not initialized"
-                )
-            })?;
-            (region.base(), region.size())
-        };
+
+        if self.scf_region_base.is_none() && self.page_cache_region_base.is_none() {
+            info!("No shared memory region base provided, skip shared memory region setup");
+            return Ok(());
+        }
 
         match self.guest_mapping {
             GuestMapping::One2OneMapping { page_pos: _ } => {
@@ -1091,17 +1079,29 @@ impl<
             GuestMapping::CoarseGrainedSegmentation {
                 mm_regions: _,
                 pt_regions: _,
-                pgcache_regions: _,
             } => {
                 info!("Mapping SCF queue region with user permission");
                 let scf_queue_base_gpa = GuestPhysAddr::from_usize(
-                    get_scf_queue_buff_region_by_iid_pid(instance_id, process_id),
+                    get_scf_queue_buff_region_by_instance_id(instance_id),
                 );
                 self.guest_map_region(
-                    SCF_QUEUE_BUFF_BASE_GVA,
-                    |gva| scf_queue_base_gpa.add(gva.sub_addr(SCF_QUEUE_BUFF_BASE_GVA)),
-                    scf_queue_region_size,
+                    SCF_QUEUE_REGION_BASE_GVA,
+                    |gva| scf_queue_base_gpa.add(gva.sub_addr(SCF_QUEUE_REGION_BASE_GVA)),
+                    SCF_QUEUE_REGION_SIZE,
                     MappingFlags::READ | MappingFlags::WRITE | MappingFlags::USER,
+                    true,
+                    false,
+                )
+                .map_err(paging_err_to_ax_err)?;
+
+                info!("Mapping page cache region without user permission");
+                let page_cache_base_gpa =
+                    GuestPhysAddr::from_usize(get_pgcache_region_by_instance_id(instance_id));
+                self.guest_map_region(
+                    PAGE_CACHE_POOL_BASE_GVA,
+                    |gva| page_cache_base_gpa.add(gva.sub_addr(PAGE_CACHE_POOL_BASE_GVA)),
+                    PAGE_CACHE_POOL_SIZE,
+                    MappingFlags::READ | MappingFlags::WRITE,
                     true,
                     false,
                 )
@@ -1110,7 +1110,7 @@ impl<
         }
 
         let scf_meta = unsafe {
-            H::phys_to_virt(scf_queue_region_base)
+            H::phys_to_virt(self.scf_region_base.expect("SCF region base is None"))
                 .as_mut_ptr_of::<SyscallQueueBufferMetadata>()
                 .as_mut()
                 .ok_or_else(|| {
@@ -1120,7 +1120,7 @@ impl<
                     )
                 })?
         };
-        scf_meta.initialize(scf_queue_region_size);
+        scf_meta.initialize(SCF_QUEUE_REGION_SIZE);
 
         Ok(())
     }
@@ -1133,7 +1133,6 @@ impl<
             GuestMapping::CoarseGrainedSegmentation {
                 mm_regions: _,
                 pt_regions: _,
-                pgcache_regions: _,
             } => {
                 // `mm_regions` is allocated dynamically when the user process requests memory.
                 // So we do not need to setup it here.
@@ -1176,7 +1175,6 @@ impl<
             GuestMapping::CoarseGrainedSegmentation {
                 pt_regions: _,
                 mm_regions: _,
-                pgcache_regions: _,
             } => {
                 info!("Mapping instance page table region");
                 // Map guest page table region.
@@ -1216,99 +1214,6 @@ impl<
     ) -> AxResult {
         self.ept_addrspace
             .map_linear(start_gpa, start_hpa, size, flags, allow_huge)
-    }
-
-    pub fn guest_sync_pgcache_mmap(
-        &mut self,
-        start: GuestVirtAddr,
-        page_index: usize,
-        size: usize,
-        flags: MappingFlags,
-        unmap_overlap: bool,
-        running: bool,
-    ) -> AxResult {
-        let mapped_gva_range = AddrRange::from_start_size(start, size);
-
-        debug!(
-            "guest_sync_pgcache_mmap [{:?}],({:#x} {:?}), page index {}",
-            mapped_gva_range, size, flags, page_index
-        );
-
-        if !self.gva_range.contains_range(mapped_gva_range) {
-            return ax_err!(
-                InvalidInput,
-                alloc::format!("GVA [{:?}~{:?}] out of range", start, start.add(size)).as_str()
-            );
-        }
-        if !start.is_aligned_4k() || !is_aligned_4k(size) {
-            return ax_err!(InvalidInput, "GVA not aligned");
-        }
-
-        if mapped_gva_range.is_empty() {
-            return ax_err!(InvalidInput, "GVA range is empty");
-        }
-
-        if self.gva_overlaps(mapped_gva_range) {
-            if unmap_overlap {
-                self.guest_unmap_area(start, size)?;
-            } else {
-                return ax_err!(AlreadyExists, "GVA range overlaps with existing area");
-            }
-        }
-
-        match self.guest_mapping {
-            GuestMapping::One2OneMapping { page_pos: _ } => {
-                unimplemented!()
-            }
-            GuestMapping::CoarseGrainedSegmentation {
-                mm_regions: _,
-                pt_regions: _,
-                ref pgcache_regions,
-            } => {
-                let start_addr = start;
-
-                if pgcache_regions.is_empty() {
-                    return ax_err!(BadState, "No pgcache regions available");
-                }
-
-                let region_index = page_index / (pgcache_regions[0].size() / PAGE_SIZE_4K);
-                if !self.check_pgcache_region_allocated(region_index) {
-                    return ax_err!(
-                        BadState,
-                        format!("PGCache region {} not allocated", region_index)
-                    );
-                }
-
-                let pgcache_base_gpa = GuestPhysAddr::from_usize(
-                    equation_defs::get_pgcache_region_by_instance_id(self.instance_id()),
-                );
-
-                let base = pgcache_base_gpa.add(page_index * PAGE_SIZE_4K);
-
-                if running {
-                    self.process_inner_region_mut().page_cache_base = base.as_usize();
-                } else {
-                    self.guest_map_region(
-                        start_addr,
-                        |gva| base.add(gva.sub_addr(start)),
-                        size,
-                        flags,
-                        true,
-                        false,
-                    )
-                    .map_err(paging_err_to_ax_err)?;
-                }
-            }
-        }
-
-        assert!(
-            self.gva_areas
-                .insert(start, GuestMemoryArea::new(mapped_gva_range, flags))
-                .is_none(),
-            "GVA range already exists, something is wrong!!!"
-        );
-
-        Ok(())
     }
 
     pub fn guest_map_alloc(
@@ -1355,7 +1260,6 @@ impl<
             GuestMapping::CoarseGrainedSegmentation {
                 mm_regions: _,
                 pt_regions: _,
-                pgcache_regions: _,
             } => {
                 if populate {
                     let start_addr = start;
@@ -1589,7 +1493,6 @@ impl<
             GuestMapping::CoarseGrainedSegmentation {
                 mm_regions: _,
                 pt_regions: _,
-                pgcache_regions: _,
             } => {
                 if self.mm_frame_allocator().available_pages() == 0 {
                     self.alloc_mm_region()?;
@@ -1640,7 +1543,6 @@ impl<
             GuestMapping::CoarseGrainedSegmentation {
                 mm_regions: _,
                 pt_regions: _,
-                pgcache_regions: _,
             } => {
                 if self.pt_frame_allocator().available_pages() == 0 {
                     self.alloc_pt_region()?;
@@ -1670,27 +1572,6 @@ impl<
         Ok(allocated_frame_base)
     }
 
-    pub fn check_pgcache_region_allocated(&self, offset_of_granularity: usize) -> bool {
-        match self.guest_mapping {
-            GuestMapping::One2OneMapping { page_pos: _ } => {
-                warn!("Do not need to check memory region for one-to-one mapping");
-                false
-            }
-            GuestMapping::CoarseGrainedSegmentation {
-                mm_regions: _,
-                pt_regions: _,
-                ref pgcache_regions,
-            } => {
-                if pgcache_regions.is_empty() {
-                    warn!("No pgcache regions available");
-                    false
-                } else {
-                    offset_of_granularity < pgcache_regions.len()
-                }
-            }
-        }
-    }
-
     pub fn alloc_pt_region(&mut self) -> AxResult<HostPhysAddr> {
         match self.guest_mapping {
             GuestMapping::One2OneMapping { page_pos: _ } => {
@@ -1703,7 +1584,6 @@ impl<
             GuestMapping::CoarseGrainedSegmentation {
                 ref mut pt_regions,
                 mm_regions: _,
-                pgcache_regions: _,
             } => {
                 let allocated_region = HostPhysicalRegion::allocate(PAGE_SIZE_2M, None)?;
                 let allocated_region_hpa = allocated_region.base();
@@ -1755,7 +1635,6 @@ impl<
             GuestMapping::CoarseGrainedSegmentation {
                 ref mut mm_regions,
                 pt_regions: _,
-                pgcache_regions: _,
             } => {
                 let allocated_region =
                     HostPhysicalRegion::allocate_ref(mm_region_granularity, None)?;
@@ -1792,56 +1671,20 @@ impl<
                     self.process_inner_region().mm_frame_allocator.total_pages(),
                 );
 
-                Ok(allocated_region_hpa)
-            }
-        }
-    }
+                info!("Mapping shim course-grained memory region into high addr space");
 
-    pub fn alloc_pgcache_region(&mut self) -> AxResult<HostPhysAddr> {
-        let pg_region_granularity = PAGE_SIZE_2M;
-        let instance_id = self.instance_id();
-        let process_id = self.process_id();
-        match self.guest_mapping {
-            GuestMapping::One2OneMapping { page_pos: _ } => {
-                warn!("Do not need to check memory region for one-to-one mapping");
-                ax_err!(
-                    BadState,
-                    "Do not need to check memory region for one-to-one mapping"
-                )
-            }
-            GuestMapping::CoarseGrainedSegmentation {
-                mm_regions: _,
-                pt_regions: _,
-                ref mut pgcache_regions,
-            } => {
-                let allocated_region =
-                    HostPhysicalRegion::allocate_ref(pg_region_granularity, None)?;
-                let current_pgcache_region_count = pgcache_regions.len();
-                let allocated_region_hpa = allocated_region.base();
-
-                let allocated_region_gpa_base = GuestPhysAddr::from_usize(
-                    equation_defs::get_pgcache_region_by_instance_id(instance_id)
-                        .add(current_pgcache_region_count * pg_region_granularity),
-                );
-
-                self.ept_addrspace.map_linear(
-                    allocated_region_gpa_base,
-                    allocated_region.base(),
-                    pg_region_granularity,
-                    MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
+                // Map the guest normal memory region to high address space.
+                self.guest_map_region(
+                    GuestVirtAddr::from_usize(instance_normal_region_pa_to_va(
+                        allocated_region_gpa_base.as_usize(),
+                    )),
+                    |_gva| allocated_region_gpa_base,
+                    self.region_granularity,
+                    MappingFlags::READ | MappingFlags::WRITE,
                     true,
-                )?;
-
-                info!(
-                    "I[{}]P[{}] allocating pgcache region at [{:?} ~ {:?}] {:?}",
-                    instance_id,
-                    process_id,
-                    allocated_region_gpa_base,
-                    allocated_region_gpa_base.add(pg_region_granularity),
-                    allocated_region,
-                );
-
-                pgcache_regions.push(allocated_region);
+                    false,
+                )
+                .map_err(paging_err_to_ax_err)?;
 
                 Ok(allocated_region_hpa)
             }
@@ -1923,6 +1766,7 @@ impl<
         Ok(())
     }
 
+    #[allow(unused)]
     pub fn guest_unmap_area(&mut self, start: GuestVirtAddr, size: usize) -> AxResult {
         let range = AddrRange::try_from_start_size(start, size).ok_or(AxError::InvalidInput)?;
         if range.is_empty() {
@@ -2373,7 +2217,6 @@ impl<M: PagingMetaData, EPTE: GenericPTE, GPTE: MoreGenericPTE, H: PagingHandler
             GuestMapping::CoarseGrainedSegmentation {
                 mm_regions: _,
                 pt_regions: _,
-                pgcache_regions: _,
             } => {
                 debug!("CoarseGrainedSegmentation drop");
             }

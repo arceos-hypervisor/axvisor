@@ -1,16 +1,15 @@
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use axaddrspace::{GuestPhysAddr, GuestVirtAddr, MappingFlags};
+use axaddrspace::{GuestPhysAddr, MappingFlags};
 use axerrno::{AxResult, ax_err_type};
 use axhvc::{HyperCallCode, HyperCallResult};
 use axvcpu::AxVcpuAccessGuestState;
 
-use equation_defs::{FIRST_PROCESS_ID, GuestMappingType, InstanceType};
-use memory_addr::PAGE_SIZE_4K;
-use memory_addr::{MemoryAddr, PAGE_SIZE_2M};
+use equation_defs::{GuestMappingType, InstanceType};
+use equation_defs::{get_pgcache_region_by_instance_id, get_scf_queue_buff_region_by_instance_id};
 
+use crate::libos::def::get_contents_from_shared_pages;
 use crate::libos::instance;
-use crate::libos::region;
 use crate::vmm::{VCpuRef, VMRef};
 
 pub struct HyperCall {
@@ -75,27 +74,6 @@ impl HyperCall {
                 self.args[4] as usize,
                 self.args[5] as usize,
             ),
-            HyperCallCode::HLoadMMap => self.instance_load_mmap(
-                self.args[0] as usize,
-                self.args[1] as usize,
-                self.args[2] as usize,
-                self.args[3] as usize,
-                self.args[4] as usize,
-                self.args[5] as usize,
-            ),
-            HyperCallCode::HSetupInstance => self.setup_instance(
-                self.args[0] as usize,
-                self.args[1] as usize,
-                self.args[2] as usize,
-            ),
-            HyperCallCode::HSyncPageCacheRegion => self.instance_load_mmap(
-                self.args[0] as usize,
-                self.args[1] as usize,
-                self.args[2] as usize,
-                self.args[3] as usize,
-                self.args[4] as usize,
-                self.args[5] as usize,
-            ),
             _ => {
                 unimplemented!()
             }
@@ -106,6 +84,12 @@ impl HyperCall {
         match self.code {
             HyperCallCode::HDebug => self.debug(),
             HyperCallCode::HInitShim => self.init_shim(),
+            HyperCallCode::HSetupInstance => self.setup_instance(
+                self.args[0] as usize,
+                self.args[1] as usize,
+                self.args[2] as usize,
+                self.args[3] as usize,
+            ),
             _ => {
                 unimplemented!();
             }
@@ -159,10 +143,10 @@ impl HyperCall {
         &self,
         instance_type: InstanceType,
         mapping_type: GuestMappingType,
-        pgcache_base_gpa_ptr: usize,
-        pgcache_size_gpa_ptr: usize,
         scf_base_gpa_ptr: usize,
         scf_size_gpa_ptr: usize,
+        pgcache_base_gpa_ptr: usize,
+        pgcache_size_gpa_ptr: usize,
     ) -> HyperCallResult {
         info!(
             "HCreateInstance type {:?}, mapping type {:?}, pgcache_base_gpa_ptr {:#x}",
@@ -174,12 +158,10 @@ impl HyperCall {
             ax_err_type!(InvalidInput, "Instance not found")
         })?;
 
-        let scf_buf_base =
-            equation_defs::get_scf_queue_buff_region_by_iid_pid(instance_id, FIRST_PROCESS_ID);
-        let scf_buf_base_gpa = GuestPhysAddr::from_usize(scf_buf_base);
-        let (scf_buf_base_hpa, scf_buf_size) = instance_ref
-            .init_process_get_scf_queue_region()
-            .ok_or_else(|| {
+        let scf_region_base = get_scf_queue_buff_region_by_instance_id(instance_id);
+        let scf_region_base_gpa = GuestPhysAddr::from_usize(scf_region_base);
+        let (scf_region_base_hpa, scf_region_size) =
+            instance_ref.get_scf_queue_region().ok_or_else(|| {
                 warn!(
                     "Failed to get SCF queue region for instance {}",
                     instance_id
@@ -189,9 +171,9 @@ impl HyperCall {
         // Map the SCF buffer region to the host Linux.
         self.vm
             .map_region(
-                scf_buf_base_gpa,
-                scf_buf_base_hpa,
-                scf_buf_size,
+                scf_region_base_gpa,
+                scf_region_base_hpa,
+                scf_region_size,
                 MappingFlags::READ | MappingFlags::WRITE,
                 true, // Allow huge pages
             )
@@ -201,12 +183,41 @@ impl HyperCall {
             })?;
         let scf_base_gpa_ptr = GuestPhysAddr::from_usize(scf_base_gpa_ptr);
         let scf_size_gpa_ptr = GuestPhysAddr::from_usize(scf_size_gpa_ptr);
-        self.vm.write_to_guest_of(scf_base_gpa_ptr, &scf_buf_base)?;
-        self.vm.write_to_guest_of(scf_size_gpa_ptr, &scf_buf_size)?;
+        self.vm
+            .write_to_guest_of(scf_base_gpa_ptr, &scf_region_base)?;
+        self.vm
+            .write_to_guest_of(scf_size_gpa_ptr, &scf_region_size)?;
 
-        let pgcache_base = equation_defs::get_pgcache_region_by_instance_id(instance_id);
-        let pgcache_size = PAGE_SIZE_2M; // 2MB for each pgcache region.
-        info!("Instance [{instance_id}] host pgcache region at {pgcache_base:#x}");
+        let pgcache_base = get_pgcache_region_by_instance_id(instance_id);
+
+        let pgcache_base_gpa = GuestPhysAddr::from_usize(pgcache_base);
+        let (pgcache_base_hpa, pgcache_size) =
+            instance_ref.get_page_cache_region().ok_or_else(|| {
+                warn!(
+                    "Failed to get page cache region for instance {}",
+                    instance_id
+                );
+                ax_err_type!(InvalidInput, "Failed to get page cache region")
+            })?;
+        // Map the page cache region to the host Linux.
+        self.vm
+            .map_region(
+                pgcache_base_gpa,
+                pgcache_base_hpa,
+                pgcache_size,
+                MappingFlags::READ | MappingFlags::WRITE,
+                true, // Allow huge pages
+            )
+            .map_err(|e| {
+                warn!("Failed to map page cache region: {:?}", e);
+                ax_err_type!(InvalidInput, "Failed to map page cache region")
+            })?;
+
+        info!(
+            "Instance [{instance_id}] host pgcache region at [{:#x}~{:#x}]",
+            pgcache_base,
+            pgcache_base + pgcache_size
+        );
         let pgcache_base_gpa_ptr = GuestPhysAddr::from_usize(pgcache_base_gpa_ptr);
         let pgcache_size_gpa_ptr = GuestPhysAddr::from_usize(pgcache_size_gpa_ptr);
         self.vm
@@ -217,122 +228,32 @@ impl HyperCall {
         Ok(instance_id)
     }
 
-    fn instance_load_mmap(
+    fn setup_instance(
         &self,
         instance_id: usize,
-        gva: usize,
-        linux_gpa: usize,
-        len: usize,
-        flags: usize,
-        prot: usize,
+        file_size: usize,
+        shared_pages_base_gva: usize,
+        shared_pages_num: usize,
     ) -> HyperCallResult {
         info!(
-            "I[{instance_id}] HLoadMmap addr:[{gva:#x}~{:#x}] gpa {linux_gpa:#x} len:{len:#x} flags:{flags:#x} prot:{prot:#x}",
-            gva + len
+            "HSetupInstance instance_id {}, file_size {}, shared_pages_base_gva {:#x}, shared_pages_num {}",
+            instance_id, file_size, shared_pages_base_gva, shared_pages_num
         );
 
-        // First, sync the page cache region for the instance too.
-        self.instance_sync_page_cache_region(instance_id, gva, linux_gpa, len, flags, prot)?;
-
-        let page_index = (linux_gpa
-            - equation_defs::get_pgcache_region_by_instance_id(instance_id))
-            / PAGE_SIZE_4K;
-
-        let instance_ref = instance::get_instances_by_id(instance_id).ok_or_else(|| {
-            warn!("Instance with ID {} not found", instance_id);
-            ax_err_type!(InvalidInput, "Instance not found")
-        })?;
-
-        // TODO: handle map shared.
-        let prot_flags = vm_flags::linux_page_prot_to_mapping_flags(prot);
-
-        warn!(
-            "Instance[{instance_id}] HLoadMmap vm_flags: {}{} prot_flags: {:?}",
-            if vm_flags::linux_mm_flags_map_fixed(flags) {
-                "MAP_FIXED|"
-            } else {
-                ""
-            },
-            if vm_flags::linux_mm_flags_map_shared(flags) {
-                "MAP_SHARED "
-            } else if vm_flags::linux_mm_flags_map_private(flags) {
-                "MAP_PRIVATE "
-            } else {
-                "MAP_FILE "
-            },
-            prot_flags
-        );
-
-        let unmap_overlap = if vm_flags::linux_mm_flags_map_fixed(flags) {
-            true // If MAP_FIXED is set, we do unmap the overlap.
-        } else {
-            false // Otherwise, we do not unmap the overlap.
-        };
-
-        instance_ref.init_process_sync_pgcache_mmap(
-            GuestVirtAddr::from_usize(gva),
-            page_index,
-            len,
-            prot_flags,
-            unmap_overlap,
-            instance_ref.is_running(),
+        let raw_args = get_contents_from_shared_pages(
+            file_size,
+            shared_pages_base_gva,
+            shared_pages_num,
+            &self.vcpu,
+            &self.vm,
         )?;
-
-        Ok(0)
-    }
-
-    fn instance_sync_page_cache_region(
-        &self,
-        instance_id: usize,
-        gva: usize,
-        linux_gpa: usize,
-        len: usize,
-        flags: usize,
-        prot: usize,
-    ) -> HyperCallResult {
-        info!(
-            "I[{instance_id}] HSyncPageCacheRegion addr:[{gva:#x}~{:#x}] gpa {linux_gpa:#x} len:{len:#x} flags:{flags:#x} prot:{prot:#x}",
-            gva + len
-        );
-        let instance_ref = instance::get_instances_by_id(instance_id).ok_or_else(|| {
-            warn!("Instance with ID {} not found", instance_id);
-            ax_err_type!(InvalidInput, "Instance not found")
-        })?;
-
-        let gpa_aligned = GuestPhysAddr::from_usize(linux_gpa).align_down(PAGE_SIZE_2M);
-        // First, check if the 2MB region is mapped for the instance.
-        let offset_of_granularity =
-            region::count_2mb_region_offset(instance_id, gpa_aligned.as_usize())?;
-
-        if !instance_ref.init_process_check_pgcache_region_allocated(offset_of_granularity) {
-            let pgcache_region_base_hpa = instance_ref.init_process_alloc_pgcache_region()?;
-            // Map the SHM region to the host Linux.
-            self.vm
-                .map_region(
-                    gpa_aligned,
-                    pgcache_region_base_hpa,
-                    PAGE_SIZE_2M,
-                    MappingFlags::READ | MappingFlags::WRITE,
-                    true, // Allow huge pages
-                )
-                .map_err(|e| {
-                    warn!("Failed to map SHM region: {:?}", e);
-                    ax_err_type!(InvalidInput, "Failed to map SHM region")
-                })?;
-        }
-
-        Ok(0)
-    }
-
-    fn setup_instance(&self, instance_id: usize, entry: usize, stack: usize) -> HyperCallResult {
-        info!("HSetupInstance instance_id: {instance_id} entry: {entry:#x} stack: {stack:#x}");
 
         instance::get_instances_by_id(instance_id)
             .ok_or_else(|| {
                 warn!("Instance with ID {} not found", instance_id);
                 ax_err_type!(InvalidInput, "Instance not found")
             })?
-            .setup_init_task(entry, stack)?;
+            .setup_init_task(&raw_args)?;
 
         Ok(0)
     }
