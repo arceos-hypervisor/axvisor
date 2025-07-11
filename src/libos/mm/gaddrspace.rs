@@ -1120,7 +1120,9 @@ impl<
                     )
                 })?
         };
-        scf_meta.initialize(SCF_QUEUE_REGION_SIZE);
+        // AxVisor do not touch scf region for now.
+        // BUT we can consider to manipulate its status to enhance the correctness.
+        scf_meta.initialize(0);
 
         Ok(())
     }

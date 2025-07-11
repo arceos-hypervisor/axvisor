@@ -835,6 +835,7 @@ dependencies = [
  "log",
  "memory_addr",
  "page_table_multiarch",
+ "spin",
  "syscalls",
  "x86",
 ]
