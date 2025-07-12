@@ -772,7 +772,7 @@ impl<
                 page_cache_region_base_gpa,
                 page_cache_region_base,
                 PAGE_CACHE_POOL_SIZE,
-                MappingFlags::READ | MappingFlags::WRITE,
+                MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE, // Allow execute for page cache region.
                 true,
             )?;
         }
