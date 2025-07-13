@@ -7,7 +7,7 @@ mkdir -p ../crates ../deps
 cd ../crates || exit
 git clone git@github.com:EquationOS/arceos.git --branch equation
 git clone git@github.com:arceos-hypervisor/axaddrspace.git --branch equation
-git clone git@github.com:arceos-hypervisor/axhvc.git
+git clone git@github.com:arceos-hypervisor/axhvc.git --branch equation
 git clone git@github.com:arceos-hypervisor/axvm.git --branch type15_hw
 git clone git@github.com:arceos-hypervisor/axvcpu.git --branch equation
 git clone git@github.com:EquationOS/bitmaps.git

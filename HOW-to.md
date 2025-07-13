@@ -11,7 +11,7 @@ cd scripts
 
 ```bash
 cd deps/shim
-make APPS=hello_world:page_fault:gp:forktest LOG=debug
+make  LOG=debug
 ```
 
 * build axcli
@@ -20,6 +20,12 @@ make APPS=hello_world:page_fault:gp:forktest LOG=debug
 cd deps/axvisor-tools/axcli
 cargo build --release
 ```
+
+* build eqdriver
+
+```bash
+cd deps/axvisor-tools/eqdriver
+sudo KDIR=/lib/modules/6.8.0-62-generic/build make
 
 * build axvisor
 
@@ -58,6 +64,10 @@ make PLATFORM=x86_64-qemu-linux SMP=4 LOG=debug scp_to_qemu
     ```bash
     scp -P 2334 deps/axvisor-tools/axcli/target/release/axcli ubuntu@localhost:~/
     ```
+    Copy eqdriver ko:
+    ```bash
+    scp -P 2334 deps/axvisor-tools/eqdriver/eqdriver.ko ubuntu@localhost:~/ 
+    ```
 
     Then run `setup.sh` in guest, (you only need to run it once see [`setup.sh`](scripts/guest/setup.sh) for details).
 
@@ -81,8 +91,12 @@ make PLATFORM=x86_64-qemu-linux SMP=4 LOG=debug scp_to_qemu
 
     Parameter `1` means CPU number reserved for ArceOS.
 
-6. Initialize Shim
+6. Initialize Shim, install eqdriver kernel module.
+    `sudo insmod eqdriver.ko`
     `./axcli instance init`
+
+7. Execute a Linux executible
+    `sudo ./axcli instance execute /usr/bin/echo 123`
 
 ## Development
 
