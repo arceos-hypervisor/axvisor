@@ -79,6 +79,12 @@ impl<H: PagingHandler> HostPhysicalRegion<H> {
         H::phys_to_virt(self.base).as_mut_ptr_of::<T>()
     }
 
+    pub fn zero(&self) {
+        unsafe {
+            core::ptr::write_bytes(H::phys_to_virt(self.base).as_mut_ptr(), 0, self.size);
+        }
+    }
+
     pub fn copy_from(&self, src: &Self) {
         if self.size != src.size {
             warn!(

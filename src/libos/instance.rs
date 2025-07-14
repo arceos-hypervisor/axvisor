@@ -786,12 +786,18 @@ impl<H: PagingHandler> Instance<H> {
 
 impl<H: PagingHandler> Drop for Instance<H> {
     fn drop(&mut self) {
-        info!("Destroy instance {}", self.id());
-        if self.id() == 0 {
+        let instance_id = self.id();
+        info!("Destroy instance {}", instance_id);
+        if instance_id == 0 {
             warn!("You are dropping gate instance, you'd better know what you are doing!");
         }
-        let _ = free_instance_id(self.id()).inspect_err(|e| {
-            warn!("Failed to free instance ID {}: {:?}", self.id(), e);
+
+        // Clear the instance region.
+        INSTANCE_REGION_POOL[instance_id].zero();
+        self.instance_inner_region_mut().instance_id = instance_id as u64;
+
+        let _ = free_instance_id(instance_id).inspect_err(|e| {
+            warn!("Failed to free instance ID {}: {:?}", instance_id, e);
         });
     }
 }
