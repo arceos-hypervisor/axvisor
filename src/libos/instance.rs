@@ -144,16 +144,21 @@ impl<H: PagingHandler> Instance<H> {
         // Init shim kernel, loading shim binary and setting up the `GLOBAL_SHIM_REGION`.
         init_shim_kernel()?;
 
+        info!("Initializing instance eptp list regions");
         // Init instances eptp list regions.
         INSTANCES_EPTP_LIST_REGIONS.init_once(HostPhysicalRegion::allocate(
             EPTP_LIST_REGION_SIZE * MAX_INSTANCES_NUM,
             Some(PAGE_SIZE_4K),
         )?);
+
+        info!("Initializing per CPU regions");
         // Init per CPU regions.
         PERCPU_REGIONS.init_once(HostPhysicalRegion::allocate(
             PERCPU_REGION_SIZE * MAX_CPUS_NUM,
             Some(PAGE_SIZE_4K),
         )?);
+
+        info!("Initializing instance region pool");
         // Init instance region pool.
         INSTANCE_REGION_POOL.init_once(core::array::from_fn(|id| {
             let region = HostPhysicalRegion::allocate_ref(INSTANCE_REGION_SIZE, Some(PAGE_SIZE_4K))
@@ -335,6 +340,27 @@ impl<H: PagingHandler> Instance<H> {
             .map(|region| (region.base(), region.size()))
     }
 
+    pub fn alloc_mm_region(&self, eptp: HostPhysAddr, requested_pages: usize) -> AxResult {
+        info!(
+            "Allocating MM region for eptp {:?} with {} pages",
+            eptp, requested_pages
+        );
+
+        self.processes
+            .lock()
+            .get_mut(&eptp)
+            .ok_or_else(|| {
+                warn!(
+                    "Process with EPTP {:?} not found in instance processes",
+                    eptp
+                );
+                ax_err_type!(InvalidInput, "Invalid EPTP")
+            })?
+            .addrspace_mut()
+            .alloc_mm_region_with_pages(requested_pages)?;
+        Ok(())
+    }
+
     pub fn setup_init_task(&self, raw_args: &[u8]) -> AxResult {
         let iid = self.id();
         info!(
@@ -490,6 +516,9 @@ impl<H: PagingHandler> Instance<H> {
         Ok(new_pid)
     }
 
+    /// Remove a process from the instance by its EPTP root paddr.
+    /// If the process is the last one in the instance and there are no running tasks,
+    /// the instance will be removed.
     pub fn remove_process(&self, eptp: HostPhysAddr) -> AxResult {
         let removed_process = self.processes.lock().remove(&eptp).ok_or_else(|| {
             warn!("EPTP {:?} not found in processes", eptp);

@@ -78,6 +78,8 @@ enum GuestMapping<H: PagingHandler> {
 static GLOBAL_SHIM_REGION: LazyInit<HostPhysicalRegion<PagingHandlerImpl>> = LazyInit::new();
 
 pub(crate) fn init_shim_kernel() -> AxResult {
+    info!("Initializing shim kernel region");
+
     if GLOBAL_SHIM_REGION.is_inited() {
         return ax_err!(AlreadyExists, "Shim kernel region already initialized");
     }
@@ -1624,7 +1626,38 @@ impl<
         }
     }
 
-    pub fn alloc_mm_region(&mut self) -> AxResult<HostPhysAddr> {
+    pub fn alloc_mm_region_with_pages(&mut self, requested_pages: usize) -> AxResult {
+        let mm_region_granularity = self.process_inner_region().mm_region_granularity;
+        match self.guest_mapping {
+            GuestMapping::One2OneMapping { page_pos: _ } => {
+                warn!("Do not need to check memory region for one-to-one mapping");
+                ax_err!(
+                    BadState,
+                    "Do not need to check memory region for one-to-one mapping"
+                )
+            }
+            GuestMapping::CoarseGrainedSegmentation {
+                mm_regions: _,
+                pt_regions: _,
+            } => {
+                // First, judge how many mm regions are needed according to the requested pages.
+                let pages_per_region = mm_region_granularity / PAGE_SIZE_4K; // 1 region = 512 pages for 2M region.
+                let requested_regions = if requested_pages % pages_per_region == 0 {
+                    requested_pages / pages_per_region
+                } else {
+                    requested_pages / pages_per_region + 1
+                };
+
+                // Then, allocate the mm regions.
+                for _region in 0..requested_regions {
+                    self.alloc_mm_region()?;
+                }
+                Ok(())
+            }
+        }
+    }
+
+    pub fn alloc_mm_region(&mut self) -> AxResult {
         let mm_region_granularity = self.process_inner_region().mm_region_granularity;
         match self.guest_mapping {
             GuestMapping::One2OneMapping { page_pos: _ } => {
@@ -1641,7 +1674,7 @@ impl<
                 let allocated_region =
                     HostPhysicalRegion::allocate_ref(mm_region_granularity, None)?;
                 let current_mm_region_count = mm_regions.len();
-                let allocated_region_hpa = allocated_region.base();
+                // let allocated_region_hpa = allocated_region.base();
 
                 let allocated_region_gpa_base =
                     GUEST_MEM_REGION_BASE_GPA.add(current_mm_region_count * mm_region_granularity);
@@ -1688,7 +1721,7 @@ impl<
                 )
                 .map_err(paging_err_to_ax_err)?;
 
-                Ok(allocated_region_hpa)
+                Ok(())
             }
         }
     }

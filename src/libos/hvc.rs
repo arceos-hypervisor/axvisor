@@ -64,6 +64,7 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
             HyperCallCode::HClone => self.clone(),
             HyperCallCode::HRead => self.read(self.args[0], self.args[1], self.args[2]),
             HyperCallCode::HWrite => self.write(self.args[0], self.args[1], self.args[2]),
+            HyperCallCode::HAllocMMRegion => self.alloc_mm_region(self.args[0] as usize),
             _ => {
                 unimplemented!();
             }
@@ -97,6 +98,14 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
     fn shutdown_instance(&self) -> HyperCallResult {
         info!("HShutdownInstance");
         shutdown_instance(self.pcpu, &self.vcpu, &self.instance)?;
+        Ok(0)
+    }
+
+    fn alloc_mm_region(&self, num_of_pages: usize) -> HyperCallResult {
+        info!("HAllocMMRegion num_of_pages {num_of_pages}");
+
+        self.instance
+            .alloc_mm_region(self.pcpu.current_ept_root(), num_of_pages)?;
         Ok(0)
     }
 
