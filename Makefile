@@ -23,3 +23,12 @@ setup-arceos:
 # 透传所有其他目标到 .arceos
 run: setup-arceos
 	@$(MAKE) -C .arceos A=$(shell pwd) LD_SCRIPT=link.x $@ $(MAKEFLAGS) run
+
+clean: clean_c
+	rm -rf $(APP)/target
+	rm -rf $(APP)/*.bin $(APP)/*.elf $(APP)/*.asm $(OUT_CONFIG)
+	cargo clean
+
+clean_c:
+	rm -rf ulib/axlibc/build_*
+	rm -rf $(app-objs)

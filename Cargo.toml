@@ -22,7 +22,7 @@ spin = "0.9"
 timer_list = "0.1.0"
 
 # System dependent modules provided by ArceOS.
-axstd = {git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm-dev", features = [
+axstd = {path = "/code/task/new_hal_dyn_ivc/arceos/ulib/axstd", features = [
   "alloc",
   "paging",
   "irq",
@@ -51,19 +51,19 @@ percpu = { git = "https://github.com/arceos-hypervisor/percpu.git", branch = "cu
 axplat-aarch64-dyn = {git = "https://github.com/arceos-hypervisor/axplat-aarch64-dyn", branch = "vmm", features = ["irq", "smp", "hv"]}
 axdevice = { git = "https://github.com/arceos-hypervisor/axdevice.git", branch = "inject_interrupt_vgicv3" }
 axdevice_base = { git = "https://github.com/arceos-hypervisor/axdevice_crates.git", branch = "inject_interrupt" }
-axvisor_api = { git = "https://github.com/arceos-hypervisor/axvisor_api.git", branch = "inject_interrupt" }
 
 [build-dependencies]
-axconfig = {git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm-dev"}
 #axconfig = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "debin/timer_api" }
+axconfig = {git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm-dev"}
 prettyplease = "0.2"
 quote = "1.0"
 syn = "2.0"
+toml = {git = "https://github.com/arceos-hypervisor/toml.git", branch = "no_std"}
 
 
 # [patch."https://github.com/arceos-hypervisor/axaddrspace.git".axaddrspace]
 # path = "crates/axaddrspace"
-[patch."https://github.com/arceos-hypervisor/axdevice.git".axdevice]
-path = "crates/axdevice"
-[patch."https://github.com/arceos-hypervisor/axdevice_crates.git".axdevice_base]
-path = "crates/axdevice_crates/axdevice_base"
+# [patch."https://github.com/arceos-hypervisor/axdevice.git".axdevice]
+# path = "crates/axdevice"
+# [patch."https://github.com/arceos-hypervisor/axdevice_crates.git".axdevice_base]
+# path = "crates/axdevice_crates/axdevice_base"
