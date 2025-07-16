@@ -14,6 +14,8 @@ mod hal;
 mod task_ext;
 mod vmm;
 
+mod region;
+
 mod libos;
 
 const LOGO: &str = r"

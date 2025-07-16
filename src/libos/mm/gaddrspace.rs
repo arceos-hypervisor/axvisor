@@ -43,7 +43,8 @@ use crate::libos::mm::area::GuestMemoryArea;
 use crate::libos::mm::gpt::{
     ENTRY_COUNT, GuestEntry, MoreGenericPTE, p1_index, p2_index, p3_index, p4_index, p5_index,
 };
-use crate::libos::region::{HostPhysicalRegion, HostPhysicalRegionRef};
+use crate::region::{HostPhysicalRegion, HostPhysicalRegionRef};
+use crate::vmm::ivc::{self, IVCChannel, IVCFlags};
 
 pub type EqAddrSpace<H> = GuestAddrSpace<EPTMetadata, EPTEntry, GuestEntry, H>;
 
@@ -130,6 +131,8 @@ pub struct GuestAddrSpace<
     scf_region_base: Option<HostPhysAddr>,
     /// Page cache region, shared by all processes in the same instance.
     page_cache_region_base: Option<HostPhysAddr>,
+    /// IVC shared memory regions, used for inter-VM communication.
+    ivc_shm_keys: BTreeMap<usize, GuestPhysAddr>,
 
     // Below are used for guest addrspace.
     gva_range: AddrRange<GuestVirtAddr>,
@@ -143,7 +146,7 @@ pub struct GuestAddrSpace<
     /// Guest Page Table levels.
     levels: usize,
 
-    phontom: core::marker::PhantomData<GPTE>,
+    phantom: core::marker::PhantomData<GPTE>,
 }
 
 impl<
@@ -246,6 +249,19 @@ impl<
                 true,
             )?;
         }
+
+        // Handle ivc shared memory regions.
+        for (key, shm_base_gpa) in &self.ivc_shm_keys {
+            let (base_hpa, size, _) = ivc::get_channel_info(key)?;
+            forked_addrspace.map_linear(
+                *shm_base_gpa,
+                base_hpa,
+                size,
+                MappingFlags::READ | MappingFlags::WRITE,
+                true,
+            )?;
+        }
+
         let forked_guest_mapping = match self.guest_mapping {
             GuestMapping::One2OneMapping { page_pos } => GuestMapping::One2OneMapping { page_pos },
             GuestMapping::CoarseGrainedSegmentation {
@@ -325,7 +341,8 @@ impl<
             guest_mapping: forked_guest_mapping,
             gva_areas: self.gva_areas.clone(),
             levels: self.levels,
-            phontom: core::marker::PhantomData,
+            ivc_shm_keys: self.ivc_shm_keys.clone(),
+            phantom: core::marker::PhantomData,
         })
     }
 
@@ -804,13 +821,14 @@ impl<
             scf_region_base,
             page_cache_region_base,
             guest_mapping,
+            ivc_shm_keys: BTreeMap::new(),
             gva_range: AddrRange::from_start_size(
                 GuestVirtAddr::from_usize(0),
                 1 << <EPTMetadata as PagingMetaData>::VA_MAX_BITS,
             ),
             gva_areas: BTreeMap::new(),
             levels: M::LEVELS,
-            phontom: core::marker::PhantomData,
+            phantom: core::marker::PhantomData,
         };
 
         // Call `init_process_inner_region` first to ensure that the basic metadata
@@ -1359,6 +1377,19 @@ impl<
         Ok(())
     }
 
+    pub fn copy_into_guest_of<T>(&mut self, src: &T, dst: GuestVirtAddr) -> AxResult
+    where
+        T: Sized + Copy,
+    {
+        let size = core::mem::size_of::<T>();
+        debug!(
+            "copy_into_guest_of src: {:p} to dst: {:?} size: {:#x}",
+            src, dst, size
+        );
+
+        self.copy_into_guest(HostVirtAddr::from_ptr_of(src as *const T), dst, size)
+    }
+
     pub fn copy_into_guest(
         &mut self,
         src: HostVirtAddr,
@@ -1475,6 +1506,70 @@ impl<
         }
 
         Ok(())
+    }
+}
+
+impl<
+    M: PagingMetaData<VirtAddr = GuestPhysAddr>,
+    EPTE: GenericPTE,
+    GPTE: MoreGenericPTE<PhysAddr = GuestPhysAddr>,
+    H: PagingHandler,
+> GuestAddrSpace<M, EPTE, GPTE, H>
+{
+    pub fn ivc_get(
+        &mut self,
+        key: usize,
+        size: usize,
+        flags: usize,
+        shm_base_gpa_ptr: usize,
+    ) -> AxResult<usize> {
+        let shm_base_gpa = GuestPhysAddr::from_usize(0xdeadbeef);
+        let size = align_up_4k(size);
+        let instance_id = self.instance_id();
+        let flags = IVCFlags::from_bits_retain(flags);
+
+        // Try to create a new IVC channel.
+        if flags.contains(IVCFlags::CREATE) && !ivc::contains_channel(key) {
+            // Create a new IVC channel.
+            let mut channel = IVCChannel::allocate(key, size)?;
+
+            self.ept_map_linear(
+                shm_base_gpa,
+                channel.base_hpa(),
+                channel.size(),
+                MappingFlags::READ | MappingFlags::WRITE,
+                true, // Allow huge pages
+            )?;
+
+            channel.add_subscriber(instance_id, shm_base_gpa, size);
+
+            ivc::insert_channel(key, channel)?;
+        } else {
+            if flags.contains(IVCFlags::EXCL) && ivc::contains_channel(key) {
+                warn!("IVC channel with key {:#x} already exists", key);
+                return ax_err!(AlreadyExists, "IVC channel already exists");
+            }
+            // Subcribe to an existing IVC channel.
+            let (base_hpa, actual_size) =
+                ivc::subscribe_to_channel(key, instance_id, shm_base_gpa, size)?;
+            self.ept_map_linear(
+                shm_base_gpa,
+                base_hpa,
+                actual_size,
+                MappingFlags::READ | MappingFlags::WRITE,
+                true, // Allow huge pages
+            )?;
+        }
+
+        self.ivc_shm_keys.insert(key, shm_base_gpa);
+
+        // Write the base GPA to the guest.
+        self.copy_into_guest_of(
+            &shm_base_gpa.as_usize(),
+            GuestVirtAddr::from_usize(shm_base_gpa_ptr),
+        )?;
+
+        Ok(key)
     }
 }
 

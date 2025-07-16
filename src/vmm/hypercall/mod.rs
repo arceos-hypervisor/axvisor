@@ -1,12 +1,13 @@
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use axaddrspace::{GuestPhysAddr, MappingFlags};
-use axerrno::{AxResult, ax_err_type};
+use axerrno::{AxResult, ax_err, ax_err_type};
 use axhvc::{HyperCallCode, HyperCallResult};
 use axvcpu::AxVcpuAccessGuestState;
 
 use equation_defs::{GuestMappingType, InstanceType};
 use equation_defs::{get_pgcache_region_by_instance_id, get_scf_queue_buff_region_by_instance_id};
+use memory_addr::align_up_4k;
 
 use crate::libos::def::get_contents_from_shared_pages;
 use crate::libos::instance;
@@ -74,6 +75,13 @@ impl HyperCall {
                 self.args[4] as usize,
                 self.args[5] as usize,
             ),
+            HyperCallCode::HIVCGet => self.ivc_get(
+                self.args[0] as usize,
+                self.args[1] as usize,
+                self.args[2] as usize,
+                self.args[3] as usize,
+            ),
+            HyperCallCode::HIVCDt => self.ivc_dt(self.args[0] as usize),
             _ => {
                 unimplemented!()
             }
@@ -259,6 +267,86 @@ impl HyperCall {
     }
 }
 
+use crate::vmm::ivc::{self, IVCChannel, IVCFlags};
+
+/// IVC related hypercalls.
+impl HyperCall {
+    fn ivc_get(
+        &self,
+        key: usize,
+        size: usize,
+        flags: usize,
+        shm_base_gpa_ptr: usize,
+    ) -> HyperCallResult {
+        let vm_id = self.vm.id();
+        let flags = IVCFlags::from_bits_retain(flags);
+        let size = align_up_4k(size);
+        let shm_base_gpa_ptr = GuestPhysAddr::from_usize(shm_base_gpa_ptr);
+        info!(
+            "HIVCGet VM [{}], key {:#x}, size {:#x} flags {:?} raw_flags {:#x}",
+            vm_id,
+            key,
+            size,
+            flags,
+            flags.bits()
+        );
+
+        let shm_base_gpa = self.vm.alloc_one_shm_region(size)?;
+
+        // Try to create a new IVC channel.
+        if flags.contains(IVCFlags::CREATE) && !ivc::contains_channel(key) {
+            // Create a new IVC channel.
+            let mut channel = IVCChannel::allocate(key, size)?;
+
+            self.vm.map_region(
+                shm_base_gpa,
+                channel.base_hpa(),
+                channel.size(),
+                MappingFlags::READ | MappingFlags::WRITE,
+                true, // Allow huge pages
+            )?;
+
+            channel.add_subscriber(vm_id, shm_base_gpa, size);
+
+            ivc::insert_channel(key, channel)?;
+        } else {
+            if flags.contains(IVCFlags::EXCL) && ivc::contains_channel(key) {
+                warn!("IVC channel with key {:#x} already exists", key);
+                return ax_err!(AlreadyExists, "IVC channel already exists");
+            }
+            // Subcribe to an existing IVC channel.
+            let (base_hpa, actual_size) =
+                ivc::subscribe_to_channel(key, vm_id, shm_base_gpa, size)?;
+            self.vm.map_region(
+                shm_base_gpa,
+                base_hpa,
+                actual_size,
+                MappingFlags::READ | MappingFlags::WRITE,
+                true, // Allow huge pages
+            )?;
+        }
+
+        // Write the base GPA to the guest.
+        self.vm
+            .write_to_guest_of(shm_base_gpa_ptr, &shm_base_gpa.as_usize())?;
+
+        Ok(HyperCallCode::HIVCGet as usize)
+    }
+
+    fn ivc_dt(&self, key: usize) -> HyperCallResult {
+        info!("HIVCDt VM [{}], key {:#x}", self.vm.id(), key);
+
+        let vm_id = self.vm.id();
+
+        // Unsubscribe from the IVC channel.
+        let (base_gpa, size) = ivc::unsubscribe_from_channel(key, vm_id)?;
+
+        // Unmap the shared memory region from the guest.
+        self.vm.unmap_region(base_gpa, size)?;
+
+        Ok(HyperCallCode::HIVCDt as usize)
+    }
+}
 #[allow(unused)]
 mod vm_flags {
     use axaddrspace::MappingFlags;

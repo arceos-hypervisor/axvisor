@@ -32,7 +32,7 @@ use crate::libos::def::{
 use crate::libos::mm::gaddrspace::{GuestAddrSpace, init_shim_kernel, paging_err_to_ax_err};
 use crate::libos::percpu::EqOSPerCpu;
 use crate::libos::process::Process;
-use crate::libos::region::{HostPhysicalRegion, HostPhysicalRegionRef};
+use crate::region::{HostPhysicalRegion, HostPhysicalRegionRef};
 use crate::vmm::VCpu;
 use crate::vmm::config::{get_instance_cpus, get_instance_cpus_mask};
 
@@ -109,6 +109,7 @@ impl<H: PagingHandler> Instance<H> {
         self.instance_region().instance_id as usize
     }
 
+    #[allow(unused)]
     pub fn is_running(&self) -> bool {
         self.running.load(Ordering::Acquire)
     }
@@ -359,6 +360,34 @@ impl<H: PagingHandler> Instance<H> {
             .addrspace_mut()
             .alloc_mm_region_with_pages(requested_pages)?;
         Ok(())
+    }
+
+    pub fn process_ivc_get(
+        &self,
+        eptp: HostPhysAddr,
+        key: usize,
+        size: usize,
+        flags: usize,
+        shm_base_gpa_ptr: usize,
+    ) -> AxResult<usize> {
+        info!(
+            "Instance[{}] HIVCGet key {:#x}, size {:#x}, flags {:#x}, shm_base_gpa_ptr {:#x}",
+            self.id(),
+            key,
+            size,
+            flags,
+            shm_base_gpa_ptr
+        );
+
+        self.processes
+            .lock()
+            .get_mut(&eptp)
+            .ok_or_else(|| {
+                warn!("EPTP {:?} not found in processes", eptp);
+                ax_err_type!(InvalidInput, "Invalid EPTP")
+            })?
+            .addrspace_mut()
+            .ivc_get(key, size, flags, shm_base_gpa_ptr)
     }
 
     pub fn setup_init_task(&self, raw_args: &[u8]) -> AxResult {
