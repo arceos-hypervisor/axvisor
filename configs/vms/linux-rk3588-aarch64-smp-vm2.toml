@@ -2,37 +2,37 @@
 #
 [base]
 # Guest vm id.
-id = 1
+id = 2
 # Guest vm name.
-name = "linux"
+name = "linux-minimal"
 # Virtualization type.
 vm_type = 1
 # The number of virtual CPUs.
-cpu_num = 4
+cpu_num = 2
 # Guest vm physical cpu sets.
 # phys_cpu_sets = [1, 2, 4, 8, 16, 32, 64, 128]
-phys_cpu_ids = [0x00, 0x100, 0x200, 0x300]
-phys_cpu_sets = [1, 2, 4, 8]
+phys_cpu_ids = [0x200, 0x300]
+phys_cpu_sets = [4, 8]
 
 #
 # Vm kernel configs
 #
 [kernel]
 # The entry point of the kernel image.
-entry_point = 0x1020_0000
+entry_point = 0x1_1020_0000
 # The load address of the kernel image.
-kernel_load_addr = 0x1020_0000
+kernel_load_addr = 0x1_1020_0000
 # The load address of the device tree blob (DTB).
-dtb_load_addr = 0x1000_0000
+dtb_load_addr = 0x1_1000_0000
 # The load address of the ramdisk image.
-ramdisk_load_addr = 0x0a20_0000
+ramdisk_load_addr = 0x1_0a20_0000
 # The location of image: "memory" | "fs".
 # load from memory
 image_location = "memory"
 # The file path of the kernel image.
-kernel_path = "Image.bin"
+kernel_path = "Image-5.10.198-rt89-preempt.bin"
 # The file path of the device tree blob (DTB).
-dtb_path = "aio-rk3588-jd4.dtb"
+dtb_path = "aio-rk3588-jd4-vm2.dtb"
 # The file path of the ramdisk image.
 ramdisk_path = "ramdisk.img"
 
@@ -69,4 +69,7 @@ emu_devices = []
 
 # Pass-through devices.
 # Name Base-Ipa Base-Pa Length Alloc-Irq.
-passthrough_devices = []
+passthrough_devices = [
+    # ["uart@feb40000", 0xfeb4_0000, 0xfeb4_0000, 0x1000, 0x1],
+    # ["uart@feb50000", 0xfeb5_0000, 0xfeb4_0000, 0x1000, 0x1],
+]

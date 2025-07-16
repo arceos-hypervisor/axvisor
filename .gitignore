@@ -22,3 +22,6 @@ rusty-tags.vi
 
 # tools should be downloaded from github
 tools/*
+
+# initramfs
+*.cpio.gz

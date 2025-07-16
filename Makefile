@@ -41,6 +41,7 @@ MODE ?= release
 LOG ?= warn
 GICV3 ?= n
 V ?=
+GICV3 ?= n
 EXTRA_CONFIG ?=
 OUT_CONFIG ?= $(PWD)/.axconfig.toml
 
@@ -155,7 +156,7 @@ ifeq ($(PLAT_NAME), aarch64-raspi4)
   include scripts/make/raspi4.mk
 else ifeq ($(PLAT_NAME), aarch64-bsta1000b-virt-hv)
   include scripts/make/bsta1000b-fada.mk
-else ifeq ($(PLAT_NAME), aarch64-rk3588j-hv)
+else ifeq ($(PLAT_NAME), aarch64-rk3588j)
   include scripts/make/rk3588.mk
 endif
 
@@ -183,6 +184,12 @@ gdb:
 	  -ex 'target remote localhost:1234' \
 	  -ex 'b rust_entry' \
 	  -ex 'disp /16i $$pc'
+
+# Temporarily used for building image for the `aarch64-rk3588j` platform.
+image: build_image
+
+upload: image
+	$(call upload_image)
 
 clippy: oldconfig
 ifeq ($(origin ARCH), command line)

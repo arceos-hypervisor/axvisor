@@ -55,6 +55,12 @@ pub fn register_timer<F>(deadline: u64, handler: F) -> usize
 where
     F: FnOnce(TimeValue) + Send + 'static,
 {
+    info!("Registering timer...");
+    info!(
+        "deadline is {:#?} = {:#?}",
+        deadline,
+        TimeValue::from_nanos(deadline as u64)
+    );
     let timer_list = unsafe { TIMER_LIST.current_ref_mut_raw() };
     let mut timers = timer_list.lock();
     let token = TOKEN.fetch_add(1, Ordering::Release);
@@ -75,12 +81,14 @@ pub fn cancel_timer(token: usize) {
 
 /// Check and process any pending timer events
 pub fn check_events() {
+    // info!("Checking timer events...");
+    // info!("now is {:#?}", axhal::time::wall_time());
     let timer_list = unsafe { TIMER_LIST.current_ref_mut_raw() };
     loop {
         let now = axhal::time::wall_time();
         let event = timer_list.lock().expire_one(now);
         if let Some((_deadline, event)) = event {
-            trace!("pick one {:#?} to handler!!!", _deadline);
+            trace!("pick one {:#?} to handle!!!", _deadline);
             event.callback(now);
         } else {
             break;
@@ -90,6 +98,7 @@ pub fn check_events() {
 
 /// Schedule the next timer event based on the periodic interval
 pub fn scheduler_next_event() {
+    trace!("Scheduling next event...");
     let now_ns = axhal::time::monotonic_time_nanos();
     let deadline = now_ns + PERIODIC_INTERVAL_NANOS;
     trace!("PHY deadline {} !!!", deadline);

@@ -102,6 +102,7 @@ struct MemoryImage {
     pub kernel: PathBuf,
     pub dtb: Option<PathBuf>,
     pub bios: Option<PathBuf>,
+    pub ramdisk: Option<PathBuf>,
 }
 
 fn parse_config_file(config_file: &ConfigFile) -> Option<MemoryImage> {
@@ -138,11 +139,19 @@ fn parse_config_file(config_file: &ConfigFile) -> Option<MemoryImage> {
         .and_then(|v| v.as_str())
         .map(|v| convert_to_absolute(CONFIGS_DIR_PATH, v));
 
+    let ramdisk = config
+        .get("kernel")?
+        .as_table()?
+        .get("ramdisk_path")
+        .and_then(|v| v.as_str())
+        .map(|v| convert_to_absolute(CONFIGS_DIR_PATH, v));
+
     Some(MemoryImage {
         id,
         kernel,
         dtb,
         bios,
+        ramdisk,
     })
 }
 
@@ -174,12 +183,21 @@ fn generate_guest_img_loading_functions(
                 None => quote! { None },
             };
 
+            let ramdisk = match files.ramdisk {
+                Some(v) => {
+                    let s = v.display().to_string();
+                    quote! { Some(include_bytes!(#s)) }
+                }
+                None => quote! { None },
+            };
+
             memory_images.push(quote! {
                 MemoryImage {
                     id: #id,
                     kernel: include_bytes!(#kernel),
                     dtb: #dtb,
                     bios: #bios,
+                    ramdisk: #ramdisk,
                 }
             });
         }
@@ -196,6 +214,8 @@ fn generate_guest_img_loading_functions(
             pub dtb: Option<&'static [u8]>,
             /// bios image
             pub bios: Option<&'static [u8]>,
+            /// ramdisk image
+            pub ramdisk: Option<&'static [u8]>,
         }
 
         /// Get memory images from config file.
