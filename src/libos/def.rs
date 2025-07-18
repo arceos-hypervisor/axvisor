@@ -10,7 +10,9 @@ use equation_defs::*;
 
 use crate::vmm::{VCpuRef, VMRef};
 
-pub use equation_defs::gate::region::{EPTP_LIST_REGION_SIZE, PERCPU_REGION_SIZE, PerCPURegion};
+pub use equation_defs::gate::region::{
+    EPTP_LIST_REGION_SIZE, KSCHED_SHM_REGION_SIZE, PERCPU_REGION_SIZE, PerCPURegion,
+};
 pub use equation_defs::{INSTANCE_REGION_SIZE, PROCESS_INNER_REGION_SIZE, ProcessInnerRegion};
 
 pub const GUEST_MEM_REGION_BASE_GPA: GuestPhysAddr =
@@ -34,6 +36,8 @@ pub const GP_ALL_INSTANCE_PERCPU_REGION_GPA: GuestPhysAddr =
     GuestPhysAddr::from_usize(GP_ALL_INSTANCE_PERCPU_REGION_PA);
 
 pub const PERCPU_REGION_BASE_GPA: GuestPhysAddr = GuestPhysAddr::from_usize(PERCPU_REGION_BASE_PA);
+pub const KSCHED_SHM_REGION_BASE_GPA: GuestPhysAddr =
+    GuestPhysAddr::from_usize(KSCHED_SHM_REGION_BASE_PA);
 
 // pub const GUEST_MEMORY_REGION_BASE_GVA: GuestVirtAddr =
 //     GuestVirtAddr::from_usize(GUEST_MEMORY_REGION_BASE_VA);
@@ -45,6 +49,8 @@ pub const INSTANCE_REGION_BASE_GVA: GuestVirtAddr =
     GuestVirtAddr::from_usize(INSTANCE_REGION_BASE_VA as usize);
 pub const PERCPU_REGION_BASE_GVA: GuestVirtAddr =
     GuestVirtAddr::from_usize(PERCPU_REGION_BASE_VA as usize);
+pub const KSCHED_SHM_REGION_BASE_GVA: GuestVirtAddr =
+    GuestVirtAddr::from_usize(KSCHED_SHM_REGION_BASE_VA as usize);
 pub const SCF_QUEUE_REGION_BASE_GVA: GuestVirtAddr =
     GuestVirtAddr::from_usize(SCF_QUEUE_REGION_BASE_VA as usize);
 pub const PAGE_CACHE_POOL_BASE_GVA: GuestVirtAddr =
