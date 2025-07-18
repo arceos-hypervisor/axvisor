@@ -91,6 +91,9 @@ axhvc = { path = "./crates/axhvc" }
 [patch."https://github.com/EquationOS/equation_defs.git"]
 equation_defs = { path = "./crates/equation_defs" }
 
+[patch."https://github.com/arceos-org/allocator.git"]
+allocator = { path = "./crates/allocator" }
+
 [patch.crates-io]
 memory_addr = { path = "./crates/memory_addr/memory_addr" }
 memory_set = { path = "./crates/memory_addr/memory_set" }

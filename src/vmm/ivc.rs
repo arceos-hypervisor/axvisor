@@ -22,11 +22,11 @@ bitflags! {
     #[derive(Eq, PartialEq, Copy, Clone, Debug)]
     pub struct IVCFlags: usize {
         /// Create the channel if it does not exist.
-        const CREATE = 0x00001000;
+        const CREATE = 0o00001000;
         /// Fail if the channel already exists.
-        const EXCL = 0x00002000;
+        const EXCL = 0o00002000;
         /// Do not block if the channel is not available.
-        const NOWAIT = 0x00004000;
+        const NOWAIT = 0o00004000;
     }
 }
 

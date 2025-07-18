@@ -51,7 +51,6 @@ dependencies = [
 [[package]]
 name = "allocator"
 version = "0.1.1"
-source = "git+https://github.com/arceos-org/allocator.git?tag=v0.1.1#1d5b7a1b4fd8db4c9c9cea4e6012d15d42e2bf40"
 dependencies = [
  "bitmap-allocator",
  "buddy_system_allocator",
@@ -796,9 +795,9 @@ dependencies = [
 
 [[package]]
 name = "crc32fast"
-version = "1.4.2"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a97769d94ddab943e4510d138150169a2758b5ef3eb191a9ee688de3e23ef7b3"
+checksum = "9481c1c90cbf2ac953f07c8d4a58aa3945c425b7185c9154d67a65e4230da511"
 dependencies = [
  "cfg-if",
 ]

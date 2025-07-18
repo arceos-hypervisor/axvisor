@@ -177,7 +177,7 @@ impl HyperCall {
                 ax_err_type!(InvalidInput, "Failed to get SCF queue region")
             })?;
         // Map the SCF buffer region to the host Linux.
-        self.vm
+        let _ = self.vm
             .map_region(
                 scf_region_base_gpa,
                 scf_region_base_hpa,
@@ -188,7 +188,7 @@ impl HyperCall {
             .map_err(|e| {
                 warn!("Failed to map SCF buffer region: {:?}", e);
                 ax_err_type!(InvalidInput, "Failed to map SHM region")
-            })?;
+            });
         let scf_base_gpa_ptr = GuestPhysAddr::from_usize(scf_base_gpa_ptr);
         let scf_size_gpa_ptr = GuestPhysAddr::from_usize(scf_size_gpa_ptr);
         self.vm
@@ -208,7 +208,7 @@ impl HyperCall {
                 ax_err_type!(InvalidInput, "Failed to get page cache region")
             })?;
         // Map the page cache region to the host Linux.
-        self.vm
+        let _ = self.vm
             .map_region(
                 pgcache_base_gpa,
                 pgcache_base_hpa,
@@ -219,7 +219,7 @@ impl HyperCall {
             .map_err(|e| {
                 warn!("Failed to map page cache region: {:?}", e);
                 ax_err_type!(InvalidInput, "Failed to map page cache region")
-            })?;
+            });
 
         info!(
             "Instance [{instance_id}] host pgcache region at [{:#x}~{:#x}]",
@@ -330,7 +330,7 @@ impl HyperCall {
         self.vm
             .write_to_guest_of(shm_base_gpa_ptr, &shm_base_gpa.as_usize())?;
 
-        Ok(HyperCallCode::HIVCGet as usize)
+        Ok(0)
     }
 
     fn ivc_dt(&self, key: usize) -> HyperCallResult {
@@ -344,7 +344,7 @@ impl HyperCall {
         // Unmap the shared memory region from the guest.
         self.vm.unmap_region(base_gpa, size)?;
 
-        Ok(HyperCallCode::HIVCDt as usize)
+        Ok(0)
     }
 }
 #[allow(unused)]
