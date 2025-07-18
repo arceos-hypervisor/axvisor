@@ -32,9 +32,17 @@ const LOGO: &str = r"
           /____/\____/____/_____/   
 ";
 
+fn dump_equation_defs() {
+    info!("EquationDefs");
+
+    equation_defs::dump_addrs();
+}
+
 #[unsafe(no_mangle)]
 fn main() {
     axlog::ax_println!("{}", LOGO);
+
+    dump_equation_defs();
 
     info!("Starting virtualization...");
 

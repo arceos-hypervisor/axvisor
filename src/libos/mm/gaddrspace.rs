@@ -16,7 +16,7 @@ use page_table_multiarch::{
 
 use axaddrspace::npt::{EPTEntry, EPTMetadata};
 use axaddrspace::{AddrSpace, GuestPhysAddr, GuestVirtAddr, HostPhysAddr, HostVirtAddr};
-use equation_defs::bitmap_allocator::PageAllocator;
+use equation_defs::allocator::PageAllocator;
 use equation_defs::scf::SyscallQueueBufferMetadata;
 use equation_defs::task::context::TaskContext;
 use equation_defs::{
@@ -654,6 +654,15 @@ impl<
         unsafe {
             self.process_inner_region
                 .as_mut_ptr_of::<ProcessInnerRegion>()
+                .as_mut()
+        }
+        .unwrap()
+    }
+
+    pub fn instance_region_mut(&mut self) -> &mut InstanceRegion {
+        unsafe {
+            H::phys_to_virt(self.instance_region_base)
+                .as_mut_ptr_of::<InstanceRegion>()
                 .as_mut()
         }
         .unwrap()
@@ -1404,7 +1413,11 @@ impl<
         let start_addr = dst;
         let end_addr = start_addr.add(size);
 
-        if !self.gva_range.contains(start_addr) || !self.gva_range.contains(end_addr) {
+        if (!self.gva_range.contains(start_addr) || !self.gva_range.contains(end_addr))
+            && !(PROCESS_INNER_REGION_BASE_GVA
+                ..=PROCESS_INNER_REGION_BASE_GVA + PROCESS_INNER_REGION_SIZE)
+                .contains(&start_addr)
+        {
             return ax_err!(
                 InvalidInput,
                 alloc::format!("GVA [{:?}~{:?}] out of range", start_addr, end_addr).as_str()
@@ -1521,9 +1534,15 @@ impl<
         key: usize,
         size: usize,
         flags: usize,
-        shm_base_gpa_ptr: usize,
+        shm_base_gva_ptr: usize,
     ) -> AxResult<usize> {
-        let shm_base_gpa = GuestPhysAddr::from_usize(0xdeadbeef);
+        let shm_base = self
+            .instance_region_mut()
+            .shm_manager_mut()
+            .alloc_pages(size / PAGE_SIZE_4K, PAGE_SIZE_4K)?;
+
+        let shm_base_gpa = GuestPhysAddr::from_usize(shm_base);
+
         let size = align_up_4k(size);
         let instance_id = self.instance_id();
         let flags = IVCFlags::from_bits_retain(flags);
@@ -1552,6 +1571,15 @@ impl<
             // Subcribe to an existing IVC channel.
             let (base_hpa, actual_size) =
                 ivc::subscribe_to_channel(key, instance_id, shm_base_gpa, size)?;
+
+            debug!(
+                "Instance [{}] subscribing to IVC channel with key {:#x}, base HPA: {:?}, size: {:#x}",
+                self.instance_id(),
+                key,
+                base_hpa,
+                actual_size
+            );
+
             self.ept_map_linear(
                 shm_base_gpa,
                 base_hpa,
@@ -1564,10 +1592,7 @@ impl<
         self.ivc_shm_keys.insert(key, shm_base_gpa);
 
         // Write the base GPA to the guest.
-        self.copy_into_guest_of(
-            &shm_base_gpa.as_usize(),
-            GuestVirtAddr::from_usize(shm_base_gpa_ptr),
-        )?;
+        self.copy_into_guest_of(&shm_base, GuestVirtAddr::from_usize(shm_base_gva_ptr))?;
 
         Ok(key)
     }

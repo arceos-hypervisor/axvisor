@@ -133,11 +133,11 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
         key: usize,
         size: usize,
         flags: usize,
-        shm_base_gpa_ptr: usize,
+        shm_base_gva_ptr: usize,
     ) -> HyperCallResult {
         info!(
-            "HIVCGet key: {:#x}, size: {:#x}, flags: {:#x}, shm_base_gpa_ptr: {:#x}",
-            key, size, flags, shm_base_gpa_ptr
+            "HIVCGet key: {:#x}, size: {:#x}, flags: {:#x}, shm_base_gva_ptr: {:#x}",
+            key, size, flags, shm_base_gva_ptr
         );
 
         self.instance.process_ivc_get(
@@ -145,7 +145,7 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
             key,
             size,
             flags,
-            shm_base_gpa_ptr,
+            shm_base_gva_ptr,
         )
     }
 }

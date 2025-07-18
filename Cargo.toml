@@ -44,7 +44,7 @@ axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git" }
 axvmconfig = { git = "https://github.com/arceos-hypervisor/axvmconfig.git", default-features = false }
 axhvc = { git = "https://github.com/arceos-hypervisor/axhvc.git", branch = "equation" }
 
-equation_defs = { git = "https://github.com/EquationOS/equation_defs.git" }
+equation_defs = { git = "https://github.com/EquationOS/equation_defs.git", branch = "equation" }
 
 # System independent crates provided by ArceOS, these crates could be imported by remote url. 
 crate_interface = "0.1"

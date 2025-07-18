@@ -45,6 +45,10 @@ kernel-aspace-size = "0x0000_008f_ffff_f000"    # uint
 # Device specifications
 #
 [devices]
+# Memory regions with format (`base_paddr`, `size`).
+memory-regions = [
+    [0x2_0000_0000, 0x2_0000_0000], # Memory space after space reserved for the host kernel.
+]                               # [(uint, uint)]
 # MMIO regions with format (`base_paddr`, `size`).
 mmio-regions = [
     [0xb000_0000, 0x1000_0000], # PCI config space

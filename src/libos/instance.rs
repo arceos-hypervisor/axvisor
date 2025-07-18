@@ -368,15 +368,15 @@ impl<H: PagingHandler> Instance<H> {
         key: usize,
         size: usize,
         flags: usize,
-        shm_base_gpa_ptr: usize,
+        shm_base_gva_ptr: usize,
     ) -> AxResult<usize> {
         info!(
-            "Instance[{}] HIVCGet key {:#x}, size {:#x}, flags {:#x}, shm_base_gpa_ptr {:#x}",
+            "Instance[{}] HIVCGet key {:#x}, size {:#x}, flags {:#x}, shm_base_gva_ptr {:#x}",
             self.id(),
             key,
             size,
             flags,
-            shm_base_gpa_ptr
+            shm_base_gva_ptr
         );
 
         self.processes
@@ -387,7 +387,7 @@ impl<H: PagingHandler> Instance<H> {
                 ax_err_type!(InvalidInput, "Invalid EPTP")
             })?
             .addrspace_mut()
-            .ivc_get(key, size, flags, shm_base_gpa_ptr)
+            .ivc_get(key, size, flags, shm_base_gva_ptr)
     }
 
     pub fn setup_init_task(&self, raw_args: &[u8]) -> AxResult {
