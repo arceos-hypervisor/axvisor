@@ -66,7 +66,7 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
             HyperCallCode::HWrite => self.write(self.args[0], self.args[1], self.args[2]),
             HyperCallCode::HAllocMMRegion => self.alloc_mm_region(self.args[0] as usize),
             HyperCallCode::HIVCGet => self.ivc_get(
-                self.args[0] as usize,
+                self.args[0] as u32,
                 self.args[1] as usize,
                 self.args[2] as usize,
                 self.args[3] as usize,
@@ -130,7 +130,7 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
 
     fn ivc_get(
         &self,
-        key: usize,
+        key: u32,
         size: usize,
         flags: usize,
         shm_base_gva_ptr: usize,

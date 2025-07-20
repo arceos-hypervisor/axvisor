@@ -365,7 +365,7 @@ impl<H: PagingHandler> Instance<H> {
     pub fn process_ivc_get(
         &self,
         eptp: HostPhysAddr,
-        key: usize,
+        key: u32,
         size: usize,
         flags: usize,
         shm_base_gva_ptr: usize,

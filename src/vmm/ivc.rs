@@ -32,10 +32,10 @@ bitflags! {
 
 /// A global btree map to store IVC channels,
 /// indexed by (channel_key).
-static IVC_CHANNELS: Mutex<BTreeMap<usize, IVCChannel<PagingHandlerImpl>>> =
+static IVC_CHANNELS: Mutex<BTreeMap<u32, IVCChannel<PagingHandlerImpl>>> =
     Mutex::new(BTreeMap::new());
 
-pub fn insert_channel(channel_key: usize, channel: IVCChannel<PagingHandlerImpl>) -> AxResult<()> {
+pub fn insert_channel(channel_key: u32, channel: IVCChannel<PagingHandlerImpl>) -> AxResult<()> {
     let mut channels = IVC_CHANNELS.lock();
     if channels.insert(channel_key, channel).is_some() {
         Err(axerrno::ax_err_type!(
@@ -48,7 +48,7 @@ pub fn insert_channel(channel_key: usize, channel: IVCChannel<PagingHandlerImpl>
 }
 
 pub fn get_channel_info(
-    channel_key: &usize,
+    channel_key: &u32,
 ) -> AxResult<(HostPhysAddr, usize, Vec<(usize, GuestPhysAddr, usize)>)> {
     let channels = IVC_CHANNELS.lock();
     if let Some(channel) = channels.get(channel_key) {
@@ -61,7 +61,7 @@ pub fn get_channel_info(
     }
 }
 
-pub fn contains_channel(channel_key: usize) -> bool {
+pub fn contains_channel(channel_key: u32) -> bool {
     IVC_CHANNELS.lock().contains_key(&channel_key)
 }
 
@@ -73,11 +73,16 @@ pub fn contains_channel(channel_key: usize) -> bool {
 /// If the channel is successfully subscribed, it will add the subscriber VM ID to the channel and
 /// return the base address and size of the shared region in host physical address.
 pub fn subscribe_to_channel<'a>(
-    key: usize,
+    key: u32,
     subscriber_vm_id: usize,
     subscriber_gpa: GuestPhysAddr,
     subscriber_gpa_size: usize,
 ) -> AxResult<(HostPhysAddr, usize)> {
+    warn!(
+        "Subscribing to IVC channel key {:#x} VM {}",
+        key, subscriber_vm_id
+    );
+
     let mut channels = IVC_CHANNELS.lock();
     if let Some(channel) = channels.get_mut(&key) {
         if channel.size() < subscriber_gpa_size {
@@ -107,7 +112,7 @@ pub fn subscribe_to_channel<'a>(
 /// If the channel does not exist, it will return an error.
 /// If the channel exists, it will remove the subscriber VM ID from the channel and return the base address and size of the shared region in guest physical address of the subscriber VM.
 /// If the channel has no subscribers, it will remove the channel from the global map.
-pub fn unsubscribe_from_channel(key: usize, vm_id: usize) -> AxResult<(GuestPhysAddr, usize)> {
+pub fn unsubscribe_from_channel(key: u32, vm_id: usize) -> AxResult<(GuestPhysAddr, usize)> {
     let mut channels = IVC_CHANNELS.lock();
     if let Some(channel) = channels.get_mut(&key) {
         if let Some((base_gpa, size)) = channel.remove_subscriber(vm_id) {
@@ -128,7 +133,7 @@ pub fn unsubscribe_from_channel(key: usize, vm_id: usize) -> AxResult<(GuestPhys
 }
 
 pub struct IVCChannel<H: PagingHandler> {
-    key: usize,
+    key: u32,
     /// A list of subscriber VM IDs that are subscribed to this channel.
     /// The key is the subscriber VM ID, and the value is the base address of the shared region in
     /// guest physical address of the subscriber VM.
@@ -157,7 +162,7 @@ impl<H: PagingHandler> Drop for IVCChannel<H> {
 }
 
 impl<H: PagingHandler> IVCChannel<H> {
-    pub fn allocate(key: usize, size: usize) -> AxResult<Self> {
+    pub fn allocate(key: u32, size: usize) -> AxResult<Self> {
         let size = align_up_4k(size);
         let region = HostPhysicalRegion::allocate(size, Some(PAGE_SIZE_4K))?;
         Ok(Self {

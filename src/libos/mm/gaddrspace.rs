@@ -132,7 +132,7 @@ pub struct GuestAddrSpace<
     /// Page cache region, shared by all processes in the same instance.
     page_cache_region_base: Option<HostPhysAddr>,
     /// IVC shared memory regions, used for inter-VM communication.
-    ivc_shm_keys: BTreeMap<usize, GuestPhysAddr>,
+    ivc_shm_keys: BTreeMap<u32, GuestPhysAddr>,
 
     // Below are used for guest addrspace.
     gva_range: AddrRange<GuestVirtAddr>,
@@ -1531,7 +1531,7 @@ impl<
 {
     pub fn ivc_get(
         &mut self,
-        key: usize,
+        key: u32,
         size: usize,
         flags: usize,
         shm_base_gva_ptr: usize,
@@ -1580,7 +1580,7 @@ impl<
                 ivc::subscribe_to_channel(key, instance_id, shm_base_gpa, size)?;
 
             debug!(
-                "Instance [{}] subscribing to IVC channel with key {:#x}, base HPA: {:?}, size: {:#x}",
+                "Instance [{}] subscribing to IVC channel key {:#x}, base HPA: {:?}, size: {:#x}",
                 self.instance_id(),
                 key,
                 base_hpa,
@@ -1601,7 +1601,7 @@ impl<
         // Write the base GPA to the guest.
         self.copy_into_guest_of(&shm_base, GuestVirtAddr::from_usize(shm_base_gva_ptr))?;
 
-        Ok(key)
+        Ok(key as usize)
     }
 }
 

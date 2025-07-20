@@ -76,12 +76,12 @@ impl HyperCall {
                 self.args[5] as usize,
             ),
             HyperCallCode::HIVCGet => self.ivc_get(
-                self.args[0] as usize,
+                self.args[0] as u32,
                 self.args[1] as usize,
                 self.args[2] as usize,
                 self.args[3] as usize,
             ),
-            HyperCallCode::HIVCDt => self.ivc_dt(self.args[0] as usize),
+            HyperCallCode::HIVCDt => self.ivc_dt(self.args[0] as u32),
             _ => {
                 unimplemented!()
             }
@@ -275,7 +275,7 @@ use crate::vmm::ivc::{self, IVCChannel, IVCFlags};
 impl HyperCall {
     fn ivc_get(
         &self,
-        key: usize,
+        key: u32,
         size: usize,
         flags: usize,
         shm_base_gpa_ptr: usize,
@@ -335,7 +335,7 @@ impl HyperCall {
         Ok(0)
     }
 
-    fn ivc_dt(&self, key: usize) -> HyperCallResult {
+    fn ivc_dt(&self, key: u32) -> HyperCallResult {
         info!("HIVCDt VM [{}], key {:#x}", self.vm.id(), key);
 
         let vm_id = self.vm.id();
