@@ -321,6 +321,7 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
     use x86_64::registers::control::Cr4Flags;
     let _linux_ctx = &axhal::get_linux_context_list()[0];
     let cr4 = Cr4Flags::PHYSICAL_ADDRESS_EXTENSION
+        | Cr4Flags::FSGSBASE
         | Cr4Flags::PAGE_GLOBAL
         | Cr4Flags::OSFXSR
         | Cr4Flags::OSXMMEXCPT_ENABLE

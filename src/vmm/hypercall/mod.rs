@@ -177,7 +177,8 @@ impl HyperCall {
                 ax_err_type!(InvalidInput, "Failed to get SCF queue region")
             })?;
         // Map the SCF buffer region to the host Linux.
-        let _ = self.vm
+        let _ = self
+            .vm
             .map_region(
                 scf_region_base_gpa,
                 scf_region_base_hpa,
@@ -208,7 +209,8 @@ impl HyperCall {
                 ax_err_type!(InvalidInput, "Failed to get page cache region")
             })?;
         // Map the page cache region to the host Linux.
-        let _ = self.vm
+        let _ = self
+            .vm
             .map_region(
                 pgcache_base_gpa,
                 pgcache_base_hpa,

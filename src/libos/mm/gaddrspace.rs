@@ -1536,6 +1536,13 @@ impl<
         flags: usize,
         shm_base_gva_ptr: usize,
     ) -> AxResult<usize> {
+        debug!(
+            "ivc_get key: {:#x}, size: {:#x}, flags: {:#x}, shm_base_gva_ptr: {:#x}",
+            key, size, flags, shm_base_gva_ptr
+        );
+
+        debug!("Allocate {} pages for IVC channel", size / PAGE_SIZE_4K);
+
         let shm_base = self
             .instance_region_mut()
             .shm_manager_mut()
