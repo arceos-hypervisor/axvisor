@@ -44,7 +44,7 @@ use crate::libos::mm::gpt::{
     ENTRY_COUNT, GuestEntry, MoreGenericPTE, p1_index, p2_index, p3_index, p4_index, p5_index,
 };
 use crate::region::{HostPhysicalRegion, HostPhysicalRegionRef};
-use crate::vmm::ivc::{self, IVCChannel, IVCFlags};
+use crate::vmm::ivc::{self, IVCChannel, ShmFlags};
 
 pub type EqAddrSpace<H> = GuestAddrSpace<EPTMetadata, EPTEntry, GuestEntry, H>;
 
@@ -1529,6 +1529,68 @@ impl<
     H: PagingHandler,
 > GuestAddrSpace<M, EPTE, GPTE, H>
 {
+    pub fn ivc_shm_sync(
+        &mut self,
+        shmkey: u32,
+        flags: MappingFlags,
+        size: usize,
+        alignment: PageSize,
+    ) -> AxResult<GuestPhysAddr> {
+        let instance_id = self.instance_id();
+        debug!(
+            "Instance [{instance_id}] ivc_shm_sync key: {:#x}, size: {:#x}, flags: {:#x}, alignment: {:?}",
+            shmkey, size, flags, alignment
+        );
+
+        // To avoid potential GPA overlap issues, we do not use the same base GPA as
+        // the host Linux, instead, we allocate a new base GPA from the instance's ShmManager.
+        // Actualy, the shm base GPA wil be returned to the guest Instance through a quite long path,
+        // 1. The shmgpa will be return to axcli daemon process as the return value of this hypercall,
+        // 2. The axcli daemon will check the returned shmgpa, and fill it into the `ShmArgs` struct,
+        // which is passed by the shim as one of the  scf arguments.
+        let shm_base = self
+            .instance_region_mut()
+            .shm_manager_mut()
+            .alloc_pages(size / PAGE_SIZE_4K, alignment as usize)?;
+
+        let shm_base_gpa = GuestPhysAddr::from_usize(shm_base);
+
+        if !shm_base_gpa.is_aligned(alignment as usize) {
+            error!(
+                "Shared memory base GPA {:#x} is not aligned to {:#x}",
+                shm_base_gpa, alignment as usize
+            );
+            return ax_err!(
+                InvalidData,
+                "Shared memory base GPA is not aligned to the specified alignment"
+            );
+        }
+
+        // Subscribe to an existing IVC channel.
+        let (base_hpa, actual_size) =
+            ivc::subscribe_to_channel(shmkey, instance_id, shm_base_gpa, size)?;
+
+        debug!(
+            "Instance [{}] subscribing to IVC channel key {:#x}, base HPA: {:?}, size: {:#x}",
+            self.instance_id(),
+            shmkey,
+            base_hpa,
+            actual_size
+        );
+
+        self.ept_map_linear(
+            shm_base_gpa,
+            base_hpa,
+            actual_size,
+            flags,
+            true, // Allow huge pages
+        )?;
+
+        self.ivc_shm_keys.insert(shmkey, shm_base_gpa);
+
+        Ok(shm_base_gpa)
+    }
+
     pub fn ivc_get(
         &mut self,
         key: u32,
@@ -1552,10 +1614,10 @@ impl<
 
         let size = align_up_4k(size);
         let instance_id = self.instance_id();
-        let flags = IVCFlags::from_bits_retain(flags);
+        let flags = ShmFlags::from_bits_retain(flags);
 
         // Try to create a new IVC channel.
-        if flags.contains(IVCFlags::CREATE) && !ivc::contains_channel(key) {
+        if flags.contains(ShmFlags::IPC_CREAT) && !ivc::contains_channel(key) {
             // Create a new IVC channel.
             let mut channel = IVCChannel::allocate(key, size)?;
 
@@ -1571,7 +1633,7 @@ impl<
 
             ivc::insert_channel(key, channel)?;
         } else {
-            if flags.contains(IVCFlags::EXCL) && ivc::contains_channel(key) {
+            if flags.contains(ShmFlags::IPC_EXCL) && ivc::contains_channel(key) {
                 warn!("IVC channel with key {:#x} already exists", key);
                 return ax_err!(AlreadyExists, "IVC channel already exists");
             }

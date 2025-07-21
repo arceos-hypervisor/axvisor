@@ -390,6 +390,31 @@ impl<H: PagingHandler> Instance<H> {
             .ivc_get(key, size, flags, shm_base_gva_ptr)
     }
 
+    pub fn init_ivc_shm_sync(
+        &self,
+        shmkey: u32,
+        flags: MappingFlags,
+        size: usize,
+        alignment: PageSize,
+    ) -> AxResult<GuestPhysAddr> {
+        info!(
+            "Instance[{}] initializing IVC SHM sync: shmkey {:#x}, flags {:#x}, size {:#x}, alignment {:?}",
+            self.id(),
+            shmkey,
+            flags,
+            size,
+            alignment
+        );
+
+        self.processes
+            .lock()
+            .first_entry()
+            .expect("Instance should have at least one process")
+            .get_mut()
+            .addrspace_mut()
+            .ivc_shm_sync(shmkey, flags, size, alignment)
+    }
+
     pub fn setup_init_task(&self, raw_args: &[u8]) -> AxResult {
         let iid = self.id();
         info!(

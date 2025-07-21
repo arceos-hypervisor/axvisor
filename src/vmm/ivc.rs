@@ -13,20 +13,49 @@ use page_table_multiarch::PagingHandler;
 
 use crate::region::HostPhysicalRegion;
 
-// /* resource get request flags */
-// #define IPC_CREAT  00001000   /* create if key is nonexistent */
-// #define IPC_EXCL   00002000   /* fail if key exists */
-// #define IPC_NOWAIT 00004000   /* return error on wait */
+// https://elixir.bootlin.com/linux/v6.8.10/source/include/uapi/asm-generic/hugetlb_encode.h#L26
+
+pub const SHM_HUGE_SHIFT: usize = 26;
+#[allow(unused)]
+pub const SHM_HUGE_MASK: usize = 0x3f << SHM_HUGE_SHIFT;
+
 bitflags! {
-    /// Flags for Inter-VM communication (IVC) channels.
+    /// System V Shared Memory Flags
     #[derive(Eq, PartialEq, Copy, Clone, Debug)]
-    pub struct IVCFlags: usize {
-        /// Create the channel if it does not exist.
-        const CREATE = 0o00001000;
-        /// Fail if the channel already exists.
-        const EXCL = 0o00002000;
-        /// Do not block if the channel is not available.
-        const NOWAIT = 0o00004000;
+    pub struct ShmFlags: usize {
+        // --- Standard permission bits (same as open(2)) ---
+        /// Read permission (same as 0o400 / S_IRUGO)
+        const SHM_R         = 0o00000400;
+        /// Write permission (same as 0o200 / S_IWUGO)
+        const SHM_W         = 0o00000200;
+
+        // --- IPC resource control flags ---
+        /// Create if key does not exist
+        const IPC_CREAT     = 0o00001000;
+        /// Fail if key exists
+        const IPC_EXCL      = 0o00002000;
+        /// Don't block if not available
+        const IPC_NOWAIT    = 0o00004000;
+
+        // --- shmget() special flags ---
+        /// Use HugeTLB pages
+        const SHM_HUGETLB   = 0o00004000;
+        /// Don't reserve swap space
+        const SHM_NORESERVE = 0o00010000;
+
+        // --- shmat() attach flags ---
+        /// Read-only attach
+        const SHM_RDONLY    = 0o00010000;
+        /// Round attach address to SHMLBA
+        const SHM_RND       = 0o00020000;
+        /// Replace existing mapping
+        const SHM_REMAP     = 0o00040000;
+        /// Execution access
+        const SHM_EXEC      = 0o00100000;
+
+        // --- Optional: huge page size encode mask (needs constants from hugetlb_encode.h)
+        const SHM_HUGE_2MB    = 21 << SHM_HUGE_SHIFT;
+        const SHM_HUGE_1GB    = 30 << SHM_HUGE_SHIFT;
     }
 }
 
@@ -132,13 +161,37 @@ pub fn unsubscribe_from_channel(key: u32, vm_id: usize) -> AxResult<(GuestPhysAd
     }
 }
 
+enum IVCRegionType<H: PagingHandler> {
+    /// IVC type inherited from host shared memory region.
+    Shm { base: HostPhysAddr, size: usize },
+    /// IVC type for guest shared memory region.
+    IVC { region: HostPhysicalRegion<H> },
+}
+
+impl<H: PagingHandler> IVCRegionType<H> {
+    pub fn base(&self) -> HostPhysAddr {
+        match self {
+            IVCRegionType::Shm { base, .. } => *base,
+            IVCRegionType::IVC { region } => region.base(),
+        }
+    }
+
+    pub fn size(&self) -> usize {
+        match self {
+            IVCRegionType::Shm { size, .. } => *size,
+            IVCRegionType::IVC { region } => region.size(),
+        }
+    }
+}
+
 pub struct IVCChannel<H: PagingHandler> {
     key: u32,
     /// A list of subscriber VM IDs that are subscribed to this channel.
     /// The key is the subscriber VM ID, and the value is the base address of the shared region in
     /// guest physical address of the subscriber VM.
     subscriber_vms: BTreeMap<usize, (GuestPhysAddr, usize)>,
-    region: HostPhysicalRegion<H>,
+    region: IVCRegionType<H>,
+    // region: HostPhysicalRegion<H>,
 }
 
 impl<H: PagingHandler> core::fmt::Debug for IVCChannel<H> {
@@ -158,6 +211,12 @@ impl<H: PagingHandler> Drop for IVCChannel<H> {
     fn drop(&mut self) {
         // Free the shared region frame when the channel is dropped.
         debug!("Dropping IVCChannel {:#x}", self.key);
+        match self.region {
+            IVCRegionType::Shm { .. } => {}
+            IVCRegionType::IVC { region: _ } => {
+                // Deallocate the host physical region.
+            }
+        }
     }
 }
 
@@ -168,7 +227,18 @@ impl<H: PagingHandler> IVCChannel<H> {
         Ok(Self {
             key,
             subscriber_vms: BTreeMap::new(),
-            region,
+            region: IVCRegionType::IVC { region },
+        })
+    }
+
+    pub fn construct_from_shm(key: u32, size: usize, base_hpa: HostPhysAddr) -> AxResult<Self> {
+        Ok(Self {
+            key,
+            subscriber_vms: BTreeMap::new(),
+            region: IVCRegionType::Shm {
+                base: base_hpa,
+                size,
+            },
         })
     }
 

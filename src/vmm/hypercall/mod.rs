@@ -1,13 +1,16 @@
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use axaddrspace::{GuestPhysAddr, MappingFlags};
+use axaddrspace::{GuestPhysAddr, GuestVirtAddr, MappingFlags};
 use axerrno::{AxResult, ax_err, ax_err_type};
 use axhvc::{HyperCallCode, HyperCallResult};
 use axvcpu::AxVcpuAccessGuestState;
 
 use equation_defs::{GuestMappingType, InstanceType};
 use equation_defs::{get_pgcache_region_by_instance_id, get_scf_queue_buff_region_by_instance_id};
-use memory_addr::align_up_4k;
+use memory_addr::{
+    MemoryAddr, PAGE_SIZE_1G, PAGE_SIZE_2M, PAGE_SIZE_4K, align_up, align_up_4k, is_aligned,
+};
+use page_table_multiarch::PageSize;
 
 use crate::libos::def::get_contents_from_shared_pages;
 use crate::libos::instance;
@@ -97,6 +100,13 @@ impl HyperCall {
                 self.args[1] as usize,
                 self.args[2] as usize,
                 self.args[3] as usize,
+            ),
+            HyperCallCode::HIVCSHMAt => self.ivc_shm_at(
+                self.args[0] as usize,
+                self.args[1] as u32,
+                self.args[2] as usize,
+                self.args[3] as usize,
+                self.args[4] as usize,
             ),
             _ => {
                 unimplemented!();
@@ -269,10 +279,109 @@ impl HyperCall {
     }
 }
 
-use crate::vmm::ivc::{self, IVCChannel, IVCFlags};
+use crate::vmm::ivc::{self, IVCChannel, ShmFlags};
 
 /// IVC related hypercalls.
 impl HyperCall {
+    /// Register a new IVC channel connected with the shm region registed by host Linux.
+    /// This function will create a new IVC channel with the given key and size.
+    ///
+    /// The shmid is obtained by axcli daemon in host Linux,
+    /// and the shm region is registered by axcli daemon in host Linux.
+    ///
+    /// Currently this IVC channel is used to setup a shared memory region between
+    /// the host Linux and a guest instance, so a `instance_id` is required to identify the guest instance.
+    fn ivc_shm_at(
+        &self,
+        instance_id: usize,
+        shmkey: u32,
+        addr: usize,
+        size: usize,
+        shmflg: usize,
+    ) -> HyperCallResult {
+        let host_gva = GuestVirtAddr::from_usize(addr);
+        let (host_gpa, _gflags, pg_size) = self
+            .vcpu
+            .get_arch_vcpu()
+            .guest_page_table_query(host_gva)
+            .map_err(|err| {
+                warn!(
+                    "Failed to query guest page table for host GVA {:#x}: {:?}",
+                    host_gva, err
+                );
+                ax_err_type!(InvalidInput, "Invalid guest virtual address")
+            })?;
+
+        if !is_aligned(size, pg_size as usize) {
+            warn!(
+                "Size {:#x} is not aligned to {:?} for gva {:?}",
+                size, pg_size, host_gva
+            );
+            return ax_err!(InvalidInput, "Size is not aligned to page size");
+        }
+
+        let (hpa, hflags, _hpgsize) =
+            self.vm.guest_phys_to_host_phys(host_gpa).ok_or_else(|| {
+                warn!(
+                    "Failed to convert guest physical address {:#x} to host physical address",
+                    host_gpa
+                );
+                ax_err_type!(InvalidData, "Invalid guest physical address")
+            })?;
+
+        let flags = ShmFlags::from_bits_retain(shmflg);
+
+        let alignment = if flags.contains(ShmFlags::SHM_HUGETLB) {
+            if flags.contains(ShmFlags::SHM_HUGE_1GB) {
+                // Huge pages are always 1GB, so we align the size to 1GB.
+                PageSize::Size1G
+            } else if flags.contains(ShmFlags::SHM_HUGE_2MB) {
+                // Huge pages are always 2MB, so we align the size to 2MB.
+                PageSize::Size2M
+            } else {
+                return ax_err!(InvalidInput, "Invalid huge page size for IVC channel");
+            }
+        } else {
+            // Regular pages are 4KB, so we align the size to 4KB.
+            PageSize::Size4K
+        };
+
+        if !host_gva.is_aligned(alignment as usize) {
+            warn!(
+                "Host GVA {:#x} is not aligned to {:?} for IVC channel",
+                host_gva, alignment
+            );
+            return ax_err!(InvalidInput, "Host GVA is not aligned to page size");
+        }
+
+        // We allow that the host GVA page size is larger than the alignment.
+        if alignment as usize > pg_size as usize {
+            warn!(
+                "Host GVA {:#x} page size {:#?} does not match alignment {:?}",
+                host_gva, pg_size, alignment
+            );
+            return ax_err!(
+                InvalidInput,
+                "Host GVA page size does not match IVC channel alignment"
+            );
+        }
+
+        let instance_ref = instance::get_instances_by_id(instance_id).ok_or_else(|| {
+            warn!("Instance with ID {} not found", instance_id);
+            ax_err_type!(InvalidInput, "Instance not found")
+        })?;
+
+        // Construct the IVC channel from the host shared memory region.
+        let channel = IVCChannel::construct_from_shm(shmkey, size, hpa)?;
+        // Insert the IVC channel into the global map.
+        ivc::insert_channel(shmkey, channel)?;
+
+        // Sync the shm mapping to the instance.
+        let instance_gpa = instance_ref.init_ivc_shm_sync(shmkey, hflags, size, alignment)?;
+
+        Ok(instance_gpa.as_usize())
+    }
+
     fn ivc_get(
         &self,
         key: u32,
@@ -281,22 +390,47 @@ impl HyperCall {
         shm_base_gpa_ptr: usize,
     ) -> HyperCallResult {
         let vm_id = self.vm.id();
-        let flags = IVCFlags::from_bits_retain(flags);
-        let size = align_up_4k(size);
+        let flags = ShmFlags::from_bits_retain(flags);
+
+        let (size, alignment) = if flags.contains(ShmFlags::SHM_HUGETLB) {
+            if flags.contains(ShmFlags::SHM_HUGE_1GB) {
+                // Huge pages are always 1GB, so we align the size to 1GB.
+                (align_up(size, PAGE_SIZE_1G), PAGE_SIZE_1G)
+            } else if flags.contains(ShmFlags::SHM_HUGE_2MB) {
+                // Huge pages are always 2MB, so we align the size to 2MB.
+                (align_up(size, PAGE_SIZE_2M), PAGE_SIZE_2M)
+            } else {
+                return ax_err!(InvalidInput, "Invalid huge page size for IVC channel");
+            }
+        } else {
+            // Regular pages are 4KB, so we align the size to 4KB.
+            (align_up_4k(size), PAGE_SIZE_4K)
+        };
+
         let shm_base_gpa_ptr = GuestPhysAddr::from_usize(shm_base_gpa_ptr);
         info!(
-            "HIVCGet VM [{}], key {:#x}, size {:#x} flags {:?} raw_flags {:#x}",
+            "HIVCGet VM [{}], key {:#x}, size {:#x} alignment {:#x}",
+            vm_id, key, size, alignment
+        );
+        info!(
+            "HIVCGet VM [{}], flags {:?} raw_flags {:#x}",
             vm_id,
-            key,
-            size,
             flags,
             flags.bits()
         );
 
-        let shm_base_gpa = self.vm.alloc_one_shm_region(size)?;
+        let shm_base_gpa = self.vm.alloc_one_shm_region(size, alignment)?;
+
+        if !shm_base_gpa.is_aligned(alignment) {
+            error!(
+                "HIVCGet VM [{}] failed to allocate shared memory region at {:#x} with size {:#x} alignment {:#x}",
+                vm_id, shm_base_gpa, size, alignment
+            );
+            return ax_err!(NoMemory, "Failed to allocate shared memory region");
+        }
 
         // Try to create a new IVC channel.
-        if flags.contains(IVCFlags::CREATE) && !ivc::contains_channel(key) {
+        if flags.contains(ShmFlags::IPC_CREAT) && !ivc::contains_channel(key) {
             // Create a new IVC channel.
             let mut channel = IVCChannel::allocate(key, size)?;
 
@@ -312,7 +446,7 @@ impl HyperCall {
 
             ivc::insert_channel(key, channel)?;
         } else {
-            if flags.contains(IVCFlags::EXCL) && ivc::contains_channel(key) {
+            if flags.contains(ShmFlags::IPC_EXCL) && ivc::contains_channel(key) {
                 warn!("IVC channel with key {:#x} already exists", key);
                 return ax_err!(AlreadyExists, "IVC channel already exists");
             }
