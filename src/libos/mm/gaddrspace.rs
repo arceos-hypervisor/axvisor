@@ -140,7 +140,9 @@ pub struct GuestAddrSpace<
     /// Guest mapping type.
     guest_mapping: GuestMapping<H>,
     /// Guest virtual address areas in GVA.
-    /// This fields only stores GVA areas that mapped through `guest_map_alloc()`.
+    /// This fields only stores GVA areas that mapped through `guest_map_alloc()`,
+    /// specially, this area is used to stored the mapping info of `gate process` and `eqloader`,
+    /// which is loaded into guest address space by AxVisor through `guest_map_alloc()`.
     gva_areas: BTreeMap<GuestVirtAddr, GuestMemoryArea>,
 
     /// Guest Page Table levels.
@@ -1987,6 +1989,24 @@ impl<
             return Err(PagingError::AlreadyMapped);
         }
         *entry = MoreGenericPTE::new_page(target.align_down(page_size), flags, page_size.is_huge());
+        Ok(())
+    }
+
+    pub fn guest_clear_mapped_area(&mut self) -> AxResult {
+        debug!("guest_clear_mapped_area");
+
+        let unmapped_areas = self.gva_areas.clone();
+        // Clear all GVA areas.
+        self.gva_areas.clear();
+
+        // Unmap all guest virtual addresses.
+        for (gva, area) in unmapped_areas {
+            debug!("Unmapping GVA area: {:?}", area);
+            for vaddr in PageIter4K::new(gva, gva.add(area.size())).unwrap() {
+                let (_paddr, _page_size) = self.unmap(vaddr).map_err(paging_err_to_ax_err)?;
+            }
+        }
+
         Ok(())
     }
 

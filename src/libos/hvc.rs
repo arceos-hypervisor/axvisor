@@ -71,6 +71,7 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
                 self.args[2] as usize,
                 self.args[3] as usize,
             ),
+            HyperCallCode::HClearGuestAreas => self.clear_guest_areas(),
             _ => {
                 unimplemented!();
             }
@@ -126,6 +127,13 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
             );
         }
         Ok(new_pid)
+    }
+
+    fn clear_guest_areas(&self) -> HyperCallResult {
+        info!("HClearGuestAreas");
+        self.instance
+            .clear_guest_areas(self.pcpu.current_ept_root())?;
+        Ok(0)
     }
 
     fn ivc_get(

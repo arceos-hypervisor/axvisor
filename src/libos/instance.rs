@@ -570,6 +570,21 @@ impl<H: PagingHandler> Instance<H> {
         Ok(new_pid)
     }
 
+    pub fn clear_guest_areas(&self, eptp: HostPhysAddr) -> AxResult {
+        info!("Clearing guest memory areas for EPTP {:?}", eptp);
+
+        self.processes
+            .lock()
+            .get_mut(&eptp)
+            .ok_or_else(|| {
+                warn!("EPTP {:?} not found in processes", eptp);
+                ax_err_type!(InvalidInput, "Invalid EPTP")
+            })?
+            .addrspace_mut()
+            .guest_clear_mapped_area()?;
+        Ok(())
+    }
+
     /// Remove a process from the instance by its EPTP root paddr.
     /// If the process is the last one in the instance and there are no running tasks,
     /// the instance will be removed.
