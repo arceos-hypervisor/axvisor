@@ -143,6 +143,7 @@ pub struct GuestAddrSpace<
     /// This fields only stores GVA areas that mapped through `guest_map_alloc()`,
     /// specially, this area is used to stored the mapping info of `gate process` and `eqloader`,
     /// which is loaded into guest address space by AxVisor through `guest_map_alloc()`.
+    /// It may be cleared by `HClearGuestAreas` hypercall.
     gva_areas: BTreeMap<GuestVirtAddr, GuestMemoryArea>,
 
     /// Guest Page Table levels.
