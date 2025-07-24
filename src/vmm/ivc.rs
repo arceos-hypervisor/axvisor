@@ -64,12 +64,29 @@ bitflags! {
 static IVC_CHANNELS: Mutex<BTreeMap<u32, IVCChannel<PagingHandlerImpl>>> =
     Mutex::new(BTreeMap::new());
 
-pub fn insert_channel(channel_key: u32, channel: IVCChannel<PagingHandlerImpl>) -> AxResult<()> {
+/// Insert a new IVC channel into the global map.
+/// If the channel already exists and `remove_collision` is false, it will return an error.
+/// If `remove_collision` is true, it will remove the existing channel and insert the new one.
+/// Returns `Ok(())` if the channel is inserted successfully, or an error if it already exists and `remove_collision` is false.
+pub fn insert_channel(
+    channel_key: u32,
+    channel: IVCChannel<PagingHandlerImpl>,
+    remove_collision: bool,
+) -> AxResult<()> {
     let mut channels = IVC_CHANNELS.lock();
-    if channels.insert(channel_key, channel).is_some() {
-        Err(axerrno::ax_err_type!(
+
+    if channels.contains_key(&channel_key) && !remove_collision {
+        return ax_err!(
             AlreadyExists,
-            "IVC channel already exists"
+            format!("IVC channel key {:#x} already exists", channel_key)
+        );
+    }
+
+    if channels.insert(channel_key, channel).is_some() && !remove_collision {
+        // The channel will be removed peacefully if it already exists and `remove_collision` is true.
+        Err(axerrno::ax_err_type!(
+            BadState,
+            "We have made sure that the channel key does not exist, but it does exist now."
         ))
     } else {
         Ok(())

@@ -374,7 +374,7 @@ impl HyperCall {
         // Construct the IVC channel from the host shared memory region.
         let channel = IVCChannel::construct_from_shm(shmkey, size, hpa)?;
         // Insert the IVC channel into the global map.
-        ivc::insert_channel(shmkey, channel)?;
+        ivc::insert_channel(shmkey, channel, true)?;
 
         // Sync the shm mapping to the instance.
         let instance_gpa = instance_ref.init_ivc_shm_sync(shmkey, hflags, size, alignment)?;
@@ -444,7 +444,7 @@ impl HyperCall {
 
             channel.add_subscriber(vm_id, shm_base_gpa, size);
 
-            ivc::insert_channel(key, channel)?;
+            ivc::insert_channel(key, channel, false)?;
         } else {
             if flags.contains(ShmFlags::IPC_EXCL) && ivc::contains_channel(key) {
                 warn!("IVC channel with key {:#x} already exists", key);

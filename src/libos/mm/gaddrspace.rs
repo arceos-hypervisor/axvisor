@@ -1634,7 +1634,7 @@ impl<
 
             channel.add_subscriber(instance_id, shm_base_gpa, size);
 
-            ivc::insert_channel(key, channel)?;
+            ivc::insert_channel(key, channel, false)?;
         } else {
             if flags.contains(ShmFlags::IPC_EXCL) && ivc::contains_channel(key) {
                 warn!("IVC channel with key {:#x} already exists", key);
