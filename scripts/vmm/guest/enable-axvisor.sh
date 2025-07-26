@@ -10,6 +10,9 @@ fi
 
 sudo $JH disable
 sudo rmmod jailhouse
+sudo rmmod eqdriver
 sudo insmod $JH_DIR/driver/jailhouse.ko
+sudo insmod eqdriver.ko
 sudo chown $(whoami) /dev/jailhouse
+sudo chown $(whoami) /dev/eqmanager
 sudo $JH enable "$1"
