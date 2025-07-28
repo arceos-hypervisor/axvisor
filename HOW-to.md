@@ -91,12 +91,25 @@ make PLATFORM=x86_64-qemu-linux SMP=4 LOG=debug scp_to_qemu
 
     Parameter `1` means CPU number reserved for ArceOS.
 
-6. Initialize Shim, install eqdriver kernel module.
-    `sudo insmod eqdriver.ko`
+6. Initialize Shim.
     `./axcli instance init`
 
 7. Execute a Linux executible
     `sudo ./axcli instance execute /usr/bin/echo 123`
+
+8. If you want to boot a junction instance.
+    * First, initialize caladan runtime environment.
+        e.g. `sudo ./setup_machine.sh`
+
+        you can decrease the reserved huge pages number to avoid OOM in 
+        
+        `setup_machine.sh`
+        `echo 512 > ${n}/hugepages/hugepages-2048kB/nr_hugepages`
+
+    * on one terminal: start iokerneld
+        `sudo ./iokerneld ias no_hw_qdel noht -- --allow 00:00.0 --vdev=net_tap0`
+    * on another teminal ( after step 6, the shim has been initialized ).
+        `sudo ./axcli instance execute artifact/junction_run artifact/caladan_test.config --interpreter_path artifact/glibc/ld.so --glibc_path artifact/glibc -- /usr/bin/cat .bashrc`
 
 ## Development
 
