@@ -9,7 +9,7 @@ jobs:
       fail-fast: false
       matrix:
         arch: [x86_64, riscv64, aarch64]
-        rust-toolchain: [nightly-2024-12-25, nightly]
+        rust-toolchain: [nightly-2025-05-20, nightly]
     env:
       RUSTUP_TOOLCHAIN: ${{ matrix.rust-toolchain }}
     steps:
@@ -30,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rust-toolchain: [nightly-2024-12-25, nightly]
+        rust-toolchain: [nightly-2025-05-20, nightly]
     env:
       RUSTUP_TOOLCHAIN: ${{ matrix.rust-toolchain }}
     steps:
@@ -51,8 +51,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        arch: [x86_64, riscv64, aarch64]
-        rust-toolchain: [nightly-2024-12-25, nightly]
+        plat: [aarch64-dyn]
+        rust-toolchain: [nightly-2025-05-20, nightly]
     env:
       RUSTUP_TOOLCHAIN: ${{ matrix.rust-toolchain }}
     steps:
@@ -66,4 +66,4 @@ jobs:
     - run: cargo install cargo-binutils
     - name: Build the repo
       continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
-      run: make ARCH=${{ matrix.arch }} build
+      run: make MYPLAT=axplat-${{ matrix.plat }} build

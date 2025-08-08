@@ -102,6 +102,7 @@ struct MemoryImage {
     pub kernel: PathBuf,
     pub dtb: Option<PathBuf>,
     pub bios: Option<PathBuf>,
+    pub ramdisk: Option<PathBuf>,
 }
 
 fn parse_config_file(config_file: &ConfigFile) -> Option<MemoryImage> {
@@ -138,11 +139,19 @@ fn parse_config_file(config_file: &ConfigFile) -> Option<MemoryImage> {
         .and_then(|v| v.as_str())
         .map(|v| convert_to_absolute(CONFIGS_DIR_PATH, v));
 
+    let ramdisk = config
+        .get("kernel")?
+        .as_table()?
+        .get("ramdisk_path")
+        .and_then(|v| v.as_str())
+        .map(|v| convert_to_absolute(CONFIGS_DIR_PATH, v));
+
     Some(MemoryImage {
         id,
         kernel,
         dtb,
         bios,
+        ramdisk,
     })
 }
 
@@ -174,12 +183,21 @@ fn generate_guest_img_loading_functions(
                 None => quote! { None },
             };
 
+            let ramdisk = match files.ramdisk {
+                Some(v) => {
+                    let s = v.display().to_string();
+                    quote! { Some(include_bytes!(#s)) }
+                }
+                None => quote! { None },
+            };
+
             memory_images.push(quote! {
                 MemoryImage {
                     id: #id,
                     kernel: include_bytes!(#kernel),
                     dtb: #dtb,
                     bios: #bios,
+                    ramdisk: #ramdisk,
                 }
             });
         }
@@ -196,6 +214,8 @@ fn generate_guest_img_loading_functions(
             pub dtb: Option<&'static [u8]>,
             /// bios image
             pub bios: Option<&'static [u8]>,
+            /// ramdisk image
+            pub ramdisk: Option<&'static [u8]>,
         }
 
         /// Get memory images from config file.
@@ -216,7 +236,7 @@ fn main() -> io::Result<()> {
     let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
 
     let platform = env::var("AX_PLATFORM").unwrap_or("".to_string());
-    println!("cargo:rustc-cfg=platform=\"{}\"", platform);
+    println!("cargo:rustc-cfg=platform=\"{platform}\"");
 
     if platform != "dummy" {
         gen_linker_script(&arch, platform.as_str()).unwrap();
@@ -254,7 +274,7 @@ fn main() -> io::Result<()> {
             generate_guest_img_loading_functions(&mut output_file, config_files)?;
         }
         Err(error) => {
-            writeln!(output_file, "    compile_error!(\"{}\")", error)?;
+            writeln!(output_file, "    compile_error!(\"{error}\")")?;
             writeln!(output_file, "}}\n")?;
         }
     }
@@ -262,7 +282,7 @@ fn main() -> io::Result<()> {
 }
 
 fn gen_linker_script(arch: &str, platform: &str) -> io::Result<()> {
-    let fname = format!("linker_{}.lds", platform);
+    let fname = format!("linker_{platform}.lds");
     let output_arch = if arch == "x86_64" {
         "i386:x86-64"
     } else if arch.contains("riscv") {
@@ -276,7 +296,7 @@ fn gen_linker_script(arch: &str, platform: &str) -> io::Result<()> {
         "%KERNEL_BASE%",
         &format!("{:#x}", axconfig::plat::KERNEL_BASE_VADDR),
     );
-    let ld_content = ld_content.replace("%SMP%", &format!("{}", axconfig::SMP));
+    let ld_content = ld_content.replace("%SMP%", &format!("{}", axconfig::plat::CPU_NUM));
 
     // target/<target_triple>/<mode>/build/axvisor-xxxx/out
     let out_dir = std::env::var("OUT_DIR").unwrap();

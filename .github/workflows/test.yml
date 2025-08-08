@@ -13,8 +13,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        arch: [riscv64, aarch64]
-        rust-toolchain: [nightly-2024-12-25, nightly]
+        # arch: [riscv64, aarch64]
+        plat: [aarch64-dyn]
+        rust-toolchain: [nightly-2025-05-20, nightly]
     steps:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
@@ -26,12 +27,12 @@ jobs:
     - uses: arceos-org/setup-qemu@v0.1
       with:
         version: ${{ env.qemu-version }}
-        arch_list: ${{ matrix.arch }}
+        arch_list: aarch64
     - uses: ./.github/workflows/actions/setup-nimbos-guest-image
       with:
         nimbos-version: 'tags/v0.7'
-        arch: ${{ matrix.arch }}
-        disk-path: ${{ github.workspace }}/disk-${{ matrix.arch }}.img
+        arch: aarch64
+        disk-path: ${{ github.workspace }}/disk-aarch64.img
     - name: Enable KVM group perms
       run: |
         echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -44,10 +45,9 @@ jobs:
       continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
       run: |
         cargo version
-        export DISK_IMG="${{ github.workspace }}/disk-${{ matrix.arch }}.img"
-        export VM_CONFIGS="$(pwd)/configs/vms/nimbos-${{ matrix.arch }}.toml"
-        make ARCH=${{ matrix.arch }} defconfig
-        make ARCH=${{ matrix.arch }} DISK_IMG=${DISK_IMG} LOG=info BLK=y ACCEL=n VM_CONFIGS=${VM_CONFIGS} APP_FEATURES=fs run
+        export DISK_IMG="${{ github.workspace }}/disk-aarch64.img"
+        export VM_CONFIGS="$(pwd)/configs/vms/nimbos-aarch64.toml"
+        make MYPLAT=axplat-${{ matrix.plat }} DISK_IMG=${DISK_IMG} LOG=info BLK=y ACCEL=n VM_CONFIGS=${VM_CONFIGS} APP_FEATURES=fs run
 
   test_remote:
     runs-on: ubuntu-latest
@@ -55,7 +55,7 @@ jobs:
       fail-fast: false
       matrix:
         arch: [x86_64]
-        rust-toolchain: [nightly-2024-12-25, nightly]
+        rust-toolchain: [nightly-2025-05-20, nightly]
         remote: [remote_aarkegz, remote_x10dri]
         include:
         - remote: remote_aarkegz

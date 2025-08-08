@@ -3,7 +3,9 @@
 QEMU := qemu-system-$(ARCH)
 
 TELNET_PORT ?= 4321
+AUX_TELNET_PORT ?= 4322
 SECOND_SERIAL ?= n
+THIRD_SERIAL ?= n
 
 ifeq ($(BUS), mmio)
   vdev-suffix := device
@@ -26,6 +28,12 @@ qemu_args-aarch64 := \
   -cpu cortex-a72 \
   -kernel $(OUT_BIN)
 
+ifeq ($(GICV3),y)
+  qemu_args-aarch64 += -machine virt,virtualization=on,gic-version=3
+else
+  qemu_args-aarch64 += -machine virt,virtualization=on,gic-version=2,its=on
+endif
+
 qemu_args-y := -m $(MEM) -smp $(SMP) $(qemu_args-$(ARCH))
 
 qemu_args-$(BLK) += \
@@ -36,7 +44,7 @@ qemu_args-$(NET) += \
   -device virtio-net-$(vdev-suffix),netdev=net0
 
 ifeq ($(NET_DEV), user)
-  qemu_args-$(NET) += -netdev user,id=net0,hostfwd=tcp::5555-:5555,hostfwd=udp::5555-:5555
+  qemu_args-$(NET) += -netdev user,id=net0,hostfwd=tcp::5555-:22,hostfwd=udp::5555-:5555
 else ifeq ($(NET_DEV), tap)
   qemu_args-$(NET) += -netdev tap,id=net0,script=scripts/net/qemu-ifup.sh,downscript=no,vhost=$(VHOST),vhostforce=$(VHOST)
   QEMU := sudo $(QEMU)
@@ -62,22 +70,22 @@ qemu_args-$(GRAPHIC) += \
 
 ifeq ($(GRAPHIC), n)
   qemu_args-y += -nographic
-endif 
-
-ifeq ($(ARCH), aarch64)
-   ifeq ($(GICV3),y)
-     qemu_args-y += -machine virt,virtualization=on,gic-version=3
-   else
-     qemu_args-y += -machine virt,virtualization=on,gic-version=2
-   endif
 endif
 
 ifeq ($(QEMU_LOG), y)
   qemu_args-y += -D qemu.log -d in_asm,int,mmu,pcall,cpu_reset,guest_errors
 endif
 
+ifeq ($(SECOND_SERIAL), n)
+  ifeq ($(THIRD_SERIAL), y)
+    $(error "THIRD_SERIAL cannot be set to 'y' if SECOND_SERIAL is 'n'.")
+  endif
+endif
+
 qemu_args-$(SECOND_SERIAL) +=  -serial mon:stdio \
   -serial telnet:localhost:$(TELNET_PORT),server
+
+qemu_args-$(THIRD_SERIAL) += -serial telnet:localhost:$(AUX_TELNET_PORT),server
 
 qemu_args-debug := $(qemu_args-y) -s -S
 

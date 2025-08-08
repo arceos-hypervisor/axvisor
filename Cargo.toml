@@ -2,52 +2,69 @@
 lto = true
 
 [package]
-name = "axvisor"
-version = "0.1.0"
-edition = "2024"
 authors = ["Keyang Hu <keyang.hu@qq.com>"]
+edition = "2024"
 exclude = ["crates"]
 license = "GPL-3.0-or-later OR Apache-2.0 OR MulanPubL-2.0 OR MulanPSL2"
+name = "axvisor"
+version = "0.1.0"
 
 [features]
 fs = ["axstd/fs"]
+hv = []
+irq = []
+plat-aarch64-generic = ["axplat-aarch64-generic", "fs", "hv", "irq"]
 
 [dependencies]
-log = "=0.4.21"
 bitflags = "2.2"
 cfg-if = "1.0"
-spin = "0.9"
+cpumask = "0.1.0"
+kernel_guard = "0.1"
 kspin = "0.1"
 lazyinit = "0.2"
+log = "=0.4.21"
+spin = "0.9"
 timer_list = "0.1.0"
 
 # System dependent modules provided by ArceOS.
-axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm", features = [
-    "alloc",
-    "paging",
-    # "fs",
-    "irq",
-    "hv",
-    "multitask",
-    # "sched_rr"
+axstd = {git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm-dev", features = [
+  "alloc",
+  "paging",
+  "irq",
+  "multitask",
+  "driver-dyn",
+  "smp",
+  "page-alloc-64g",
 ]}
 
 # System dependent modules provided by ArceOS-Hypervisor.
-axvm = { git = "https://github.com/arceos-hypervisor/axvm.git" }
-axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git" }
-axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git" }
+axaddrspace = {git = "https://github.com/arceos-hypervisor/axaddrspace.git"}
+axhvc = {git = "https://github.com/arceos-hypervisor/axhvc.git"}
+axvcpu = {git = "https://github.com/arceos-hypervisor/axvcpu.git"}
+axvm = {git = "https://github.com/arceos-hypervisor/axvm.git"}
 
 # System independent crates provided by ArceOS, these crates could be imported by remote url. 
-crate_interface = "0.1"
 axerrno = "0.1.0"
-memory_addr = "0.3"
-page_table_entry = { version = "0.5", features = ["arm-el2"] }
+crate_interface = "0.1"
+fdt-parser = "0.4"
+memory_addr = "0.4"
+page_table_entry = {version = "0.5", features = ["arm-el2"]}
 page_table_multiarch = "0.5"
-percpu = { version = "0.2.0", features = ["arm-el2"] }
+percpu = {version = "0.2", features = ["arm-el2"]}
+
+# axplat-aarch64-dyn = {git = "https://github.com/arceos-hypervisor/axplat-aarch64-dyn", branch = "vmm", features = ["irq", "smp", "hv"]}
+
+axdevice = {git = "https://github.com/arceos-hypervisor/axdevice.git"}
+axdevice_base = {git = "https://github.com/arceos-hypervisor/axdevice_crates.git"}
+axvisor_api = {git = "https://github.com/arceos-hypervisor/axvisor_api.git"}
+
+# platform
+
+axplat-aarch64-generic = {path = "platform/aarch64-generic", optional = true}
 
 [build-dependencies]
-toml = { git = "https://github.com/arceos-hypervisor/toml.git", branch = "no_std" }
-axconfig = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm" }
+axconfig = {git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm-dev"}
 prettyplease = "0.2"
 quote = "1.0"
 syn = "2.0"
+toml = {git = "https://github.com/arceos-hypervisor/toml.git", branch = "no_std"}

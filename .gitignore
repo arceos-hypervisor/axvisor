@@ -2,6 +2,8 @@
 /target
 /.vscode
 /tmp
+/.arceos
+/.cargo
 .DS_Store
 *.asm
 *.img
@@ -14,6 +16,7 @@ actual.out
 qemu.log
 rusty-tags.vi
 
+
 /**/.axconfig.*
 
 # dev env
@@ -22,3 +25,6 @@ rusty-tags.vi
 
 # tools should be downloaded from github
 tools/*
+
+# initramfs
+*.cpio.gz

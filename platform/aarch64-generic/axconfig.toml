@@ -1,0 +1,49 @@
+# Architecture identifier.
+arch = "aarch64" # str
+# Platform package.
+package = "axplat-aarch64-generic" # str
+# Platform identifier.
+platform = "aarch64-generic" # str
+
+#
+# Device specifications
+#
+[devices]
+# MMIO regions with format (`base_paddr`, `size`).
+mmio-regions = [] # [(uint, uint)]
+# End PCI bus number.
+pci-bus-end = 0 # uint
+# Base physical address of the PCIe ECAM space.
+pci-ecam-base = 0 # uint
+# PCI device memory ranges.
+pci-ranges = [] # [(uint, uint)]
+# Timer interrupt num (PPI, physical timer).
+timer-irq = 26 # uint
+# VirtIO MMIO regions with format (`base_paddr`, `size`).
+virtio-mmio-regions = [] # [(uint, uint)]
+
+#
+# Platform configs
+#
+[plat]
+# Platform family (deprecated).
+family = "" # str
+# Number of CPUs.
+cpu-num = 1                                   # uint
+# No need.
+phys-memory-base = 0                            # uint
+# No need.
+phys-memory-size = 0x0                          # uint
+# No need.
+kernel-base-paddr = 0x0                         # uint
+# Base virtual address of the kernel image.
+kernel-base-vaddr = "0x8000_0000_0000"     # uint
+# No need.
+phys-virt-offset = "0"      # uint
+# Offset of bus address and phys address. some boards, the bus address is
+# different from the physical address.
+phys-bus-offset = 0                             # uint
+# Kernel address space base.
+kernel-aspace-base = "0x0000_0000_0000"    # uint
+# Kernel address space size.
+kernel-aspace-size = "0xffff_ffff_f000"    # uint

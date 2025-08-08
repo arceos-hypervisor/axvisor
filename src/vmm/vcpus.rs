@@ -1,9 +1,16 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::{
+    cell::UnsafeCell,
+    sync::atomic::{AtomicUsize, Ordering},
+    time::Duration,
+};
 use std::os::arceos::{
     api::task::{AxCpuMask, ax_wait_queue_wake},
-    modules::axtask,
+    modules::{
+        axhal::{self, time::busy_wait},
+        axtask,
+    },
 };
 
 use axaddrspace::GuestPhysAddr;
@@ -20,7 +27,33 @@ const KERNEL_STACK_SIZE: usize = 0x40000; // 256 KiB
 ///
 /// TODO: find a better data structure to replace the `static mut`, something like a conditional
 /// variable.
-static mut VM_VCPU_TASK_WAIT_QUEUE: BTreeMap<usize, VMVCpus> = BTreeMap::new();
+static VM_VCPU_TASK_WAIT_QUEUE: Queue = Queue::new();
+
+struct Queue(UnsafeCell<BTreeMap<usize, VMVCpus>>);
+
+unsafe impl Sync for Queue {}
+unsafe impl Send for Queue {}
+
+impl Queue {
+    const fn new() -> Self {
+        Self(UnsafeCell::new(BTreeMap::new()))
+    }
+
+    fn get(&self, vm_id: &usize) -> Option<&VMVCpus> {
+        unsafe { (*self.0.get()).get(vm_id) }
+    }
+
+    #[allow(clippy::mut_from_ref)]
+    fn get_mut(&self, vm_id: &usize) -> Option<&mut VMVCpus> {
+        unsafe { (*self.0.get()).get_mut(vm_id) }
+    }
+
+    fn insert(&self, vm_id: usize, vcpus: VMVCpus) {
+        unsafe {
+            (*self.0.get()).insert(vm_id, vcpus);
+        }
+    }
+}
 
 /// A structure representing the VCpus of a specific VM, including a wait queue
 /// and a list of tasks associated with the VCpus.
@@ -230,6 +263,24 @@ pub fn setup_vm_primary_vcpu(vm: VMRef) {
     }
 }
 
+/// Finds the [`AxTaskRef`] associated with the specified vCPU of the specified VM.
+pub fn find_vcpu_task(vm_id: usize, vcpu_id: usize) -> Option<AxTaskRef> {
+    with_vcpu_task(vm_id, vcpu_id, |task| task.clone())
+}
+
+/// Executes the provided closure with the [`AxTaskRef`] associated with the specified vCPU of the specified VM.
+pub fn with_vcpu_task<T, F: FnOnce(&AxTaskRef) -> T>(
+    vm_id: usize,
+    vcpu_id: usize,
+    f: F,
+) -> Option<T> {
+    unsafe { VM_VCPU_TASK_WAIT_QUEUE.get(&vm_id) }
+        .unwrap()
+        .vcpu_task_list
+        .get(vcpu_id)
+        .map(f)
+}
+
 /// Allocates arceos task for vcpu, set the task's entry function to [`vcpu_run()`],
 /// also initializes the CPU mask if the VCpu has a dedicated physical CPU set.
 ///
@@ -280,6 +331,11 @@ fn vcpu_run() {
     let vm_id = vm.id();
     let vcpu_id = vcpu.id();
 
+    // boot delay
+    let boot_delay_sec = (vm_id - 1) * 5;
+    info!("VM[{}] boot delay: {}s", vm_id, boot_delay_sec);
+    busy_wait(Duration::from_secs(boot_delay_sec as _));
+
     info!("VM[{}] VCpu[{}] waiting for running", vm.id(), vcpu.id());
     wait_for(vm_id, || vm.running());
 
@@ -292,6 +348,23 @@ fn vcpu_run() {
             Ok(exit_reason) => match exit_reason {
                 AxVCpuExitReason::Hypercall { nr, args } => {
                     debug!("Hypercall [{}] args {:x?}", nr, args);
+                    use crate::vmm::hvc::HyperCall;
+
+                    match HyperCall::new(vcpu.clone(), vm.clone(), nr, args) {
+                        Ok(hypercall) => {
+                            let ret_val = match hypercall.execute() {
+                                Ok(ret_val) => ret_val as isize,
+                                Err(err) => {
+                                    warn!("Hypercall [{:#x}] failed: {:?}", nr, err);
+                                    -1
+                                }
+                            };
+                            vcpu.set_return_value(ret_val as usize);
+                        }
+                        Err(err) => {
+                            warn!("Hypercall [{:#x}] failed: {:?}", nr, err);
+                        }
+                    }
                 }
                 AxVCpuExitReason::FailEntry {
                     hardware_entry_failure_reason,
@@ -303,6 +376,10 @@ fn vcpu_run() {
                 }
                 AxVCpuExitReason::ExternalInterrupt { vector } => {
                     debug!("VM[{}] run VCpu[{}] get irq {}", vm_id, vcpu_id, vector);
+
+                    // TODO: maybe move this irq dispatcher to lower layer to accelerate the interrupt handling
+                    axhal::irq::irq_handler(vector as usize);
+                    super::timer::check_events();
                 }
                 AxVCpuExitReason::Halt => {
                     debug!("VM[{}] run VCpu[{}] Halt", vm_id, vcpu_id);
@@ -351,13 +428,58 @@ fn vcpu_run() {
                     warn!("VM[{}] run VCpu[{}] SystemDown", vm_id, vcpu_id);
                     vm.shutdown().expect("VM shutdown failed");
                 }
-                _ => {
-                    warn!("Unhandled VM-Exit");
+                AxVCpuExitReason::SendIPI {
+                    target_cpu,
+                    target_cpu_aux,
+                    send_to_all,
+                    send_to_self,
+                    vector,
+                } => {
+                    if send_to_all || send_to_self {
+                        unimplemented!(
+                            "SendIPI with send_to_all or send_to_self is not implemented yet"
+                        );
+                    }
+
+                    #[cfg(target_arch = "aarch64")]
+                    {
+                        let aff3 = (target_cpu >> 24) & 0xff;
+                        let aff2 = (target_cpu >> 16) & 0xff;
+                        let aff1 = (target_cpu >> 8) & 0xff;
+                        let irm = send_to_all as u64;
+
+                        let icc_sgi1r_value = (vector as u64) << 24
+                            | aff3 << 48
+                            | aff2 << 32
+                            | aff1 << 16
+                            | irm << 40
+                            | target_cpu_aux;
+
+                        debug!(
+                            "VM[{}] run VCpu[{}] SendIPI, target_cpu={:#x}, target_cpu_aux={:#x}, vector={}, icc_sgi1r_value={:#x}",
+                            vm_id, vcpu_id, target_cpu, target_cpu_aux, vector, icc_sgi1r_value
+                        );
+
+                        unsafe {
+                            core::arch::asm!(
+                                "msr icc_sgi1r_el1, {0}",
+                                in(reg) icc_sgi1r_value,
+                                options(nostack, nomem, preserves_flags)
+                            );
+                        }
+                    }
+                }
+                e => {
+                    warn!(
+                        "VM[{}] run VCpu[{}] unhandled vmexit: {:?}",
+                        vm_id, vcpu_id, e
+                    );
                 }
             },
             Err(err) => {
-                warn!("VM[{}] run VCpu[{}] get error {:?}", vm_id, vcpu_id, err);
-                wait(vm_id)
+                error!("VM[{}] run VCpu[{}] get error {:?}", vm_id, vcpu_id, err);
+                // wait(vm_id)
+                vm.shutdown().expect("VM shutdown failed");
             }
         }
 
