@@ -1,13 +1,11 @@
-use crate::vmm::{VMRef, images::LoadRange};
+use crate::vmm::{VMRef, images::{LoadRange, load_vm_image_from_memory}};
 use alloc::vec::Vec;
 use axvm::config::{AxVMCrateConfig, VmMemConfig};
 use fdt_parser::Fdt;
 use vm_fdt::{FdtWriter, FdtWriterNode};
 use axerrno::AxResult;
 
-
 pub fn updated_fdt(config: AxVMCrateConfig, fdt_addr: usize, dtb_size: usize, vm: VMRef) -> AxResult<Vec<LoadRange>> {
-    let dtb_addr = config.kernel.dtb_load_addr.unwrap();
     let mut new_fdt = FdtWriter::new().unwrap();
     let mut old_node_level = 0;
     let mut child_node: Vec<FdtWriterNode> = Vec::new();
@@ -46,7 +44,7 @@ pub fn updated_fdt(config: AxVMCrateConfig, fdt_addr: usize, dtb_size: usize, vm
 
         // add memory node
         if old_node_level == 1 {
-            info!("Adding memory node with regions: {:?}", config.kernel.memory_regions);
+            info!("Adding memory node with regions: 0x{:x?}", config.kernel.memory_regions);
             let memory_node = new_fdt.begin_node("memory").unwrap();
             add_memory_node(&config.kernel.memory_regions, &mut new_fdt);
             new_fdt.end_node(memory_node).unwrap();
