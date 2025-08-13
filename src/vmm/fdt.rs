@@ -6,13 +6,13 @@ use vm_fdt::{FdtWriter, FdtWriterNode};
 use axerrno::AxResult;
 
 
-pub fn updated_fdt(config: AxVMCrateConfig, dtb_size: usize, vm: VMRef) -> AxResult<Vec<LoadRange>>  {
+pub fn updated_fdt(config: AxVMCrateConfig, fdt_addr: usize, dtb_size: usize, vm: VMRef) -> AxResult<Vec<LoadRange>> {
     let dtb_addr = config.kernel.dtb_load_addr.unwrap();
     let mut new_fdt = FdtWriter::new().unwrap();
     let mut old_node_level = 0;
     let mut child_node: Vec<FdtWriterNode> = Vec::new();
 
-    let fdt_bytes = unsafe { core::slice::from_raw_parts(dtb_addr as *const u8, dtb_size) };
+    let fdt_bytes = unsafe { core::slice::from_raw_parts(fdt_addr as *const u8, dtb_size) };
     let fdt = Fdt::from_bytes(fdt_bytes)
         .map_err(|e| format!("Failed to parse FDT: {:#?}", e))
         .expect("Failed to parse FDT");
@@ -54,9 +54,8 @@ pub fn updated_fdt(config: AxVMCrateConfig, dtb_size: usize, vm: VMRef) -> AxRes
     }
     assert_eq!(old_node_level , 0);
     let new_fdt = new_fdt.finish().unwrap();
-    let load_ranges = copy_new_fdt_to_new_addr(new_fdt, dtb_addr, vm);
+    let load_ranges = copy_new_fdt_to_new_addr(new_fdt, config.kernel.dtb_load_addr.unwrap(), vm);
 
-    // panic!("FDT parsing complete, starting to update FDT...");
     Ok(load_ranges)
 }
 
@@ -79,23 +78,11 @@ fn add_memory_node(new_memory: &Vec<VmMemConfig>, new_fdt: &mut FdtWriter) {
         .unwrap();
 }
 
-fn copy_new_fdt_to_new_addr(
-    new_fdt: Vec<u8>,
-    new_dtb_addr: usize,
-    vm: VMRef
-) -> Vec<LoadRange> {
-    unsafe {
-        core::ptr::copy_nonoverlapping(new_fdt.as_ptr(), new_dtb_addr as *mut u8, new_fdt.len());
-    }
-    let new_fdt_regions = vm
-        .get_image_load_region(new_dtb_addr.into(), new_fdt.len())
-        .unwrap();
+fn copy_new_fdt_to_new_addr(new_fdt: Vec<u8>, new_dtb_addr: usize, vm: VMRef) -> Vec<LoadRange> {
     let mut load_ranges = alloc::vec![];
-    for buffer in new_fdt_regions {
-        load_ranges.push(LoadRange {
-            start: (buffer.as_ptr() as usize).into(),
-            size: buffer.len(),
-        });
-    }
+    load_ranges.append(
+        &mut load_vm_image_from_memory(&new_fdt, new_dtb_addr, vm.clone())
+            .expect("Failed to load VM images"),
+    );
     load_ranges
 }

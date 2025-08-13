@@ -9,6 +9,8 @@ platform = "aarch64-dyn"      # str
 [plat]
 # Platform family.
 family = "aarch64-dyn" # str
+# different from the physical address.
+phys-bus-offset = 0
 
 # Not used.
 kernel-base-vaddr = "0x0"     # uint
