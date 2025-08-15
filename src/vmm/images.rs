@@ -44,6 +44,12 @@ fn load_vm_images_from_memory(config: AxVMCrateConfig, vm: VMRef) -> AxResult {
         load_vm_image_from_memory(buffer, config.kernel.bios_load_addr.unwrap(), vm.clone())
             .expect("Failed to load BIOS images");
     }
+
+    // Load Ramdisk image
+    if let Some(buffer) = vm_imags.ramdisk {
+        load_vm_image_from_memory(buffer, config.kernel.ramdisk_load_addr.unwrap(), vm.clone())
+            .expect("Failed to load Ramdisk images");
+    };
     #[cfg(target_arch = "aarch64")]
     {
         for mem_region in &config.kernel.memory_regions {

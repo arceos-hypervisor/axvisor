@@ -1,6 +1,11 @@
 #![no_std]
 #![no_main]
 
+use std::{
+    os::arceos::modules::{axhal, axtask},
+    println,
+};
+
 #[macro_use]
 extern crate log;
 #[macro_use]
