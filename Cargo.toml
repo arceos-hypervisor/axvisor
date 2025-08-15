@@ -60,7 +60,7 @@ axvisor_api = { git = "https://github.com/arceos-hypervisor/axvisor_api.git" }
 fdt-parser = "0.4"
 
 [build-dependencies]
-toml = { git = "https://github.com/arceos-hypervisor/toml.git", branch = "no_std" }
+toml = { version = "0.9.5", default-features = false, features = ["serde", "parse", "display"] }
 axconfig = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm_inject_interrupt" }
 prettyplease = "0.2"
 quote = "1.0"

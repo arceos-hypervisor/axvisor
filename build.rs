@@ -106,9 +106,7 @@ struct MemoryImage {
 }
 
 fn parse_config_file(config_file: &ConfigFile) -> Option<MemoryImage> {
-    let config = config_file
-        .content
-        .parse::<Value>()
+    let config: Value = toml::from_str(&config_file.content)
         .expect("failed to parse config file");
 
     let id = config.get("base")?.as_table()?.get("id")?.as_integer()? as usize;
