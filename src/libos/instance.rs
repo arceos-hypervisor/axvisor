@@ -26,7 +26,8 @@ use crate::libos::config::{get_eqloader_data, get_gate_process_data};
 use crate::libos::def::{
     EPTP_LIST_REGION_SIZE, EPTPList, GP_ALL_EPTP_LIST_REGIN_GPA, GP_ALL_EPTP_LIST_REGION_GVA,
     GP_ALL_INSTANCE_PERCPU_REGION_GPA, GP_ALL_INSTANCE_PERCPU_REGION_GVA,
-    GP_PERCPU_EPT_LIST_REGION_GVA, INSTANCE_REGION_SIZE, PERCPU_EPTP_LIST_REGION_GPA,
+    GP_PERCPU_EPT_LIST_REGION_GVA, INSTANCE_REGION_SIZE, KSCHED_SHM_REGION_BASE_GPA,
+    KSCHED_SHM_REGION_BASE_GVA, KSCHED_SHM_REGION_SIZE, PERCPU_EPTP_LIST_REGION_GPA,
     PERCPU_REGION_BASE_GPA, PERCPU_REGION_BASE_GVA, PERCPU_REGION_SIZE,
 };
 use crate::libos::mm::gaddrspace::{GuestAddrSpace, init_shim_kernel, paging_err_to_ax_err};
@@ -48,6 +49,7 @@ static INSTANCES: Mutex<BTreeMap<usize, InstanceRef>> = Mutex::new(BTreeMap::new
 static INSTANCES_EPTP_LIST_REGIONS: LazyInit<HostPhysicalRegion<PagingHandlerImpl>> =
     LazyInit::new();
 static PERCPU_REGIONS: LazyInit<HostPhysicalRegion<PagingHandlerImpl>> = LazyInit::new();
+static KSCHED_SHM_REGIONS: LazyInit<HostPhysicalRegion<PagingHandlerImpl>> = LazyInit::new();
 static INSTANCE_REGION_POOL: LazyInit<
     [HostPhysicalRegionRef<PagingHandlerImpl>; MAX_INSTANCES_NUM],
 > = LazyInit::new();
@@ -159,6 +161,13 @@ impl<H: PagingHandler> Instance<H> {
             Some(PAGE_SIZE_4K),
         )?);
 
+        info!("Initializing KSched shared memory regions");
+        // Init per CPU regions.
+        KSCHED_SHM_REGIONS.init_once(HostPhysicalRegion::allocate(
+            KSCHED_SHM_REGION_SIZE,
+            Some(PAGE_SIZE_4K),
+        )?);
+
         info!("Initializing instance region pool");
         // Init instance region pool.
         INSTANCE_REGION_POOL.init_once(core::array::from_fn(|id| {
@@ -174,6 +183,12 @@ impl<H: PagingHandler> Instance<H> {
             "PERCPU_REGIONS range [{:?}, {:?}]",
             PERCPU_REGIONS.base(),
             PERCPU_REGIONS.base() + PERCPU_REGIONS.size()
+        );
+
+        info!(
+            "KSCHED_SHM_REGIONS range [{:?}, {:?}]",
+            KSCHED_SHM_REGIONS.base(),
+            KSCHED_SHM_REGIONS.base() + KSCHED_SHM_REGIONS.size()
         );
 
         // Gate processses' pid is equal to its running CPU ID.
@@ -750,6 +765,31 @@ impl<H: PagingHandler> Instance<H> {
                 PERCPU_REGION_BASE_GPA,
                 percpu_region,
                 PERCPU_REGION_SIZE,
+                MappingFlags::READ | MappingFlags::WRITE,
+                false,
+            )?;
+
+            // Map the KSched Shm region for gate process.
+            // GVA -> GPA
+            gp_as
+                .guest_map_region(
+                    KSCHED_SHM_REGION_BASE_GVA,
+                    |_gva| KSCHED_SHM_REGION_BASE_GPA,
+                    KSCHED_SHM_REGION_SIZE,
+                    MappingFlags::READ | MappingFlags::WRITE | MappingFlags::USER,
+                    false,
+                    false,
+                )
+                .map_err(paging_err_to_ax_err)?;
+            // GPA -> HPA
+            let ksched_shm_region_hpa = KSCHED_SHM_REGIONS
+                .get()
+                .expect("KSCHED_SHM_REGIONS uninitialized!")
+                .base();
+            gp_as.ept_map_linear(
+                KSCHED_SHM_REGION_BASE_GPA,
+                ksched_shm_region_hpa,
+                KSCHED_SHM_REGION_SIZE,
                 MappingFlags::READ | MappingFlags::WRITE,
                 false,
             )?;
