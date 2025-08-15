@@ -64,9 +64,14 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
             HyperCallCode::HClone => self.clone(),
             HyperCallCode::HRead => self.read(self.args[0], self.args[1], self.args[2]),
             HyperCallCode::HWrite => self.write(self.args[0], self.args[1], self.args[2]),
-            HyperCallCode::HMMAP => {
-                self.mmap(self.args[0], self.args[1], self.args[2], self.args[3])
-            }
+            HyperCallCode::HAllocMMRegion => self.alloc_mm_region(self.args[0] as usize),
+            HyperCallCode::HIVCGet => self.ivc_get(
+                self.args[0] as u32,
+                self.args[1] as usize,
+                self.args[2] as usize,
+                self.args[3] as usize,
+            ),
+            HyperCallCode::HClearGuestAreas => self.clear_guest_areas(),
             _ => {
                 unimplemented!();
             }
@@ -103,6 +108,14 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
         Ok(0)
     }
 
+    fn alloc_mm_region(&self, num_of_pages: usize) -> HyperCallResult {
+        info!("HAllocMMRegion num_of_pages {num_of_pages}");
+
+        self.instance
+            .alloc_mm_region(self.pcpu.current_ept_root(), num_of_pages)?;
+        Ok(0)
+    }
+
     fn clone(&self) -> HyperCallResult {
         info!("HClone");
 
@@ -116,12 +129,32 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
         Ok(new_pid)
     }
 
-    fn mmap(&self, addr: u64, len: u64, prot: u64, flags: u64) -> HyperCallResult {
-        info!(
-            "HMMAP addr:{:#x} len:{} prot:{} flags:{}",
-            addr, len, prot, flags
-        );
+    fn clear_guest_areas(&self) -> HyperCallResult {
+        info!("HClearGuestAreas");
+        self.instance
+            .clear_guest_areas(self.pcpu.current_ept_root())?;
         Ok(0)
+    }
+
+    fn ivc_get(
+        &self,
+        key: u32,
+        size: usize,
+        flags: usize,
+        shm_base_gva_ptr: usize,
+    ) -> HyperCallResult {
+        info!(
+            "HIVCGet key: {:#x}, size: {:#x}, flags: {:#x}, shm_base_gva_ptr: {:#x}",
+            key, size, flags, shm_base_gva_ptr
+        );
+
+        self.instance.process_ivc_get(
+            self.pcpu.current_ept_root(),
+            key,
+            size,
+            flags,
+            shm_base_gva_ptr,
+        )
     }
 }
 

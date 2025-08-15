@@ -7,6 +7,7 @@ mod vcpus;
 mod vm_list;
 
 mod hypercall;
+pub(crate) mod ivc;
 
 use std::os::arceos::api::task::{self, AxWaitQueueHandle};
 

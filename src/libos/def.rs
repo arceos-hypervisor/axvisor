@@ -10,7 +10,9 @@ use equation_defs::*;
 
 use crate::vmm::{VCpuRef, VMRef};
 
-pub use equation_defs::gate::region::{EPTP_LIST_REGION_SIZE, PERCPU_REGION_SIZE, PerCPURegion};
+pub use equation_defs::gate::region::{
+    EPTP_LIST_REGION_SIZE, KSCHED_SHM_REGION_SIZE, PERCPU_REGION_SIZE, PerCPURegion,
+};
 pub use equation_defs::{INSTANCE_REGION_SIZE, PROCESS_INNER_REGION_SIZE, ProcessInnerRegion};
 
 pub const GUEST_MEM_REGION_BASE_GPA: GuestPhysAddr =
@@ -31,9 +33,11 @@ pub const GP_ALL_INSTANCE_PERCPU_REGION_GPA: GuestPhysAddr =
     GuestPhysAddr::from_usize(GP_ALL_INSTANCE_PERCPU_REGION_PA);
 
 pub const PERCPU_REGION_BASE_GPA: GuestPhysAddr = GuestPhysAddr::from_usize(PERCPU_REGION_BASE_PA);
+pub const KSCHED_SHM_REGION_BASE_GPA: GuestPhysAddr =
+    GuestPhysAddr::from_usize(KSCHED_SHM_REGION_BASE_PA);
 
-pub const GUEST_MEMORY_REGION_BASE_GVA: GuestVirtAddr =
-    GuestVirtAddr::from_usize(GUEST_MEMORY_REGION_BASE_VA);
+// pub const GUEST_MEMORY_REGION_BASE_GVA: GuestVirtAddr =
+//     GuestVirtAddr::from_usize(GUEST_MEMORY_REGION_BASE_VA);
 
 pub const GUEST_PT_BASE_GVA: GuestVirtAddr = GuestVirtAddr::from_usize(GUEST_PT_BASE_VA as usize);
 pub const PROCESS_INNER_REGION_BASE_GVA: GuestVirtAddr =
@@ -42,6 +46,12 @@ pub const INSTANCE_REGION_BASE_GVA: GuestVirtAddr =
     GuestVirtAddr::from_usize(INSTANCE_REGION_BASE_VA as usize);
 pub const PERCPU_REGION_BASE_GVA: GuestVirtAddr =
     GuestVirtAddr::from_usize(PERCPU_REGION_BASE_VA as usize);
+pub const KSCHED_SHM_REGION_BASE_GVA: GuestVirtAddr =
+    GuestVirtAddr::from_usize(KSCHED_SHM_REGION_BASE_VA as usize);
+pub const SCF_QUEUE_REGION_BASE_GVA: GuestVirtAddr =
+    GuestVirtAddr::from_usize(SCF_QUEUE_REGION_BASE_VA as usize);
+pub const PAGE_CACHE_POOL_BASE_GVA: GuestVirtAddr =
+    GuestVirtAddr::from_usize(PAGE_CACHE_POOL_BASE_VA as usize);
 
 pub const GP_ALL_EPTP_LIST_REGION_GVA: GuestVirtAddr =
     GuestVirtAddr::from_usize(GP_ALL_EPTP_LIST_REGION_VA as usize);
@@ -183,13 +193,17 @@ impl EPTPList {
     }
 }
 
-pub fn get_instance_file_from_shared_pages(
+pub fn get_contents_from_shared_pages(
     file_size: usize,
     pages_start_gva: usize,
     pages_count: usize,
     vcpu: &VCpuRef,
     vm: &VMRef,
 ) -> AxResult<Vec<u8>> {
+    if file_size == 0 || pages_count == 0 {
+        return ax_err!(InvalidInput, "File size or pages count cannot be zero");
+    }
+
     let pages_base_gpa = vcpu
         .get_arch_vcpu()
         .guest_page_table_query(GuestVirtAddr::from_usize(pages_start_gva))

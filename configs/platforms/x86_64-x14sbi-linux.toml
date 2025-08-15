@@ -13,12 +13,10 @@ family = "x86-linux" # str
 # Base address of the whole physical memory.
 phys-memory-base = "0x4000_0000" # uint
 # Size of the whole physical memory. (# 256MB)
-phys-memory-size = "0x1000_0000"  # uint   
+phys-memory-size = "0x0a00_0000"  # uint
 # Base physical address of the kernel image.
-# kernel-base-paddr = "0x10000_0000" # uint
 kernel-base-paddr = "0x4000_0000" # uint
 # Base virtual address of the kernel image.
-# kernel-base-vaddr = "0xffff_8000_0000_0000" # uint
 kernel-base-vaddr = "0xffff_ff80_0000_0000" # uint
 # Linear mapping offset, for quick conversions between physical and virtual
 # addresses. (# kernel-base-vaddr - phys-memory-base)
@@ -33,7 +31,7 @@ phys-bus-offset = 0                             # uint
 # kernel-aspace-base = "0xffff_ff80_0000_0000"    # uint
 # Note: this is extremely tricky, the kernel address space base should be 0xffff_ff80_0000_0000 in fact.
 # But, to map Linux's low memory address (below 0x4000_0000) to the kernel address space,
-# (for example, we need to map 0x1000 to 0xffffff7fc0001000), 
+# (for example, we need to map 0x1000 to 0xffffff7fc0001000),
 # we just simply decreate the kernel address space base by 0x10_0000_0000, to 0xffff_ff70_0000_0000.
 # So, the kernel address space base is 0xffff_ff70_0000_0000, and the kernel address space size is 0x0000_008f_ffff_f000.
 kernel-aspace-base = "0xffff_ff70_0000_0000"    # uint
@@ -45,10 +43,6 @@ kernel-aspace-size = "0x0000_008f_ffff_f000"    # uint
 # Device specifications
 #
 [devices]
-# Memory regions with format (`base_paddr`, `size`).
-memory-regions = [
-    [0x2_0000_0000, 0x2_0000_0000], # Memory space after space reserved for the host kernel.
-]                               # [(uint, uint)]
 # MMIO regions with format (`base_paddr`, `size`).
 mmio-regions = [
     [0xb000_0000, 0x1000_0000], # PCI config space

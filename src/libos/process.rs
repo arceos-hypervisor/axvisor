@@ -3,7 +3,7 @@ use page_table_multiarch::PagingHandler;
 use axaddrspace::HostPhysAddr;
 use axerrno::AxResult;
 
-use super::gaddrspace::EqAddrSpace;
+use crate::libos::mm::gaddrspace::EqAddrSpace;
 
 pub struct Process<H: PagingHandler> {
     /// The process ID in the instance.

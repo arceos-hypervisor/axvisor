@@ -2,11 +2,10 @@
 
 use alloc::sync::Arc;
 
+use axaddrspace::HostPhysAddr;
 use axerrno::{AxResult, ax_err, ax_err_type};
 use memory_addr::{MemoryAddr, PAGE_SIZE_4K, align_up_4k};
 use page_table_multiarch::PagingHandler;
-
-use axaddrspace::HostPhysAddr;
 
 pub(crate) struct HostPhysicalRegion<H: PagingHandler> {
     base: HostPhysAddr,
@@ -78,6 +77,12 @@ impl<H: PagingHandler> HostPhysicalRegion<H> {
     pub fn as_mut_ptr_of<T>(&self) -> *mut T {
         assert!(self.size >= core::mem::size_of::<T>());
         H::phys_to_virt(self.base).as_mut_ptr_of::<T>()
+    }
+
+    pub fn zero(&self) {
+        unsafe {
+            core::ptr::write_bytes(H::phys_to_virt(self.base).as_mut_ptr(), 0, self.size);
+        }
     }
 
     pub fn copy_from(&self, src: &Self) {

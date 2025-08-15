@@ -42,21 +42,26 @@ axvm = { git = "https://github.com/arceos-hypervisor/axvm.git" }
 axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git" }
 axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git" }
 axvmconfig = { git = "https://github.com/arceos-hypervisor/axvmconfig.git", default-features = false }
-axhvc = { git = "https://github.com/arceos-hypervisor/axhvc.git" }
+axhvc = { git = "https://github.com/arceos-hypervisor/axhvc.git", branch = "equation" }
 
-equation_defs = { git = "https://github.com/EquationOS/equation_defs.git" }
+equation_defs = { git = "https://github.com/EquationOS/equation_defs.git", branch = "equation" }
 
 # System independent crates provided by ArceOS, these crates could be imported by remote url. 
 crate_interface = "0.1"
 axerrno = "0.1.0"
 memory_addr = "0.3"
+memory_set = "0.3"
 page_table_entry = { version = "0.5", features = ["arm-el2"] }
 page_table_multiarch = "0.5"
 percpu = { version = "0.1.4", features = ["arm-el2"] }
-allocator = { git = "https://github.com/arceos-org/allocator.git", tag ="v0.1.1", features = ["bitmap"] }
+allocator = { git = "https://github.com/arceos-org/allocator.git", tag = "v0.1.1", features = [
+    "bitmap",
+] }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies.x86]
 version = "0.52"
+[target.'cfg(target_arch = "x86_64")'.dependencies.x86_64]
+version = "0.15"
 
 [build-dependencies]
 toml = { git = "https://github.com/arceos-hypervisor/toml.git", branch = "no_std" }
@@ -85,6 +90,9 @@ axhvc = { path = "./crates/axhvc" }
 
 [patch."https://github.com/EquationOS/equation_defs.git"]
 equation_defs = { path = "./crates/equation_defs" }
+
+[patch."https://github.com/arceos-org/allocator.git"]
+allocator = { path = "./crates/allocator" }
 
 [patch.crates-io]
 memory_addr = { path = "./crates/memory_addr/memory_addr" }

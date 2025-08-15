@@ -34,7 +34,7 @@
 
 # General options
 ARCH ?= x86_64
-PLATFORM ?=
+PLATFORM ?= x86_64-qemu-linux
 SMP ?= 1
 MODE ?= release
 LOG ?= warn
