@@ -261,7 +261,7 @@ pub fn boot_vm_cpu(vm: &VMRef) {
 /// * The task associated with the vCPU is created with a kernel stack size of 256 KiB.
 /// * The task is scheduled on the scheduler of arceos after it is spawned.
 fn vm_alloc_vcpu_task(vm: VMRef, vcpu: VCpuRef) -> AxTaskRef {
-    info!("Spawning task for VM[{}] Vcpu[{}]", vm.id(), vcpu.id());
+    trace!("Spawning task for VM[{}] Vcpu[{}]", vm.id(), vcpu.id());
     let mut vcpu_task: TaskInner = TaskInner::new(
         crate::vmm::vcpu_run,
         format!("VM[{}]-VCpu[{}]", vm.id(), vcpu.id()),
@@ -295,7 +295,6 @@ pub fn vm_vcpu_run(vm: VMRef, vcpu: VCpuRef) {
         match vm.run_vcpu(vcpu_id) {
             Ok(exit_reason) => match exit_reason {
                 AxVCpuExitReason::Hypercall { nr, args } => {
-                    debug!("Hypercall [{:#x}] args {:x?}", nr, args);
                     use crate::vmm::hypercall::HyperCall;
 
                     match HyperCall::new(vcpu.clone(), vm.clone(), nr, args) {

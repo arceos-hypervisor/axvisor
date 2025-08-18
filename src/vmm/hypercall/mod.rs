@@ -117,8 +117,6 @@ impl HyperCall {
 
 impl HyperCall {
     fn hypervisor_disable(&self) -> HyperCallResult {
-        info!("HypervisorDisable");
-
         let reserved_cpus = crate::vmm::config::get_reserved_cpus();
 
         static TRY_DISABLED_CPUS: AtomicUsize = AtomicUsize::new(0);
