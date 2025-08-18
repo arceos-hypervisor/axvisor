@@ -45,7 +45,7 @@ kernel-aspace-size = "0x0000_008f_ffff_f000"    # uint
 [devices]
 # Memory regions with format (`base_paddr`, `size`).
 memory-regions = [
-    [0x2_0000_0000, 0x2_0000_0000], # Memory space after space reserved for the host kernel.
+    [0x10_0000_0000, 0x2_0000_0000], # Memory space after space reserved for the host kernel.
     # You have to limit the memory used by host Linux to 8GB through cmdline `mem=8G`.
 ]                               # [(uint, uint)]
 # MMIO regions with format (`base_paddr`, `size`).
