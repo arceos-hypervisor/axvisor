@@ -48,8 +48,8 @@ A ?= $(CURDIR)
 APP ?= $(A)
 FEATURES ?=
 APP_FEATURES ?=
-# make `FEATURES=page-alloc-64g` as the default configuration
-MEM_FEATURES ?= page-alloc-64g
+# make `FEATURES=page-alloc-1t` as the default configuration
+MEM_FEATURES ?= page-alloc-1t
 FEATURES += $(MEM_FEATURES)
 
 # QEMU options
