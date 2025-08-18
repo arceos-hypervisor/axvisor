@@ -143,7 +143,7 @@ pub(crate) fn enable_virtualization() {
 
         // Set the CPU affinity for the task,
         // so that it can run on the specified CPU core directly without migration.
-        task.set_cpumask(AxCpuMask::from_raw_bits(1 << cpu_id));
+        task.set_cpumask(AxCpuMask::one_shot(cpu_id));
         let _ = axtask::spawn_task(task);
     }
 
@@ -209,7 +209,7 @@ pub(crate) fn disable_virtualization_on_remaining_cores() -> AxResult {
 
         // Set the CPU affinity for the task,
         // so that it can run on the specified CPU core directly without migration.
-        task.set_cpumask(AxCpuMask::from_raw_bits(1 << cpu_id));
+        task.set_cpumask(AxCpuMask::one_shot(cpu_id));
 
         debug!(
             "Spawning thread to disable virtualization on core {}",
