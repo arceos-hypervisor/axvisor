@@ -344,6 +344,23 @@ impl<H: PagingHandler> Instance<H> {
         }))
     }
 
+    /// Notify the daemon process in host Linux to exit
+    /// by marking the exit flag in the SCF queue metadata.
+    ///
+    /// Note: this can also by done by UIPI.
+    pub fn exit_daemon_process(&self) {
+        use equation_defs::scf::SyscallQueueBufferMetadata;
+        self.scf_region.as_ref().map(|region| {
+            unsafe {
+                region
+                    .as_mut_ptr_of::<SyscallQueueBufferMetadata>()
+                    .as_mut()
+            }
+            .expect("Failed to get SCF queue metadata")
+            .mark_daemon_exit();
+        });
+    }
+
     pub fn get_scf_queue_region(&self) -> Option<(HostPhysAddr, usize)> {
         self.scf_region
             .as_ref()
@@ -1097,6 +1114,9 @@ pub(super) fn shutdown_instance<H: PagingHandler>(
         gate_task,
         entry
     );
+
+    // Notify the daemon process in host Linux to exit.
+    instance_ref.exit_daemon_process();
 
     // Notify other CPUs to stop running this instance.
     if instance_ref.instance_region().running_tasks_count() > 0 {
