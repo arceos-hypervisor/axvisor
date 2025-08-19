@@ -177,6 +177,24 @@ impl<H: PagingHandler> EqOSPerCpu<H> {
         self.status
             .store(EqPerCpuStatus::Idle.into(), Ordering::SeqCst);
     }
+
+    pub fn set_running(&self) {
+        self.status
+            .store(EqPerCpuStatus::Running.into(), Ordering::SeqCst);
+    }
+}
+
+pub fn cpu_is_running(cpu_id: usize) -> bool {
+    assert!(cpu_id < SMP, "Invalid CPU ID: {}", cpu_id);
+    let remote_percpu = unsafe { LIBOS_PERCPU.remote_ref_raw(cpu_id) };
+
+    // If the remote percpu is not initialized, it means the CPU is not running.
+    // This can happen if the CPU is reserved for host Linux and not initialized yet.
+    if !remote_percpu.is_inited() {
+        return false;
+    }
+
+    remote_percpu.status.load(Ordering::SeqCst) == EqPerCpuStatus::Running.into()
 }
 
 impl<H: PagingHandler> Drop for EqOSPerCpu<H> {
@@ -356,6 +374,8 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
             thread::exit(0);
         }
 
+        curcpu.set_running();
+
         match vcpu.run() {
             Ok(exit_reason) => {
                 let instance_id = curcpu.percpu_region().instance_id();
@@ -427,6 +447,14 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
                                 break;
                             }
                         }
+                    }
+                    AxVCpuExitReason::CpuDown { _state } => {
+                        info!(
+                            "Instance[{}] run on Vcpu [{}] is shutting down",
+                            instance_id, vcpu_id
+                        );
+                        curcpu.mark_idle();
+                        continue;
                     }
                     AxVCpuExitReason::SystemDown => {
                         info!(

@@ -165,7 +165,13 @@ pub(crate) fn enable_virtualization() {
 pub(crate) fn disable_virtualization_on_remaining_cores() -> AxResult {
     let reserved_cpus = get_reserved_cpus();
 
-    debug!("Reserved CPUs: {}", reserved_cpus);
+    // Disable Equtaion Instance on remaining cores.
+    info!("Disabling Equation Instance on remaining {reserved_cpus} cores...");
+    for cpu_id in reserved_cpus..SMP {
+        if libos::percpu::cpu_is_running(cpu_id) {
+            axhal::shutdown_secondary_cpu(cpu_id);
+        }
+    }
 
     // Disable virtualization on remaining cores.
     for cpu_id in reserved_cpus..SMP {

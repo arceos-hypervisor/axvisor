@@ -1,7 +1,7 @@
 pub mod def;
 mod hvc;
 pub mod instance;
-mod percpu;
+pub(crate) mod percpu;
 pub mod process;
 
 #[allow(unused)]
