@@ -358,7 +358,7 @@ pub fn vm_vcpu_run(vm: VMRef, vcpu: VCpuRef) {
                     ax_terminate()
                 }
                 _ => {
-                    warn!("Unhandled VM-Exit {:?}", exit_reason);
+                    error!("Unhandled VM-Exit\n{:#?}", exit_reason);
                     vcpu.get_arch_vcpu().dump();
                 }
             },
