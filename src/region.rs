@@ -136,7 +136,7 @@ impl<H: PagingHandler> HostPhysicalRegion<H> {
 
 impl<H: PagingHandler> Drop for HostPhysicalRegion<H> {
     fn drop(&mut self) {
-        debug!(
+        trace!(
             "Dropping HostPhysicalRegion [{:?}-{:?}]",
             self.base,
             self.base.add(self.size)

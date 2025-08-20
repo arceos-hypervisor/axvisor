@@ -374,7 +374,7 @@ impl<H: PagingHandler> Instance<H> {
     }
 
     pub fn alloc_mm_region(&self, eptp: HostPhysAddr, requested_pages: usize) -> AxResult {
-        info!(
+        trace!(
             "Allocating MM region for eptp {:?} with {} pages",
             eptp, requested_pages
         );

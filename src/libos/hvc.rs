@@ -109,7 +109,7 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
     }
 
     fn alloc_mm_region(&self, num_of_pages: usize) -> HyperCallResult {
-        info!("HAllocMMRegion num_of_pages {num_of_pages}");
+        // info!("HAllocMMRegion num_of_pages {num_of_pages}");
 
         self.instance
             .alloc_mm_region(self.pcpu.current_ept_root(), num_of_pages)?;

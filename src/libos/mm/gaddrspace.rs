@@ -1887,7 +1887,7 @@ impl<
                         mm_region_granularity,
                     );
 
-                info!(
+                debug!(
                     "Allocating memory region at [{:?} ~ {:?}], total segments: {}, pages used/total:[{}/{}]",
                     allocated_region_gpa_base,
                     allocated_region_gpa_base.add(mm_region_granularity),
@@ -1898,7 +1898,7 @@ impl<
                     self.process_inner_region().mm_frame_allocator.total_pages(),
                 );
 
-                info!("Mapping shim course-grained memory region into high addr space");
+                trace!("Mapping shim course-grained memory region into high addr space");
 
                 // Map the guest normal memory region to high address space.
                 self.guest_map_region(

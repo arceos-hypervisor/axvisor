@@ -495,7 +495,7 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
                         continue;
                     }
                     _ => {
-                        warn!("Instance run unexpected exit reason: {:?}", exit_reason);
+                        error!("Instance run unexpected exit reason: {:?}", exit_reason);
                         break;
                     }
                 };
