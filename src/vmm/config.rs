@@ -132,6 +132,19 @@ pub fn init_host_vm() {
     //     map_type: VmMemMappingType::MapIentical,
     // });
 
+    // I DO NOT know why Linux in x14sbi want to access this
+    // [ 17.808062 11:205 axvisor::vmm::vcpus:361] Unhandled VM-Exit
+    // NestedPageFault {
+    //     addr: GPA:0xf624e808,
+    //     access_flags: READ,
+    // }
+    host_vm_cfg.append_memory_region(VmMemConfig {
+        gpa: 0xf624e000,
+        size: 0x1000,
+        flags: (MappingFlags::READ | MappingFlags::WRITE | MappingFlags::DEVICE).bits(),
+        map_type: VmMemMappingType::MapIentical,
+    });
+
     // Create VM.
     let vm =
         VM::new_host(host_vm_cfg, axhal::get_linux_context_list()).expect("Failed to create VM");
