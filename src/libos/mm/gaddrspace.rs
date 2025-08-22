@@ -446,8 +446,8 @@ impl<
                     new_pt_region.copy_from(fault_mm_region);
 
                     // Unmap the original region first.
-                    // self.ept_addrspace
-                    //     .unmap(fault_mm_region_base, mm_region_granularity)?;
+                    self.ept_addrspace
+                        .unmap(fault_mm_region_base, mm_region_granularity)?;
 
                     self.ept_addrspace.map_linear(
                         fault_mm_region_base,
