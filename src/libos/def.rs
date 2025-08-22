@@ -15,8 +15,10 @@ pub use equation_defs::gate::region::{
 };
 pub use equation_defs::{INSTANCE_REGION_SIZE, PROCESS_INNER_REGION_SIZE, ProcessInnerRegion};
 
-pub const GUEST_MEM_REGION_BASE_GPA: GuestPhysAddr =
-    GuestPhysAddr::from_usize(GUEST_MEM_REGION_BASE_PA);
+pub const GUEST_INSTANCE_MM_REGION_BASE_GPA: GuestPhysAddr =
+    GuestPhysAddr::from_usize(GUEST_INSTANCE_MM_REGION_BASE_PA);
+pub const GUEST_PROCESS_MM_REGION_BASE_GPA: GuestPhysAddr =
+    GuestPhysAddr::from_usize(GUEST_PROCESS_MM_REGION_BASE_PA);
 pub const SHIM_BASE_GPA: GuestPhysAddr = GuestPhysAddr::from_usize(SHIM_BASE_PA);
 pub const GUEST_PT_ROOT_GPA: GuestPhysAddr = GuestPhysAddr::from_usize(GUEST_PT_ROOT_PA);
 
@@ -104,6 +106,18 @@ impl EPTPList {
         eptp_list.dump();
     }
 
+    /// Return the first entry for processes.
+    /// This first entry is reserved for the gate process, this function returns the pointer to the second entry.
+    fn processes_entry_ptr(&self) -> *const EPTPointer {
+        &self.eptp_list[1] as *const _
+    }
+
+    /// Return the mutable pointer to the first entry for processes.
+    /// This first entry is reserved for the gate process, this function returns the pointer to the second entry.
+    fn processes_entry_ptr_mut(&mut self) -> *mut EPTPointer {
+        &mut self.eptp_list[1] as *mut _
+    }
+
     /// Copy the EPTP list into the given target region.
     /// The target region must be aligned to 4K.
     /// The caller must ensure that the target region is valid.
@@ -113,12 +127,13 @@ impl EPTPList {
     pub unsafe fn copy_into_region(&self, target_region: HostVirtAddr) {
         assert!(target_region.is_aligned(PAGE_SIZE_4K));
 
-        let eptp_list_ptr = target_region.as_mut_ptr_of::<Self>();
+        let eptp_list_ptr = unsafe { target_region.as_mut_ptr_of::<Self>().as_mut() }
+            .expect("Failed to get mutable pointer to EPTPList");
         unsafe {
             core::ptr::copy_nonoverlapping(
-                self as *const _ as *const u8,
-                eptp_list_ptr as *mut u8,
-                core::mem::size_of::<EPTPList>(),
+                self.processes_entry_ptr(),
+                eptp_list_ptr.processes_entry_ptr_mut(),
+                EPTP_LIST_LENGTH - 1, // Skip the first entry (gate EPTP)
             );
         }
     }

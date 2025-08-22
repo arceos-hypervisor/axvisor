@@ -31,7 +31,7 @@ use crate::libos::config::{
     SHIM_SKERNEL, SHIM_SRODATA, SHIM_STEXT, get_shim_image,
 };
 use crate::libos::def::{
-    GUEST_MEM_REGION_BASE_GPA, GUEST_PT_ROOT_GPA, INSTANCE_REGION_BASE_GPA,
+    GUEST_PROCESS_MM_REGION_BASE_GPA, GUEST_PT_ROOT_GPA, INSTANCE_REGION_BASE_GPA,
     PAGE_CACHE_POOL_BASE_GVA, PROCESS_INNER_REGION_BASE_GPA, SCF_QUEUE_REGION_BASE_GVA,
     SHIM_BASE_GPA, USER_STACK_BASE, USER_STACK_SIZE,
 };
@@ -159,7 +159,13 @@ impl<
     H: PagingHandler,
 > GuestAddrSpace<M, EPTE, GPTE, H>
 {
-    pub fn fork(&mut self, pid: usize) -> AxResult<Self> {
+    pub fn fork(
+        &mut self,
+        pid: usize,
+        shared_mm_regions: &BTreeMap<GuestPhysAddr, HostPhysicalRegion<H>>,
+    ) -> AxResult<Self> {
+        info!("Forking GuestAddrSpace for process {}", pid);
+
         let mut forked_addrspace = AddrSpace::new_empty(
             GuestPhysAddr::from_usize(0),
             1 << <EPTMetadata as PagingMetaData>::VA_MAX_BITS,
@@ -173,6 +179,12 @@ impl<
         // Map the shim memory region.
         // DO NOT allocate a new shim memory region,
         // since it is shared by all processes in the same instance.
+        info!(
+            "Mapping shim region @{:?} to base: {:?} size {:#x}",
+            SHIM_BASE_GPA,
+            shim_region.base(),
+            shim_region.size()
+        );
         forked_addrspace.map_linear(
             SHIM_BASE_GPA,
             shim_region.base(),
@@ -183,6 +195,7 @@ impl<
 
         // Allocate and map the process inner region.
         // The process inner region is used to store the process ID and memory allocation information, which is process-specific.
+        info!("Allocating process inner region for process {}", pid);
         let forked_process_inner_region =
             HostPhysicalRegion::allocate(self.process_inner_region.size(), Some(PAGE_SIZE_4K))?;
         forked_process_inner_region.copy_from(&self.process_inner_region);
@@ -203,6 +216,12 @@ impl<
             );
         }
 
+        info!(
+            "Mapping [{}] process inner region @ {:?} to {:?}",
+            pid,
+            PROCESS_INNER_REGION_BASE_GPA,
+            forked_process_inner_region.base()
+        );
         process_inner_region.is_primary = false;
         process_inner_region.process_id = pid;
         forked_addrspace.map_linear(
@@ -215,6 +234,10 @@ impl<
 
         // Map the instance inner region.
         // Do not allocate a new instance inner region, since it is shared by all processes in the same instance.
+        info!(
+            "Mapping instance region @{:?} to {:?} size {:#x}",
+            INSTANCE_REGION_BASE_GPA, self.instance_region_base, INSTANCE_REGION_SIZE
+        );
         forked_addrspace.map_linear(
             INSTANCE_REGION_BASE_GPA,
             self.instance_region_base,
@@ -231,6 +254,13 @@ impl<
             let page_cache_region_base =
                 GuestPhysAddr::from_usize(get_pgcache_region_by_instance_id(self.instance_id()));
 
+            info!(
+                "Mapping SCF queue region @{:?} to base: {:?} size {:#x}",
+                scf_queue_region_base,
+                self.scf_region_base.unwrap(),
+                SCF_QUEUE_REGION_SIZE
+            );
+
             // Map the SCF queue region.
             // Do not allocate a new SCF queue region, since it is shared by all processes in the same instance.
             forked_addrspace.map_linear(
@@ -240,6 +270,14 @@ impl<
                 MappingFlags::READ | MappingFlags::WRITE,
                 true,
             )?;
+
+            info!(
+                "Mapping page cache region @{:?} to {:?} size {:#x}",
+                page_cache_region_base,
+                self.page_cache_region_base
+                    .expect("Page cache region must be set"),
+                PAGE_CACHE_POOL_SIZE
+            );
 
             // Map the page cache region.
             // Do not allocate a new page cache region, since it is shared by all processes in the same instance.
@@ -256,11 +294,35 @@ impl<
         // Handle ivc shared memory regions.
         for (key, shm_base_gpa) in &self.ivc_shm_keys {
             let (base_hpa, size, _) = ivc::get_channel_info(key)?;
+
+            info!(
+                "Mapping IVC region key [{:#x}] @{:?} to {:?}, size {:#x}",
+                key, shm_base_gpa, base_hpa, size
+            );
+
             forked_addrspace.map_linear(
                 *shm_base_gpa,
                 base_hpa,
                 size,
                 MappingFlags::READ | MappingFlags::WRITE,
+                true,
+            )?;
+        }
+
+        // Handle shared memory regions.
+        for (base_gpa, region) in shared_mm_regions {
+            info!(
+                "GuestAddrSpace map shared region @{:?} to base {:?} size {:#x}",
+                base_gpa,
+                region.base(),
+                region.size()
+            );
+
+            forked_addrspace.map_linear(
+                *base_gpa,
+                region.base(),
+                region.size(),
+                MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
                 true,
             )?;
         }
@@ -279,7 +341,7 @@ impl<
 
                 // Perform COW at coarse grained region granularity.
                 for (ori_base, ori_region) in mm_regions {
-                    debug!(
+                    info!(
                         "GuestAddrSpace fork region [{:?}-{:?}], which is mapped to [{:?}-{:?}]",
                         ori_base,
                         ori_base.add(mm_region_granularity),
@@ -382,6 +444,10 @@ impl<
                         HostPhysicalRegion::allocate_ref(mm_region_granularity, None)?;
 
                     new_pt_region.copy_from(fault_mm_region);
+
+                    // Unmap the original region first.
+                    // self.ept_addrspace
+                    //     .unmap(fault_mm_region_base, mm_region_granularity)?;
 
                     self.ept_addrspace.map_linear(
                         fault_mm_region_base,
@@ -1004,7 +1070,7 @@ impl<
         process_inner_region.mm_frame_allocator.init_with_page_size(
             PAGE_SIZE_4K,
             region_granularity,
-            GUEST_MEM_REGION_BASE_GPA.as_usize(),
+            GUEST_PROCESS_MM_REGION_BASE_GPA.as_usize(),
             0, // Just init mm_frame_allocator with 0 size!!!
         );
         process_inner_region.pt_frame_allocator.init_with_page_size(
@@ -1868,8 +1934,8 @@ impl<
                 let current_mm_region_count = mm_regions.len();
                 // let allocated_region_hpa = allocated_region.base();
 
-                let allocated_region_gpa_base =
-                    GUEST_MEM_REGION_BASE_GPA.add(current_mm_region_count * mm_region_granularity);
+                let allocated_region_gpa_base = GUEST_PROCESS_MM_REGION_BASE_GPA
+                    .add(current_mm_region_count * mm_region_granularity);
 
                 self.ept_addrspace.map_linear(
                     allocated_region_gpa_base,
@@ -1888,7 +1954,7 @@ impl<
                     );
 
                 debug!(
-                    "Allocating memory region at [{:?} ~ {:?}], total segments: {}, pages used/total:[{}/{}]",
+                    "Extending process region at [{:?} ~ {:?}], total segments: {}, used/total: [{}/{}]",
                     allocated_region_gpa_base,
                     allocated_region_gpa_base.add(mm_region_granularity),
                     self.process_inner_region()

@@ -28,7 +28,7 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
         args: [u64; 6],
     ) -> AxResult<Self> {
         let code = HyperCallCode::try_from(code as u32).map_err(|e| {
-            warn!("Invalid hypercall code: {} e {:?}", code, e);
+            warn!("Invalid hypercall code: {:#x} e {:?}", code, e);
             ax_err_type!(InvalidInput)
         })?;
 
@@ -61,10 +61,12 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
             HyperCallCode::HDebug => self.debug(),
             HyperCallCode::HExitProcess => self.exit_process(self.args[0]),
             HyperCallCode::HShutdownInstance => self.shutdown_instance(),
-            HyperCallCode::HClone => self.clone(),
+            HyperCallCode::HFork => self.handle_fork(),
             HyperCallCode::HRead => self.read(self.args[0], self.args[1], self.args[2]),
             HyperCallCode::HWrite => self.write(self.args[0], self.args[1], self.args[2]),
-            HyperCallCode::HAllocMMRegion => self.alloc_mm_region(self.args[0] as usize),
+            HyperCallCode::HAllocMMRegion => {
+                self.alloc_mm_region(self.args[0] as usize, self.args[1] != 0)
+            }
             HyperCallCode::HIVCGet => self.ivc_get(
                 self.args[0] as u32,
                 self.args[1] as usize,
@@ -108,24 +110,30 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
         Ok(0)
     }
 
-    fn alloc_mm_region(&self, num_of_pages: usize) -> HyperCallResult {
+    fn alloc_mm_region(&self, num_of_pages: usize, shared: bool) -> HyperCallResult {
         // info!("HAllocMMRegion num_of_pages {num_of_pages}");
 
-        self.instance
-            .alloc_mm_region(self.pcpu.current_ept_root(), num_of_pages)?;
+        if shared {
+            self.instance.alloc_instance_mm_region(num_of_pages)?;
+        } else {
+            self.instance
+                .alloc_process_mm_region(self.pcpu.current_ept_root(), num_of_pages)?;
+        }
         Ok(0)
     }
 
-    fn clone(&self) -> HyperCallResult {
+    fn handle_fork(&self) -> HyperCallResult {
         info!("HClone");
 
-        let new_pid = self.instance.handle_clone(self.pcpu.current_ept_root())?;
+        let new_pid = self.instance.handle_fork(self.pcpu.current_ept_root())?;
         if self.instance.eptp_list_dirty() {
             EqOSPerCpu::<H>::sync_eptp_list_region_on_all_vcpus(
                 self.instance.id(),
                 self.instance.get_eptp_list(),
             );
         }
+
+        info!("HClone new pid: {}", new_pid);
         Ok(new_pid)
     }
 

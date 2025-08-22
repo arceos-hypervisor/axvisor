@@ -1,9 +1,11 @@
+use std::collections::btree_map::BTreeMap;
+
 use page_table_multiarch::PagingHandler;
 
-use axaddrspace::HostPhysAddr;
+use axaddrspace::{GuestPhysAddr, HostPhysAddr};
 use axerrno::AxResult;
 
-use crate::libos::mm::gaddrspace::EqAddrSpace;
+use crate::{libos::mm::gaddrspace::EqAddrSpace, region::HostPhysicalRegion};
 
 pub struct Process<H: PagingHandler> {
     /// The process ID in the instance.
@@ -39,7 +41,11 @@ impl<H: PagingHandler> Process<H> {
         &mut self.guest_as
     }
 
-    pub fn fork(&mut self, pid: usize) -> AxResult<Self> {
+    pub fn fork(
+        &mut self,
+        pid: usize,
+        shared_regions: &BTreeMap<GuestPhysAddr, HostPhysicalRegion<H>>,
+    ) -> AxResult<Self> {
         info!(
             "Instance [{}] Forking process: pid = {} from parent process {}",
             self.guest_as.instance_id(),
@@ -47,7 +53,7 @@ impl<H: PagingHandler> Process<H> {
             self.pid
         );
 
-        let new_as = self.guest_as.fork(pid)?;
+        let new_as = self.guest_as.fork(pid, shared_regions)?;
         let new_process = Process::new(pid, new_as);
         Ok(new_process)
     }

@@ -9,7 +9,7 @@ use std::sync::Mutex;
 
 use axerrno::{AxResult, ax_err, ax_err_type};
 use bitmaps::Bitmap;
-use memory_addr::{MemoryAddr, PAGE_SIZE_4K};
+use memory_addr::{MemoryAddr, PAGE_SIZE_2M, PAGE_SIZE_4K};
 use page_table_multiarch::{PageSize, PagingHandler};
 
 use axaddrspace::npt::EPTPointer;
@@ -19,16 +19,17 @@ use equation_defs::task::EqTask;
 use equation_defs::{
     EQUATION_MAGIC_NUMBER, FIRST_PROCESS_ID, GuestMappingType, INSTANCE_PERCPU_REGION_SIZE,
     InstanceRegion, InstanceType, MAX_CPUS_NUM, MAX_INSTANCES_NUM, PAGE_CACHE_POOL_SIZE,
-    SCF_QUEUE_REGION_SIZE, SHIM_INSTANCE_ID,
+    SCF_QUEUE_REGION_SIZE, SHIM_INSTANCE_ID, instance_normal_region_pa_to_va,
 };
 
 use crate::libos::config::{get_eqloader_data, get_gate_process_data};
 use crate::libos::def::{
     EPTP_LIST_REGION_SIZE, EPTPList, GP_ALL_EPTP_LIST_REGIN_GPA, GP_ALL_EPTP_LIST_REGION_GVA,
     GP_ALL_INSTANCE_PERCPU_REGION_GPA, GP_ALL_INSTANCE_PERCPU_REGION_GVA,
-    GP_PERCPU_EPT_LIST_REGION_GVA, INSTANCE_REGION_SIZE, KSCHED_SHM_REGION_BASE_GPA,
-    KSCHED_SHM_REGION_BASE_GVA, KSCHED_SHM_REGION_SIZE, PERCPU_EPTP_LIST_REGION_GPA,
-    PERCPU_REGION_BASE_GPA, PERCPU_REGION_BASE_GVA, PERCPU_REGION_SIZE,
+    GP_PERCPU_EPT_LIST_REGION_GVA, GUEST_INSTANCE_MM_REGION_BASE_GPA, INSTANCE_REGION_SIZE,
+    KSCHED_SHM_REGION_BASE_GPA, KSCHED_SHM_REGION_BASE_GVA, KSCHED_SHM_REGION_SIZE,
+    PERCPU_EPTP_LIST_REGION_GPA, PERCPU_REGION_BASE_GPA, PERCPU_REGION_BASE_GVA,
+    PERCPU_REGION_SIZE,
 };
 use crate::libos::mm::gaddrspace::{GuestAddrSpace, init_shim_kernel, paging_err_to_ax_err};
 use crate::libos::percpu::EqOSPerCpu;
@@ -102,6 +103,7 @@ pub struct Instance<H: PagingHandler> {
     /// This flag is used to indicate that the EPTP list needs to be updated in the vCPUs.
     eptp_list_dirty: AtomicBool,
 
+    mm_regions: Mutex<BTreeMap<GuestPhysAddr, HostPhysicalRegion<H>>>,
     scf_region: Option<HostPhysicalRegion<H>>,
     page_cache_region: Option<HostPhysicalRegion<H>>,
 }
@@ -247,6 +249,7 @@ impl<H: PagingHandler> Instance<H> {
             eptp_list_region: dummy_eptp_list_region,
             // Shim instance's EPTP list is always NOT dirty.
             eptp_list_dirty: AtomicBool::new(false),
+            mm_regions: Mutex::new(BTreeMap::new()),
             scf_region: None,        // No SCF queue region for shim instance
             page_cache_region: None, // No page cache region for shim instance
         }))
@@ -334,11 +337,12 @@ impl<H: PagingHandler> Instance<H> {
         Ok(Arc::new(Self {
             itype,
             running: AtomicBool::new(false),
-            pid_bitmap: Mutex::new(Bitmap::mask(FIRST_PROCESS_ID)),
+            pid_bitmap: Mutex::new(Bitmap::mask(FIRST_PROCESS_ID + 1)),
             instance_region_base,
             eptp_list_region,
             eptp_list_dirty: AtomicBool::new(false),
             processes: Mutex::new(processes),
+            mm_regions: Mutex::new(BTreeMap::new()),
             scf_region: Some(scf_region),
             page_cache_region: Some(page_cache_region),
         }))
@@ -373,7 +377,84 @@ impl<H: PagingHandler> Instance<H> {
             .map(|region| (region.base(), region.size()))
     }
 
-    pub fn alloc_mm_region(&self, eptp: HostPhysAddr, requested_pages: usize) -> AxResult {
+    pub fn alloc_instance_mm_region(&self, requested_pages: usize) -> AxResult {
+        debug!(
+            "Allocating instance MM region with {} pages",
+            requested_pages
+        );
+
+        let region_granularity = PAGE_SIZE_2M;
+
+        let allocated_region = HostPhysicalRegion::allocate(region_granularity, None)?;
+
+        let mut mm_regions = self.mm_regions.lock();
+        let current_mm_region_count = mm_regions.len();
+        let allocated_region_gpa_base =
+            GUEST_INSTANCE_MM_REGION_BASE_GPA.add(current_mm_region_count * region_granularity);
+        let allocated_region_base_hpa = allocated_region.base();
+        mm_regions.insert(allocated_region_gpa_base, allocated_region);
+
+        drop(mm_regions);
+
+        // If instance's running process number is more than 1, `alloc_instance_mm_region`
+        // should not be called.
+        let mut processes = self.processes.lock();
+        if processes.len() > 1 {
+            warn!(
+                "Instance {} has more than one process, cannot allocate MM region",
+                self.id()
+            );
+        }
+        for process in processes.values_mut() {
+            process.addrspace_mut().ept_map_linear(
+                allocated_region_gpa_base,
+                allocated_region_base_hpa,
+                region_granularity,
+                MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
+                true,
+            )?;
+            // Map the guest normal memory region to high address space.
+            process
+                .addrspace_mut()
+                .guest_map_region(
+                    GuestVirtAddr::from_usize(instance_normal_region_pa_to_va(
+                        allocated_region_gpa_base.as_usize(),
+                    )),
+                    |_gva| allocated_region_gpa_base,
+                    region_granularity,
+                    MappingFlags::READ | MappingFlags::WRITE,
+                    true,
+                    false,
+                )
+                .map_err(|e| {
+                    error!("Failed to map instance MM region: {:?}", e);
+                    paging_err_to_ax_err(e)
+                })?;
+        }
+        drop(processes);
+
+        self.instance_inner_region_mut()
+            .instance_frame_allocator
+            .increase_segment_at(allocated_region_gpa_base.as_usize(), region_granularity);
+        info!(
+            "Extending instance region at [{:?} ~ {:?}], total segments: {}, used/total: [{}/{}]",
+            allocated_region_gpa_base,
+            allocated_region_gpa_base.add(region_granularity),
+            self.instance_inner_region_mut()
+                .instance_frame_allocator
+                .total_segments(),
+            self.instance_inner_region_mut()
+                .instance_frame_allocator
+                .used_pages(),
+            self.instance_inner_region_mut()
+                .instance_frame_allocator
+                .total_pages(),
+        );
+
+        Ok(())
+    }
+
+    pub fn alloc_process_mm_region(&self, eptp: HostPhysAddr, requested_pages: usize) -> AxResult {
         trace!(
             "Allocating MM region for eptp {:?} with {} pages",
             eptp, requested_pages
@@ -571,7 +652,7 @@ impl<H: PagingHandler> Instance<H> {
 
     /// Handle the clone hypercall to create a new process.
     /// This function will fork the process with the given EPTP and return the new EPTP's index.
-    pub fn handle_clone(&self, eptp: HostPhysAddr) -> AxResult<usize> {
+    pub fn handle_fork(&self, eptp: HostPhysAddr) -> AxResult<usize> {
         let new_pid = self.alloc_pid().ok_or_else(|| {
             warn!("Process ID overflow");
             ax_err_type!(ResourceBusy, "Process ID overflow")
@@ -584,7 +665,7 @@ impl<H: PagingHandler> Instance<H> {
             ax_err_type!(InvalidInput, "Invalid EPTP")
         })?;
 
-        let new_process = cur_process.fork(new_pid)?;
+        let new_process = cur_process.fork(new_pid, &self.mm_regions.lock())?;
         let new_eptp = EPTPointer::from_table_phys(new_process.ept_root());
         let new_pid = new_process.pid();
         processes.insert(new_eptp.into_ept_root(), new_process);
@@ -739,7 +820,7 @@ impl<H: PagingHandler> Instance<H> {
         // Fork gate process on each core from init process.
         for i in 1..get_instance_cpus() {
             let cpu_id = cpu_ids[i];
-            secondary_gate_processes.push(init_process.fork(cpu_id)?);
+            secondary_gate_processes.push(init_process.fork(cpu_id, &self.mm_regions.lock())?);
         }
 
         // Insert forked gate processes into the processes map, indexed by their EPT root HPA.
