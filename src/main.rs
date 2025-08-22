@@ -8,10 +8,14 @@ extern crate alloc;
 
 extern crate axstd as std;
 
+#[cfg(feature = "plat-aarch64-generic")]
+extern crate axplat_aarch64_generic;
+#[cfg(feature = "plat-x86-qemu-q35")]
+extern crate axplat_x86_qemu_q35;
+
 mod hal;
 mod logo;
 mod task;
-mod utils;
 mod vmm;
 
 #[unsafe(no_mangle)]

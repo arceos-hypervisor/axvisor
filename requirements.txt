@@ -1,0 +1,2 @@
+# Axvisor task.py 依赖
+toml>=0.10.0

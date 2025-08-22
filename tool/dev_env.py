@@ -37,6 +37,7 @@ def main():
         "arm_vgic",
         "arm_gicv2",
         "axdevice_crates",
+        "axhvc",
     ]
 
     for one in repos:

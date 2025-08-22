@@ -58,6 +58,54 @@ AxVisor 的软件架构分为如下图所示的五层，其中，每一个框都
 
 AxVisor 启动之后会根据客户机配置文件中的信息加载并启动客户机。目前，AxVisor 即支持从 FAT32 文件系统加载客户机镜像，也支持通过静态编译方式（include_bytes）将客户机镜像绑定到虚拟机管理程序镜像中。
 
+## 快速开始
+
+### 1. Python 环境设置
+
+AxVisor 使用 Python 脚本 (`task.py`) 进行构建和运行管理。要设置所需的 Python 环境：
+
+```bash
+# 在虚拟环境中安装 Python 依赖
+./bootstrap.sh
+
+# 激活虚拟环境
+source venv/bin/activate
+
+# 或使用便捷脚本
+source activate.sh
+```
+
+`bootstrap.sh` 脚本将会：
+
+- 在 `venv/` 目录中创建 Python 虚拟环境
+- 从 `requirements.txt` 安装所有必需的依赖项
+- 测试 `task.py` 是否正常运行
+
+### 2. 基本使用
+
+设置好 Python 环境后：
+
+```bash
+# 构建项目
+./task.py build
+
+# 运行项目
+./task.py run
+
+# 获取帮助
+./task.py --help
+./task.py build --help
+./task.py run --help
+```
+
+### 3. 退出虚拟环境
+
+完成项目工作后：
+
+```bash
+deactivate
+```
+
 ## 构建环境
 
 AxVisor 是使用 Rust 编程语言编写的，因此，需要根据 Rust 官方网站的说明安装 Rust 开发环境。此外，还需要安装 [cargo-binutils](https://github.com/rust-embedded/cargo-binutils) 以便使用 `rust-objcopy` 和 `rust-objdump` 等工具

@@ -58,6 +58,53 @@ Currently, AxVisor has been verified in scenarios with the following systems as 
 
 After AxVisor starts, it loads and starts the guest based on the information in the guest configuration file. Currently, AxVisor supports loading guest images from a FAT32 file system and also supports binding guest images to the hypervisor image through static compilation (using include_bytes).
 
+## Quick Start
+
+### 1. Python Environment Setup
+
+AxVisor uses a Python script (`task.py`) for build and run management. To set up the required Python environment:
+
+```bash
+# Install Python dependencies in a virtual environment
+./bootstrap.sh
+
+# Activate the virtual environment 
+source venv/bin/activate
+
+# Or use the convenience script
+source activate.sh
+```
+
+The `bootstrap.sh` script will:
+- Create a Python virtual environment in the `venv/` directory
+- Install all required dependencies from `requirements.txt`
+- Test that `task.py` runs correctly
+
+### 2. Basic Usage
+
+Once the Python environment is set up:
+
+```bash
+# Build the project
+./task.py build
+
+# Run the project
+./task.py run
+
+# Get help
+./task.py --help
+./task.py build --help
+./task.py run --help
+```
+
+### 3. Deactivating Virtual Environment
+
+When you're done working with the project:
+
+```bash
+deactivate
+```
+
 ## Build Environment
 
 AxVisor is written in the Rust programming language, so you need to install the Rust development environment following the instructions on the official Rust website. Additionally, you need to install cargo-binutils to use tools like rust-objcopy and rust-objdump.
@@ -209,7 +256,23 @@ You can refer to these [discussions]((https://github.com/arceos-hypervisor/axvis
 
 ## Development
 
-AxVisor, as a modular hypervisor, has many components used as Crates. You can use the `tool/dev_env.py` command to localize the relevant Crates, making it easier for development and debugging.
+To contribute to AxVisor, you can follow these steps:
+
+1. Fork the repository on GitHub.
+2. Clone your forked repository to your local machine.
+3. Create a new branch for your feature or bug fix.
+4. Make your changes and commit them with clear messages.
+5. Push your changes to your forked repository.
+6. Open a pull request against the main branch of the original repository.
+
+To develop crates used by AxVisor, you can use the following command to build and run the project:
+
+```bash
+cargo install cargo-lpatch
+cargo lpatch -n deps_crate_name
+```
+
+Then you can modify the code in the `crates/deps_crate_name` directory, and it will be automatically used by AxVisor.
 
 ## Contributors
 

@@ -1,7 +1,7 @@
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering;
 
-use std::os::arceos::modules::{axconfig, axhal};
+use std::os::arceos::modules::axhal;
 
 use alloc::boxed::Box;
 use kspin::SpinNoIrq;
@@ -9,7 +9,7 @@ use lazyinit::LazyInit;
 use timer_list::{TimeValue, TimerEvent, TimerList};
 
 static TOKEN: AtomicUsize = AtomicUsize::new(0);
-const PERIODIC_INTERVAL_NANOS: u64 = axhal::time::NANOS_PER_SEC / axconfig::TICKS_PER_SEC as u64;
+// const PERIODIC_INTERVAL_NANOS: u64 = axhal::time::NANOS_PER_SEC / axconfig::TICKS_PER_SEC as u64;
 
 /// Represents a timer event in the virtual machine monitor (VMM).
 ///
@@ -28,7 +28,7 @@ impl VmmTimerEvent {
         F: FnOnce(TimeValue) + Send + 'static,
     {
         Self {
-            token: token,
+            token,
             timer_callback: Box::new(f),
         }
     }
@@ -55,11 +55,17 @@ pub fn register_timer<F>(deadline: u64, handler: F) -> usize
 where
     F: FnOnce(TimeValue) + Send + 'static,
 {
+    info!("Registering timer...");
+    info!(
+        "deadline is {:#?} = {:#?}",
+        deadline,
+        TimeValue::from_nanos(deadline)
+    );
     let timer_list = unsafe { TIMER_LIST.current_ref_mut_raw() };
     let mut timers = timer_list.lock();
     let token = TOKEN.fetch_add(1, Ordering::Release);
     let event = VmmTimerEvent::new(token, handler);
-    timers.set(TimeValue::from_nanos(deadline as u64), event);
+    timers.set(TimeValue::from_nanos(deadline), event);
     token
 }
 
@@ -75,12 +81,14 @@ pub fn cancel_timer(token: usize) {
 
 /// Check and process any pending timer events
 pub fn check_events() {
+    // info!("Checking timer events...");
+    // info!("now is {:#?}", axhal::time::wall_time());
     let timer_list = unsafe { TIMER_LIST.current_ref_mut_raw() };
     loop {
         let now = axhal::time::wall_time();
         let event = timer_list.lock().expire_one(now);
         if let Some((_deadline, event)) = event {
-            trace!("pick one {:#?} to handler!!!", _deadline);
+            trace!("pick one {:#?} to handle!!!", _deadline);
             event.callback(now);
         } else {
             break;
@@ -89,12 +97,13 @@ pub fn check_events() {
 }
 
 /// Schedule the next timer event based on the periodic interval
-pub fn scheduler_next_event() {
-    let now_ns = axhal::time::monotonic_time_nanos();
-    let deadline = now_ns + PERIODIC_INTERVAL_NANOS;
-    trace!("PHY deadline {} !!!", deadline);
-    axhal::time::set_oneshot_timer(deadline);
-}
+// pub fn scheduler_next_event() {
+//     trace!("Scheduling next event...");
+//     let now_ns = axhal::time::monotonic_time_nanos();
+//     let deadline = now_ns + PERIODIC_INTERVAL_NANOS;
+//     debug!("PHY deadline {} !!!", deadline);
+//     axhal::time::set_oneshot_timer(deadline);
+// }
 
 /// Initialize the hypervisor timer system
 pub fn init_percpu() {

@@ -2,52 +2,76 @@
 lto = true
 
 [package]
-name = "axvisor"
-version = "0.1.0"
-edition = "2024"
 authors = ["Keyang Hu <keyang.hu@qq.com>"]
+edition = "2024"
 exclude = ["crates"]
 license = "GPL-3.0-or-later OR Apache-2.0 OR MulanPubL-2.0 OR MulanPSL2"
+name = "axvisor"
+version = "0.1.0"
 
 [features]
 fs = ["axstd/fs"]
+hv = []
+irq = []
+plat-aarch64-generic = ["axplat-aarch64-generic", "hv", "irq", "axstd/driver-dyn"]
+plat-x86-qemu-q35 = ["axplat-x86-qemu-q35", "hv", "irq"]
 
 [dependencies]
-log = "=0.4.21"
 bitflags = "2.2"
 cfg-if = "1.0"
-spin = "0.9"
+cpumask = "0.1.0"
+kernel_guard = "0.1"
 kspin = "0.1"
 lazyinit = "0.2"
+log = "=0.4.21"
+spin = "0.9"
 timer_list = "0.1.0"
 
 # System dependent modules provided by ArceOS.
-axstd = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm", features = [
-    "alloc",
-    "paging",
-    # "fs",
-    "irq",
-    "hv",
-    "multitask",
-    # "sched_rr"
+axstd = {git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm-dev", features = [
+  "alloc",
+  "paging",
+  "irq",
+  "multitask",
+  "smp",
+  "page-alloc-64g",
 ]}
 
 # System dependent modules provided by ArceOS-Hypervisor.
-axvm = { git = "https://github.com/arceos-hypervisor/axvm.git" }
-axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git" }
-axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git" }
+axaddrspace = "0.1"
+axhvc = {git = "https://github.com/arceos-hypervisor/axhvc.git"}
+axvcpu = "0.1"
+axvm = {git = "https://github.com/arceos-hypervisor/axvm.git", branch = "dev-irq"}
 
 # System independent crates provided by ArceOS, these crates could be imported by remote url. 
-crate_interface = "0.1"
 axerrno = "0.1.0"
-memory_addr = "0.3"
-page_table_entry = { version = "0.5", features = ["arm-el2"] }
+crate_interface = "0.1"
+fdt-parser = "0.4"
+memory_addr = "0.4"
+page_table_entry = {version = "0.5", features = ["arm-el2"]}
 page_table_multiarch = "0.5"
-percpu = { version = "0.2.0", features = ["arm-el2"] }
+percpu = {version = "0.2", features = ["arm-el2"]}
+rdrive = "0.16"
+
+axdevice = {git = "https://github.com/arceos-hypervisor/axdevice.git"}
+axdevice_base = "0.1"
+axvisor_api = "0.1"
+
+# platform
+axplat-aarch64-generic = {path = "platform/aarch64-generic", optional = true}
+axplat-x86-qemu-q35 = {path = "platform/x86-qemu-q35", optional = true}
+
+[target.'cfg(target_arch = "aarch64")'.dependencies]
+aarch64-cpu-ext = "0.1"
+arm-gic-driver = {version = "0.15.5", features = ["rdif"]}
 
 [build-dependencies]
-toml = { git = "https://github.com/arceos-hypervisor/toml.git", branch = "no_std" }
-axconfig = { git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm" }
+axconfig = {git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm-dev"}
 prettyplease = "0.2"
 quote = "1.0"
 syn = "2.0"
+toml = {version = "0.9"}
+
+[patch.crates-io.axcpu]
+branch = "vmm"
+git = "https://github.com/arceos-hypervisor/axcpu"

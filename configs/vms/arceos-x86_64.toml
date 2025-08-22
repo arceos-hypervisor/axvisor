@@ -17,7 +17,7 @@ phys_cpu_sets = [1]
 #
 [kernel]
 # The entry point of the kernel image.
-entry_point = 0x8000
+entry_point = 0x20_0000
 # The location of image: "memory" | "fs".
 # Load from file system.
 image_location = "fs"
@@ -26,7 +26,7 @@ bios_path = "axvm-bios.bin"
 # The load address of the BIOS image.
 bios_load_addr = 0x8000
 # The file path of the kernel image.
-kernel_path = "arceos-x86_64.bin"
+kernel_path = "guest-test_x86-pc.bin"
 # The load address of the kernel image.
 kernel_load_addr = 0x20_0000
 
