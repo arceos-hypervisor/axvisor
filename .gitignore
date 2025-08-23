@@ -2,6 +2,7 @@
 /target
 /.vscode
 /tmp
+/build
 .DS_Store
 *.asm
 *.img

@@ -140,6 +140,7 @@ LD_SCRIPT := $(OUT_DIR)/target/$(TARGET)/$(MODE)/linker_$(PLAT_NAME).lds
 OUT_ELF := $(OUT_DIR)/$(APP_NAME)_$(PLAT_NAME).elf
 OUT_BIN := $(OUT_DIR)/$(APP_NAME)_$(PLAT_NAME).bin
 OUT_ASM := $(OUT_DIR)/$(APP_NAME)_$(PLAT_NAME).asm
+BINARY_NAME ?= evm-intel.bin
 
 all: build
 
@@ -155,6 +156,7 @@ else ifeq ($(PLAT_NAME), aarch64-bsta1000b-virt-hv)
 else ifeq ($(PLAT_NAME), aarch64-rk3588j)
   include scripts/make/rk3588.mk
 endif
+include scripts/make/deps.mk
 include scripts/vmm/scp.mk
 
 defconfig: _axconfig-gen
@@ -163,7 +165,8 @@ defconfig: _axconfig-gen
 oldconfig: _axconfig-gen
 	$(call oldconfig)
 
-build: $(OUT_DIR) $(OUT_BIN)
+build: deps $(OUT_DIR) $(OUT_BIN)
+	cp $(OUT_BIN) $(BUILD_DIR)/$(BINARY_NAME)
 
 disasm:
 	$(OBJDUMP) $(OUT_ELF) | less
@@ -177,11 +180,11 @@ debug: build
 	$(call run_qemu_debug)
 
 .PHONY: scp_to_qemu
-scp_to_qemu: $(OUT_DIR) $(OUT_BIN)
+scp_to_qemu: build
 	$(call scp_qemu)
 
 .PHONY: scp_to_hw
-scp_to_hw: $(OUT_DIR) $(OUT_BIN)
+scp_to_hw: build
 	$(call scp_hw)
 
 .PNONY: ssh
