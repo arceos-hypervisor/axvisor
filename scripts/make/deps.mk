@@ -12,7 +12,7 @@ SHIM_BIN = $(SHIM_DIR)/shim.bin
 
 $(SHIM_BIN):
 	$(info Building shim)
-	LOG=debug $(MAKE) -C $(SHIM_DIR)
+	$(MAKE) PLATFORM=axvisor -C $(SHIM_DIR)
 
 shim: $(SHIM_BIN)
 
@@ -22,7 +22,7 @@ AXCLI_BIN = $(AXCLI_DIR)/target/release/axcli
 
 $(AXCLI_BIN):
 	$(info Building axcli)
-	cd $(AXCLI_DIR) && cargo build --release
+	cd $(AXCLI_DIR) && unset RUSTFLAGS && cargo build --release
 
 axcli: $(AXCLI_BIN) $(BUILD_DIR)
 	cp $(AXCLI_BIN) $(BUILD_DIR)/
