@@ -1,0 +1,58 @@
+[submodule "crates/arceos"]
+	path = crates/arceos
+	url = https://github.com/EquationOS/arceos.git
+	branch = equation
+[submodule "crates/allocator"]
+	path = crates/allocator
+	url = https://github.com/arceos-org/allocator.git
+	branch = bitmap_add_memory
+[submodule "crates/axaddrspace"]
+	path = crates/axaddrspace
+	url = https://github.com/arceos-hypervisor/axaddrspace.git
+	branch = equation
+[submodule "crates/axhvc"]
+	path = crates/axhvc
+	url = https://github.com/arceos-hypervisor/axhvc.git
+	branch = equation
+[submodule "crates/axvm"]
+	path = crates/axvm
+	url = https://github.com/arceos-hypervisor/axvm.git
+	branch = equation
+[submodule "crates/axvcpu"]
+	path = crates/axvcpu
+	url = https://github.com/arceos-hypervisor/axvcpu.git
+	branch = equation
+[submodule "crates/bitmaps"]
+	path = crates/bitmaps
+	url = https://github.com/EquationOS/bitmaps.git
+[submodule "crates/equation_defs"]
+	path = crates/equation_defs
+	url = https://github.com/EquationOS/equation_defs.git
+	branch = equation
+[submodule "crates/memory_addr"]
+	path = crates/memory_addr
+	url = https://github.com/arceos-org/memory_addr.git
+	branch = equation
+[submodule "crates/page_table_multiarch"]
+	path = crates/page_table_multiarch
+	url = https://github.com/arceos-org/page_table_multiarch.git
+	branch = alloc_frames
+[submodule "crates/x86_vcpu"]
+	path = crates/x86_vcpu
+	url = https://github.com/arceos-hypervisor/x86_vcpu.git
+	branch = equation
+[submodule "crates/pi_memory_layout"]
+	path = crates/pi_memory_layout
+	url = https://github.com/EquationOS/pi-memory-layout.git
+[submodule "deps/axvisor-tools"]
+	path = deps/axvisor-tools
+	url = https://github.com/arceos-hypervisor/axvisor-tools.git
+	branch = boot_junction
+[submodule "deps/shim"]
+	path = deps/shim
+	url = https://github.com/EquationOS/shim.git
+	branch = equation
+[submodule "deps/jailhouse-equation"]
+	path = deps/jailhouse-equation
+	url = https://github.com/EquationOS/jailhouse-equation.git
+	branch = equation

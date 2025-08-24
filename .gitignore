@@ -18,9 +18,7 @@ rusty-tags.vi
 /**/.axconfig.*
 
 # dev env
-/crates
 /Cargo.toml.bk
-/deps
 
 /logs
 
