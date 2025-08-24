@@ -1,8 +1,5 @@
 #!/bin/bash
-
-JH_DIR=~/jailhouse-equation
-JH=$JH_DIR/tools/jailhouse
+set -x
 
 sudo rmmod eqdriver
-
-sudo $JH disable
+sudo ./jailhouse disable

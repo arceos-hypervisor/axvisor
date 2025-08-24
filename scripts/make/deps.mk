@@ -40,10 +40,12 @@ eqdriver: $(EQDRIVER_BIN) $(BUILD_DIR)
 
 # jailhouse
 JAILHOUSE_DIR = $(CURDIR)/deps/jailhouse-equation
+JAILHOUSE_DRIVER = $(JAILHOUSE_DIR)/driver/jailhouse.ko
+JAILHOUSE_TOOL = $(JAILHOUSE_DIR)/tools/jailhouse
 jailhouse: $(BUILD_DIR)
 	$(info --- Building jailhouse for kernel $(KVER))
 	KDIR=$(KDIR) $(MAKE) -C $(JAILHOUSE_DIR)
-	cp -r $(JAILHOUSE_DIR) $(BUILD_DIR)/
+	cp $(JAILHOUSE_DRIVER) $(JAILHOUSE_TOOL) $(BUILD_DIR)/
 
 # guest scripts
 guest_script: $(BUILD_DIR)

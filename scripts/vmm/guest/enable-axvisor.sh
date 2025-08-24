@@ -1,18 +1,16 @@
 #!/bin/bash
-
-JH_DIR=~/jailhouse-equation
-JH=$JH_DIR/tools/jailhouse
+set -x
 
 if [ -z "$1" ]; then
     echo "Usage: $0 <parameter>"
     exit 1
 fi
 
-sudo $JH disable
+sudo ./jailhouse disable
 sudo rmmod jailhouse
 sudo rmmod eqdriver
-sudo insmod $JH_DIR/driver/jailhouse.ko
+sudo insmod jailhouse.ko
 sudo insmod eqdriver.ko
 sudo chown $(whoami) /dev/jailhouse
 sudo chown $(whoami) /dev/eqmanager
-sudo $JH enable "$1"
+sudo ./jailhouse enable "$1"
