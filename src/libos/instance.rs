@@ -650,9 +650,9 @@ impl<H: PagingHandler> Instance<H> {
             .handle_ept_page_fault(addr, access_flags)
     }
 
-    /// Handle the clone hypercall to create a new process.
+    /// Handle the dup_gas hypercall to create a new process.
     /// This function will fork the process with the given EPTP and return the new EPTP's index.
-    pub fn handle_fork(&self, eptp: HostPhysAddr) -> AxResult<usize> {
+    pub fn dup_gas(&self, clone_user_mm: bool, eptp: HostPhysAddr) -> AxResult<usize> {
         let new_pid = self.alloc_pid().ok_or_else(|| {
             warn!("Process ID overflow");
             ax_err_type!(ResourceBusy, "Process ID overflow")
@@ -665,7 +665,7 @@ impl<H: PagingHandler> Instance<H> {
             ax_err_type!(InvalidInput, "Invalid EPTP")
         })?;
 
-        let new_process = cur_process.fork(new_pid, &self.mm_regions.lock())?;
+        let new_process = cur_process.fork(new_pid, clone_user_mm, &self.mm_regions.lock())?;
         let new_eptp = EPTPointer::from_table_phys(new_process.ept_root());
         let new_pid = new_process.pid();
         processes.insert(new_eptp.into_ept_root(), new_process);
@@ -820,7 +820,11 @@ impl<H: PagingHandler> Instance<H> {
         // Fork gate process on each core from init process.
         for i in 1..get_instance_cpus() {
             let cpu_id = cpu_ids[i];
-            secondary_gate_processes.push(init_process.fork(cpu_id, &self.mm_regions.lock())?);
+            secondary_gate_processes.push(init_process.fork(
+                cpu_id,
+                true,
+                &self.mm_regions.lock(),
+            )?);
         }
 
         // Insert forked gate processes into the processes map, indexed by their EPT root HPA.

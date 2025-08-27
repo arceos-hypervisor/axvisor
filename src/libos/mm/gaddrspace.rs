@@ -162,6 +162,7 @@ impl<
     pub fn fork(
         &mut self,
         pid: usize,
+        clone_user_mm: bool,
         shared_mm_regions: &BTreeMap<GuestPhysAddr, HostPhysicalRegion<H>>,
     ) -> AxResult<Self> {
         info!("Forking GuestAddrSpace for process {}", pid);
@@ -339,55 +340,56 @@ impl<
 
                 let mm_region_granularity = self.process_inner_region().mm_region_granularity;
 
-                // Perform COW at coarse grained region granularity.
-                for (ori_base, ori_region) in mm_regions {
-                    info!(
-                        "GuestAddrSpace fork region [{:?}-{:?}], which is mapped to [{:?}-{:?}]",
-                        ori_base,
-                        ori_base.add(mm_region_granularity),
-                        ori_region.base(),
-                        ori_region.base().add(mm_region_granularity)
-                    );
+                if clone_user_mm {
+                    // Perform COW at coarse grained region granularity.
+                    for (ori_base, ori_region) in mm_regions {
+                        info!(
+                            "GuestAddrSpace fork region [{:?}-{:?}], which is mapped to [{:?}-{:?}]",
+                            ori_base,
+                            ori_base.add(mm_region_granularity),
+                            ori_region.base(),
+                            ori_region.base().add(mm_region_granularity)
+                        );
 
-                    forked_addrspace.map_linear(
-                        *ori_base,
-                        ori_region.base(), // Map to the original region without copying.
-                        mm_region_granularity,
-                        MappingFlags::READ | MappingFlags::EXECUTE, // erase WRITE permission
-                        true,
-                    )?;
+                        forked_addrspace.map_linear(
+                            *ori_base,
+                            ori_region.base(), // Map to the original region without copying.
+                            mm_region_granularity,
+                            MappingFlags::READ | MappingFlags::EXECUTE, // erase WRITE permission
+                            true,
+                        )?;
 
-                    self.ept_addrspace.protect(
-                        *ori_base,
-                        mm_region_granularity,
-                        MappingFlags::READ | MappingFlags::EXECUTE, // erase WRITE permission
-                    )?;
+                        self.ept_addrspace.protect(
+                            *ori_base,
+                            mm_region_granularity,
+                            MappingFlags::READ | MappingFlags::EXECUTE, // erase WRITE permission
+                        )?;
 
-                    new_mm_regions.insert(*ori_base, ori_region.clone());
+                        new_mm_regions.insert(*ori_base, ori_region.clone());
+                    }
+
+                    // For page table regions, we need to copy the original page table regions.
+                    // Because the guest page table CAN NOT be queried by MMU without `WRITE` permission.
+                    // ref: Intel SDM 30.3.3.2 EPT Violations
+                    for ori_pt_region in pt_regions {
+                        let new_pt_region = HostPhysicalRegion::allocate(PAGE_SIZE_2M, None)?;
+
+                        // Copy the original region to the new region.
+                        new_pt_region.copy_from(&ori_pt_region);
+
+                        forked_addrspace.map_linear(
+                            new_pt_region_base,
+                            new_pt_region.base(),
+                            PAGE_SIZE_2M,
+                            MappingFlags::READ | MappingFlags::WRITE,
+                            true,
+                        )?;
+
+                        new_pt_regions.push(new_pt_region);
+
+                        new_pt_region_base.add_assign(PAGE_SIZE_2M);
+                    }
                 }
-
-                // For page table regions, we need to copy the original page table regions.
-                // Because the guest page table CAN NOT be queried by MMU without `WRITE` permission.
-                // ref: Intel SDM 30.3.3.2 EPT Violations
-                for ori_pt_region in pt_regions {
-                    let new_pt_region = HostPhysicalRegion::allocate(PAGE_SIZE_2M, None)?;
-
-                    // Copy the original region to the new region.
-                    new_pt_region.copy_from(&ori_pt_region);
-
-                    forked_addrspace.map_linear(
-                        new_pt_region_base,
-                        new_pt_region.base(),
-                        PAGE_SIZE_2M,
-                        MappingFlags::READ | MappingFlags::WRITE,
-                        true,
-                    )?;
-
-                    new_pt_regions.push(new_pt_region);
-
-                    new_pt_region_base.add_assign(PAGE_SIZE_2M);
-                }
-
                 GuestMapping::CoarseGrainedSegmentation {
                     mm_regions: new_mm_regions,
                     pt_regions: new_pt_regions,
