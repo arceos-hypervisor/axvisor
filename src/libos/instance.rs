@@ -650,9 +650,9 @@ impl<H: PagingHandler> Instance<H> {
             .handle_ept_page_fault(addr, access_flags)
     }
 
-    /// Handle the clone hypercall to create a new process.
+    /// Handle the dup_gas hypercall to create a new process.
     /// This function will fork the process with the given EPTP and return the new EPTP's index.
-    pub fn handle_fork(&self, eptp: HostPhysAddr) -> AxResult<usize> {
+    pub fn dup_gas(&self, eptp: HostPhysAddr) -> AxResult<usize> {
         let new_pid = self.alloc_pid().ok_or_else(|| {
             warn!("Process ID overflow");
             ax_err_type!(ResourceBusy, "Process ID overflow")

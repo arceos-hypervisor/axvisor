@@ -61,7 +61,7 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
             HyperCallCode::HDebug => self.debug(),
             HyperCallCode::HExitProcess => self.exit_process(self.args[0]),
             HyperCallCode::HShutdownInstance => self.shutdown_instance(),
-            HyperCallCode::HFork => self.handle_fork(),
+            HyperCallCode::HDupGas => self.dup_gas(),
             HyperCallCode::HRead => self.read(self.args[0], self.args[1], self.args[2]),
             HyperCallCode::HWrite => self.write(self.args[0], self.args[1], self.args[2]),
             HyperCallCode::HAllocMMRegion => {
@@ -122,10 +122,10 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
         Ok(0)
     }
 
-    fn handle_fork(&self) -> HyperCallResult {
+    fn dup_gas(&self) -> HyperCallResult {
         info!("HClone");
 
-        let new_pid = self.instance.handle_fork(self.pcpu.current_ept_root())?;
+        let new_pid = self.instance.dup_gas(self.pcpu.current_ept_root())?;
         if self.instance.eptp_list_dirty() {
             EqOSPerCpu::<H>::sync_eptp_list_region_on_all_vcpus(
                 self.instance.id(),
