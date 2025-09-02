@@ -44,7 +44,6 @@ impl<H: PagingHandler> Process<H> {
     pub fn fork(
         &mut self,
         pid: usize,
-        clone_user_mm: bool,
         shared_regions: &BTreeMap<GuestPhysAddr, HostPhysicalRegion<H>>,
     ) -> AxResult<Self> {
         info!(
@@ -54,7 +53,7 @@ impl<H: PagingHandler> Process<H> {
             self.pid
         );
 
-        let new_as = self.guest_as.fork(pid, clone_user_mm, shared_regions)?;
+        let new_as = self.guest_as.fork(pid, shared_regions)?;
         let new_process = Process::new(pid, new_as);
         Ok(new_process)
     }
