@@ -1,6 +1,7 @@
 # linux kernel version
-KVER ?= 6.8.0-78-generic
+KVER ?= $(shell uname -r)
 KDIR = /lib/modules/$(KVER)/build
+NPROC ?= $(shell nproc)
 
 BUILD_DIR = $(CURDIR)/build
 $(BUILD_DIR):
@@ -10,32 +11,25 @@ $(BUILD_DIR):
 SHIM_DIR = $(CURDIR)/deps/shim
 SHIM_BIN = $(SHIM_DIR)/shim.bin
 
-$(SHIM_BIN):
+shim:
 	$(info Building shim)
 	$(MAKE) PLATFORM=axvisor -C $(SHIM_DIR)
-
-shim: $(SHIM_BIN)
-
 # axcli
 AXCLI_DIR = $(CURDIR)/deps/axvisor-tools/axcli
 AXCLI_BIN = $(AXCLI_DIR)/target/release/axcli
 
-$(AXCLI_BIN):
+axcli: $(BUILD_DIR)
 	$(info Building axcli)
 	cd $(AXCLI_DIR) && unset RUSTFLAGS && cargo build --release
-
-axcli: $(AXCLI_BIN) $(BUILD_DIR)
 	cp $(AXCLI_BIN) $(BUILD_DIR)/
 
 # eqdriver
 EQDRIVER_DIR = $(CURDIR)/deps/axvisor-tools/eqdriver
 EQDRIVER_BIN = $(EQDRIVER_DIR)/eqdriver.ko
 
-$(EQDRIVER_BIN):
+eqdriver: $(BUILD_DIR)
 	$(info --- Building eqdriver for kernel $(KVER))
-	KDIR=$(KDIR) $(MAKE) -C $(EQDRIVER_DIR)
-
-eqdriver: $(EQDRIVER_BIN) $(BUILD_DIR)
+	KDIR=$(KDIR) $(MAKE) -j $(NPROC) -C $(EQDRIVER_DIR)
 	cp $(EQDRIVER_BIN) $(BUILD_DIR)/
 
 # jailhouse
@@ -44,7 +38,7 @@ JAILHOUSE_DRIVER = $(JAILHOUSE_DIR)/driver/jailhouse.ko
 JAILHOUSE_TOOL = $(JAILHOUSE_DIR)/tools/jailhouse
 jailhouse: $(BUILD_DIR)
 	$(info --- Building jailhouse for kernel $(KVER))
-	KDIR=$(KDIR) $(MAKE) -C $(JAILHOUSE_DIR)
+	KDIR=$(KDIR) $(MAKE) -j $(NPROC) -C $(JAILHOUSE_DIR)
 	cp $(JAILHOUSE_DRIVER) $(JAILHOUSE_TOOL) $(BUILD_DIR)/
 
 # guest scripts
