@@ -48,7 +48,7 @@ jobs:
         export VM_CONFIGS="$(pwd)/configs/vms/nimbos-aarch64.toml"
         ./task.py run --plat ${{ matrix.plat }} --vmconfigs $VM_CONFIGS --features fs --arceos-args DISK_IMG=$DISK_IMG,BUS=mmio,BLK=y,MEM=8g
 
-  aarch64-generic-board:
+  aarch64-generic-phytiumpi:
     runs-on: [self-hosted, linux, docker]
     strategy:
       fail-fast: false
@@ -73,7 +73,35 @@ jobs:
         source ./activate.sh
         git clone https://github.com/arceos-hypervisor/axboard_test
         cd axboard_test
-        ./run.sh
+        ./run.sh phytiumpi-arceos
+        cd ..
+
+  aarch64-generic-rk3568:
+    runs-on: [self-hosted, linux, docker]
+    strategy:
+      fail-fast: false
+      matrix:
+        plat: [aarch64-generic]
+        rust-toolchain: [nightly-2025-05-20, nightly]
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: ${{ matrix.rust-toolchain }}
+        components: rust-src
+    - uses: Swatinem/rust-cache@v2
+    - run: cargo install cargo-binutils
+    - name: Update rust-toolchain.toml
+      run: |
+        sed -i "s/^channel = .*/channel = \"${{ matrix.rust-toolchain }}\"/" rust-toolchain.toml
+    - name: Run guests on local board
+      continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
+      run: |
+        cargo install ostool
+        source ./activate.sh
+        git clone https://github.com/arceos-hypervisor/axboard_test
+        cd axboard_test
+        ./run.sh rk3568-arceos
         cd ..
 
   x86-qemu-q35:
