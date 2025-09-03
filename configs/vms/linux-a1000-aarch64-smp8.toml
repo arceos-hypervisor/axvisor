@@ -41,7 +41,7 @@ dtb_load_addr = 0x82e0_0000
 
 # Memory regions with format (`base_paddr`, `size`, `flags`).
 memory_regions = [
-    [0x8000_0000, 0x7000_0000, 0x7, 1], #ram 1792MB
+  [0x8000_0000, 0x7000_0000, 0x7, 1], #ram 1792MB
 ]
 
 #
@@ -50,10 +50,9 @@ memory_regions = [
 [devices]
 # Emu_devices.
 # Name Base-Ipa Ipa_len Alloc-Irq Emu-Type EmuConfig.
-emu_devices = [
-]
+emu_devices = []
 
 # Pass-through devices.
 passthrough_devices = [
-	["most-devices", 0x0, 0x0, 0x8000_0000, 0x1],
+  ["most-devices", 0x0, 0x0, 0x8000_0000, 0x1],
 ]

@@ -66,7 +66,7 @@ emu_devices = [
 # Name Base-Ipa Base-Pa Length Alloc-Irq.
 passthrough_devices = [
   # ["intc@8000000", 0x801_0000, 0x804_0000, 0x2_000, 0x1], 
-    ["intc@8000000", 0x800_0000, 0x800_0000, 0x40000, 0x1],
+  ["intc@8000000", 0x800_0000, 0x800_0000, 0x40000, 0x1],
   ["pl011@9000000", 0x900_0000, 0x904_0000, 0x1000, 0x1],
   ["pl031@9010000", 0x901_0000, 0x901_0000, 0x1000, 0x1],
   ["pl061@9030000", 0x903_0000, 0x903_0000, 0x1000, 0x1], # a003000.virtio_mmio virtio_mmio@a003000   # a003200.virtio_mmio virtio_mmio@a003200

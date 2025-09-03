@@ -36,7 +36,6 @@ dtb_path = "aio-rk3588-jd4.dtb"
 # The file path of the ramdisk image.
 ramdisk_path = "ramdisk.img"
 
-
 # load from file system.
 # image_location = "fs".
 ## The file path of the kernel image.
@@ -54,9 +53,9 @@ ramdisk_path = "ramdisk.img"
 # Memory regions with format (`base_paddr`, `size`, `flags`, `map_type`).
 # For `map_type`, 0 means `MAP_ALLOC`, 1 means `MAP_IDENTICAL`.
 memory_regions = [
-    # [0x0, 0x10_f000, 0x7, 1],        # passthrough uncahed MAP_IDENTICAL
-    # [0x940_0000, 0xe6c00000, 0x7, 1], # ram 3G MAP_IDENTICAL
-    # [0x4000_0000, 0x4000_0000, 0x7, 1], # ram 1G MAP_IDENTICAL
+  # [0x0, 0x10_f000, 0x7, 1],        # passthrough uncahed MAP_IDENTICAL
+  # [0x940_0000, 0xe6c00000, 0x7, 1], # ram 3G MAP_IDENTICAL
+  # [0x4000_0000, 0x4000_0000, 0x7, 1], # ram 1G MAP_IDENTICAL
 ]
 
 #

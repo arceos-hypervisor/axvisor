@@ -47,8 +47,8 @@ dtb_path = "linux-rk3588.dtb"
 # Memory regions with format (`base_paddr`, `size`, `flags`, `map_type`).
 # For `map_type`, 0 means `MAP_ALLOC`, 1 means `MAP_IDENTICAL`.
 memory_regions = [
-    [0x0, 0x10_f000, 0x37, 1],        # passthrough uncahed MAP_IDENTICAL
-    [0x940_0000, 0x76c00000, 0x7, 1], # ram 3G MAP_IDENTICAL
+  [0x0, 0x10_f000, 0x37, 1], # passthrough uncahed MAP_IDENTICAL
+  [0x940_0000, 0x76c00000, 0x7, 1], # ram 3G MAP_IDENTICAL
 ]
 
 #
@@ -62,39 +62,39 @@ emu_devices = []
 # Pass-through devices.
 # Name Base-Ipa Base-Pa Length Alloc-Irq.
 passthrough_devices = [
-    [
-        "ramoops",
-        0x11_0000,
-        0x11_0000,
-        0xf_0000,
-        0x1,
-    ],
-    [
-        "sram",
-        0x10_f000,
-        0x10_f000,
-        0x1000,
-        0x1,
-    ],
-    [
-        "gpu",
-        0xfb00_0000,
-        0xfb00_0000,
-        0x200000,
-        0x1,
-    ],
-    [
-        "uart8250 UART",
-        0xfd00_0000,
-        0xfd00_0000,
-        0x2000000,
-        0x1,
-    ],
-    [
-        "usb",
-        0xfc00_0000,
-        0xfc00_0000,
-        0x1000000,
-        0x1,
-    ],
+  [
+    "ramoops",
+    0x11_0000,
+    0x11_0000,
+    0xf_0000,
+    0x1,
+  ],
+  [
+    "sram",
+    0x10_f000,
+    0x10_f000,
+    0x1000,
+    0x1,
+  ],
+  [
+    "gpu",
+    0xfb00_0000,
+    0xfb00_0000,
+    0x200000,
+    0x1,
+  ],
+  [
+    "uart8250 UART",
+    0xfd00_0000,
+    0xfd00_0000,
+    0x2000000,
+    0x1,
+  ],
+  [
+    "usb",
+    0xfc00_0000,
+    0xfc00_0000,
+    0x1000000,
+    0x1,
+  ],
 ]

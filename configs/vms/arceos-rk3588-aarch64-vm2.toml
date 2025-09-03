@@ -44,6 +44,6 @@ emu_devices = []
 # Pass-through devices.
 # Name Base-Ipa Base-Pa Length Alloc-Irq.
 passthrough_devices = [
-    ["uart@feb40000", 0xfeb4_0000, 0xfeb4_0000, 0x1000, 0x1],
-    ["uart@feb50000", 0xfeb5_0000, 0xfeb4_0000, 0x1000, 0x1],
+  ["uart@feb40000", 0xfeb4_0000, 0xfeb4_0000, 0x1000, 0x1],
+  ["uart@feb50000", 0xfeb5_0000, 0xfeb4_0000, 0x1000, 0x1],
 ]

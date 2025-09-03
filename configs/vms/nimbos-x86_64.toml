@@ -40,7 +40,7 @@ bios_load_addr = 0x8000
 # Memory regions with format (`base_paddr`, `size`, `flags`, `map_type`).
 # For `map_type`, 0 means `MAP_ALLOC`, 1 means `MAP_IDENTICAL`.
 memory_regions = [
-    [0x0000_0000, 0x100_0000, 0x7, 0], # Low RAM		16M	0b111   R|W|EXECUTE
+  [0x0000_0000, 0x100_0000, 0x7, 0], # Low RAM		16M	0b111   R|W|EXECUTE
 ]
 
 #
@@ -55,25 +55,25 @@ emu_devices = []
 # Pass-through devices.
 # Name Base-Ipa Base-Pa Length Alloc-Irq.
 passthrough_devices = [
-    [
-        "IO APIC",
-        0xfec0_0000,
-        0xfec0_0000,
-        0x1000,
-        0x1,
-    ],
-    [
-        "Local APIC",
-        0xfee0_0000,
-        0xfee0_0000,
-        0x1000,
-        0x1,
-    ],
-    [
-        "HPET",
-        0xfed0_0000,
-        0xfed0_0000,
-        0x1000,
-        0x1,
-    ],
+  [
+    "IO APIC",
+    0xfec0_0000,
+    0xfec0_0000,
+    0x1000,
+    0x1,
+  ],
+  [
+    "Local APIC",
+    0xfee0_0000,
+    0xfee0_0000,
+    0x1000,
+    0x1,
+  ],
+  [
+    "HPET",
+    0xfed0_0000,
+    0xfed0_0000,
+    0x1000,
+    0x1,
+  ],
 ]

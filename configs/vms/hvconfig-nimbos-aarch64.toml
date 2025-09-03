@@ -1,4 +1,4 @@
-plat = "aarch64-generic"
+arceos_args = ["DISK_IMG=nimbos-aarch64.img", "BUS=mmio", "BLK=y", "MEM=8g", "LOG=debug"]
 features = ["fs"]
-arceos_args = [ "DISK_IMG=nimbos-aarch64.img", "BUS=mmio", "BLK=y", "MEM=8g", "LOG=debug"]
-vmconfigs = [ "configs/vms/nimbos-aarch64.toml",]
+plat = "aarch64-generic"
+vmconfigs = ["configs/vms/nimbos-aarch64.toml"]
