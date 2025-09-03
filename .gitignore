@@ -25,6 +25,7 @@ __pycache__/
 /**/.axconfig.*
 /**/.hvconfig.*
 /**/.project.*
+/**/.board.*
 
 # dev env
 /crates
