@@ -337,15 +337,20 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
         .unwrap();
 
     use x86_64::registers::control::Cr4Flags;
-    let _linux_ctx = &axhal::get_linux_context_list()[0];
+    let linux_ctx = &axhal::get_linux_context_list()[0];
     let cr4 = Cr4Flags::PHYSICAL_ADDRESS_EXTENSION
+        // | Cr4Flags::PCID
         | Cr4Flags::FSGSBASE
         | Cr4Flags::PAGE_GLOBAL
         | Cr4Flags::OSFXSR
         | Cr4Flags::OSXMMEXCPT_ENABLE
         | Cr4Flags::OSXSAVE;
-    let mut shim_context =
-        HostContext::construct_guest64(SHIM_ENTRY as u64, GUEST_PT_ROOT_GPA.as_usize() as u64, cr4);
+    let mut shim_context = HostContext::construct_guest64(
+        SHIM_ENTRY as u64,
+        GUEST_PT_ROOT_GPA.as_usize() as u64,
+        cr4,
+        &linux_ctx,
+    );
     // Set stack pointer to the end of the process inner region.
     shim_context.rsp = (PROCESS_INNER_REGION_BASE_VA + PROCESS_INNER_REGION_SIZE - 8) as u64;
 
