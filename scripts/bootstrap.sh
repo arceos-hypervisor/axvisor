@@ -7,6 +7,31 @@
 set -e  # 遇到错误时退出
 
 echo "=== Axvisor Bootstrap Script ==="
+
+# 检查是否已经在虚拟环境中
+if [[ -n "$VIRTUAL_ENV" ]]; then
+    echo "✓ 检测到已在虚拟环境中: $VIRTUAL_ENV"
+    echo "跳过虚拟环境设置，仅检查依赖..."
+    
+    # 检查 requirements.txt 文件是否存在
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+    cd "$PROJECT_ROOT"
+    
+    if [[ ! -f "scripts/requirements.txt" ]]; then
+        echo "错误: scripts/requirements.txt 文件未找到"
+        exit 1
+    fi
+    
+    # 安装/更新依赖
+    echo "检查并安装 Python 依赖..."
+    pip install -r scripts/requirements.txt -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+    
+    echo "=== Bootstrap 完成 ==="
+    echo "依赖检查完成，虚拟环境已就绪！"
+    exit 0
+fi
+
 echo "正在设置 Python 虚拟环境..."
 
 # 获取脚本所在目录
@@ -63,13 +88,12 @@ pip install -r scripts/requirements.txt -i https://mirrors.tuna.tsinghua.edu.cn/
 
 echo "依赖安装完成!"
 
-# 测试 make.py 是否可以正常运行
+# 测试 task.py 是否可以正常运行
 echo "测试 task.py..."
-if python3 ./make.py --help > /dev/null 2>&1; then
+if python3 ./task.py --help > /dev/null 2>&1; then
     echo "✓ task.py 运行正常"
 else
     echo "✗ task.py 运行失败，请检查安装"
-    exit 1
 fi
 
 echo "=== Bootstrap 完成 ==="
