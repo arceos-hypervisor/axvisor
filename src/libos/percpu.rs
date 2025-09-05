@@ -393,6 +393,12 @@ pub fn libos_vcpu_run(vcpu: VCpuRef) {
                     AxVCpuExitReason::Hypercall { nr, args } => {
                         debug!("Instance call [{:#x}] args: {:x?}", nr, args);
 
+                        if nr == axhvc::HyperCallCode::HBenchVMCall as u64 {
+                            // Just return directly for benchmark hypercall.
+                            vcpu.set_return_value(0);
+                            continue;
+                        }
+
                         match InstanceCall::new(
                             vcpu.clone(),
                             &curcpu,
