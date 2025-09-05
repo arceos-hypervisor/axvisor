@@ -8,7 +8,6 @@ env:
 
 jobs:
   aarch64-generic-qemu:
-    runs-on: [self-hosted, linux, docker]
     strategy:
       fail-fast: false
       matrix:
@@ -31,11 +30,6 @@ jobs:
         nimbos-version: 'tags/v0.7'
         arch: aarch64
         disk-path: ${{ github.workspace }}/disk-aarch64.img
-    # - name: Enable KVM group perms
-    #   run: |
-    #     echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-    #     sudo udevadm control --reload-rules
-    #     sudo udevadm trigger --name-match=kvm
     - name: Update rust-toolchain.toml
       run: |
         sed -i "s/^channel = .*/channel = \"${{ matrix.rust-toolchain }}\"/" rust-toolchain.toml
@@ -143,6 +137,6 @@ jobs:
         cargo version
         export DISK_IMG="${{ github.workspace }}/disk-x86_64.img"
         export VM_CONFIGS="$(pwd)/configs/vms/nimbos-x86_64.toml"
-        ./task.py run --plat ${{ matrix.plat }} --vmconfigs $VM_CONFIGS --features fs,ept-level-4 --arceos-args DISK_IMG=$DISK_IMG,BLK=y,MEM=8g
+        ./task.py run --plat ${{ matrix.plat }} --vmconfigs $VM_CONFIGS --features fs --arceos-args DISK_IMG=$DISK_IMG,BLK=y,MEM=1g
 
 
