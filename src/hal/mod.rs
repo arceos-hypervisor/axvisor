@@ -19,7 +19,7 @@ use axvm::{AxVMHal, AxVMPerCpu};
 #[cfg_attr(target_arch = "x86_64", path = "arch/x86_64/mod.rs")]
 pub mod arch;
 
-use crate::vmm;
+use crate::{hal::arch::hardware_check, vmm};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -135,6 +135,8 @@ pub(crate) fn enable_virtualization() {
     static CORES: AtomicUsize = AtomicUsize::new(0);
 
     info!("Enabling hardware virtualization support on all cores...");
+
+    hardware_check();
 
     for cpu_id in 0..config::plat::CPU_NUM {
         thread::spawn(move || {
