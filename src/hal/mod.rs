@@ -258,7 +258,7 @@ mod vmm_api_impl {
     }
 
     extern fn vcpu_num(vm_id: VMId) -> Option<usize> {
-        vmm::with_wm(vm_id, |vm| vm.vcpu_num())
+        vmm::with_vm(vm_id, |vm| vm.vcpu_num())
     }
 
     extern fn active_vcpus(_vm_id: VMId) -> Option<usize> {

@@ -29,25 +29,39 @@ const KERNEL_STACK_SIZE: usize = 0x40000; // 256 KiB
 /// variable.
 static VM_VCPU_TASK_WAIT_QUEUE: Queue = Queue::new();
 
+/// A thread-safe queue that manages wait queues for VCpus across multiple VMs.
+///
+/// This structure wraps a BTreeMap that maps VM IDs to their corresponding VMVCpus structures.
+/// It provides thread-safe access to the mapping through interior mutability using UnsafeCell.
+/// Each VM is identified by its unique ID, and the queue manages the VCpu tasks and wait
+/// operations for all VMs in the system.
 struct Queue(UnsafeCell<BTreeMap<usize, VMVCpus>>);
 
 unsafe impl Sync for Queue {}
 unsafe impl Send for Queue {}
 
 impl Queue {
+    /// Creates a new empty Queue.
+    ///
+    /// # Returns
+    ///
+    /// A new Queue instance with an empty BTreeMap.
     const fn new() -> Self {
         Self(UnsafeCell::new(BTreeMap::new()))
     }
 
+    /// Retrieves a reference to the VMVCpus for the specified VM ID.
     fn get(&self, vm_id: &usize) -> Option<&VMVCpus> {
         unsafe { (*self.0.get()).get(vm_id) }
     }
 
+    /// Retrieves a mutable reference to the VMVCpus for the specified VM ID.
     #[allow(clippy::mut_from_ref)]
     fn get_mut(&self, vm_id: &usize) -> Option<&mut VMVCpus> {
         unsafe { (*self.0.get()).get_mut(vm_id) }
     }
 
+    /// Inserts a new VMVCpus entry for the specified VM ID.
     fn insert(&self, vm_id: usize, vcpus: VMVCpus) {
         unsafe {
             (*self.0.get()).insert(vm_id, vcpus);

@@ -2,7 +2,6 @@ mod config;
 mod hvc;
 mod images;
 mod ivc;
-mod mock;
 pub mod timer;
 mod vcpus;
 mod vm_list;
@@ -75,7 +74,7 @@ pub fn start() {
 pub use vcpus::with_vcpu_task;
 
 /// Run a closure with the specified VM.
-pub fn with_wm<T>(vm_id: usize, f: impl FnOnce(VMRef) -> T) -> Option<T> {
+pub fn with_vm<T>(vm_id: usize, f: impl FnOnce(VMRef) -> T) -> Option<T> {
     let vm = vm_list::get_vm_by_id(vm_id)?;
     Some(f(vm))
 }
