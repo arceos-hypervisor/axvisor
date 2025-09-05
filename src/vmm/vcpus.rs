@@ -269,7 +269,6 @@ pub fn setup_vm_primary_vcpu(vm: VMRef) {
 // pub fn find_vcpu_task(vm_id: usize, vcpu_id: usize) -> Option<AxTaskRef> {
 //     with_vcpu_task(vm_id, vcpu_id, |task| task.clone())
 // }
-
 /// Executes the provided closure with the [`AxTaskRef`] associated with the specified vCPU of the specified VM.
 pub fn with_vcpu_task<T, F: FnOnce(&AxTaskRef) -> T>(
     vm_id: usize,
@@ -347,7 +346,6 @@ fn vcpu_run() {
 
     loop {
         match vm.run_vcpu(vcpu_id) {
-            // match vcpu.run() {
             Ok(exit_reason) => match exit_reason {
                 AxVCpuExitReason::Hypercall { nr, args } => {
                     debug!("Hypercall [{}] args {:x?}", nr, args);
@@ -419,10 +417,9 @@ fn vcpu_run() {
                                 None
                             }
                         })
-                        .expect(&format!(
-                            "Physical CPU ID {} not found in VM configuration",
-                            target_cpu
-                        ));
+                        .unwrap_or_else(|| {
+                            panic!("Physical CPU ID {target_cpu} not found in VM configuration",)
+                        });
 
                     vcpu_on(vm.clone(), target_vcpu_id, entry_point, arg as _);
                     vcpu.set_gpr(0, 0);

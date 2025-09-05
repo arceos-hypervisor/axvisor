@@ -13,8 +13,11 @@ version = "0.1.0"
 fs = ["axstd/fs"]
 hv = []
 irq = []
+ept-level-4 = ["axaddrspace/4-level-ept"]
+
 plat-aarch64-generic = ["axplat-aarch64-generic", "hv", "irq", "axstd/driver-dyn"]
 plat-x86-qemu-q35 = ["axplat-x86-qemu-q35", "hv", "irq"]
+
 
 [dependencies]
 bitflags = "2.2"
@@ -77,9 +80,9 @@ branch = "vmm"
 git = "https://github.com/arceos-hypervisor/axcpu"
 
 [patch.crates-io.axaddrspace]
-branch = "3_level_page"
+# branch = "main"
 git = "https://github.com/arceos-hypervisor/axaddrspace"
 
-[patch."https://github.com/arceos-hypervisor/arm_vcpu.git".arm_vcpu]
-branch = "3_level_page"
-git = "https://github.com/Josen-B/arm_vcpu"
+# [patch."https://github.com/arceos-hypervisor/arm_vcpu.git".arm_vcpu]
+# branch = "3_level_page"
+# git = "https://github.com/Josen-B/arm_vcpu"
