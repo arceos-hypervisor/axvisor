@@ -3,6 +3,4 @@ use memory_addr::VirtAddr;
 
 pub mod cache;
 
-pub fn hardware_check(){
-    
-}
+pub fn hardware_check() {}
