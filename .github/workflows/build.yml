@@ -52,7 +52,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        plat: [aarch64-generic]
+        plat: [aarch64-generic, x86-qemu-q35]
         rust-toolchain: [nightly-2025-05-20, nightly]
     env:
       RUSTUP_TOOLCHAIN: ${{ matrix.rust-toolchain }}
@@ -68,5 +68,5 @@ jobs:
     - name: Build the repo
       continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
       run: | 
-        source ./activate.sh
+        source ./scripts/bootstrap.sh
         ./task.py build --plat ${{ matrix.plat }}

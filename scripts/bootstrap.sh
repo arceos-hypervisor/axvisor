@@ -9,6 +9,16 @@ set -e  # 遇到错误时退出
 echo "=== Axvisor Bootstrap Script ==="
 echo "正在设置 Python 虚拟环境..."
 
+# 获取脚本所在目录
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+echo "脚本目录: $SCRIPT_DIR"
+echo "项目根目录: $PROJECT_ROOT"
+
+# 切换到项目根目录
+cd "$PROJECT_ROOT"
+
 # 检查 Python 版本
 python_version=$(python3 --version 2>&1 | awk '{print $2}' | cut -d. -f1,2)
 echo "检测到 Python 版本: $python_version"
@@ -22,8 +32,8 @@ if ! python3 -c "import venv" 2>/dev/null; then
 fi
 
 # 检查 requirements.txt 文件是否存在
-if [[ ! -f "requirements.txt" ]]; then
-    echo "错误: requirements.txt 文件未找到"
+if [[ ! -f "scripts/requirements.txt" ]]; then
+    echo "错误: scripts/requirements.txt 文件未找到"
     exit 1
 fi
 
@@ -49,13 +59,13 @@ python -m pip install -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple --
 
 # 安装依赖
 echo "正在安装 Python 依赖..."
-pip install -r requirements.txt -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+pip install -r scripts/requirements.txt -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
 
 echo "依赖安装完成!"
 
-# 测试 task.py 是否可以正常运行
+# 测试 make.py 是否可以正常运行
 echo "测试 task.py..."
-if python3 ./task.py --help > /dev/null 2>&1; then
+if python3 ./make.py --help > /dev/null 2>&1; then
     echo "✓ task.py 运行正常"
 else
     echo "✗ task.py 运行失败，请检查安装"

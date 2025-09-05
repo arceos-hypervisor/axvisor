@@ -37,7 +37,7 @@ jobs:
     - name: Run guests
       continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
       run: |
-        source ./activate.sh
+        source ./scripts/bootstrap.sh
         cargo version
         export DISK_IMG="${{ github.workspace }}/disk-aarch64.img"
         export VM_CONFIGS="$(pwd)/configs/vms/nimbos-aarch64.toml"
@@ -65,7 +65,7 @@ jobs:
       continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
       run: |
         cargo install ostool --force
-        source ./activate.sh
+        source ./scripts/bootstrap.sh
         git clone https://github.com/arceos-hypervisor/axboard_test
         cd axboard_test
         ./run.sh phytiumpi-arceos
@@ -93,7 +93,7 @@ jobs:
       continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
       run: |
         cargo install ostool --force
-        source ./activate.sh
+        source ./scripts/bootstrap.sh
         git clone https://github.com/arceos-hypervisor/axboard_test
         cd axboard_test
         ./run.sh rk3568-arceos
@@ -134,7 +134,7 @@ jobs:
     - name: Run guests
       continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
       run: |
-        source ./activate.sh
+        source ./scripts/bootstrap.sh
         cargo version
         export DISK_IMG="${{ github.workspace }}/disk-x86_64.img"
         export VM_CONFIGS="$(pwd)/configs/vms/nimbos-x86_64.toml"

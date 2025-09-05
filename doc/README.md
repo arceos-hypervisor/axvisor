@@ -46,11 +46,13 @@ Axvisor runs as an ArceOS app, mainly composed of the following independent comp
 ### The App `axvisor`
 
 A user app of ArceOS, which is:
+
 - completely architecture-independent,
 - main entry point of the hypervisor, and
 - responsible for VM management (configuration & runtime).
 
 **Note that we aim to consolidate all dependencies on ArceOS within the vmm-app.** Currently, the modules from ArceOS that the vmm-app depends on include:
+
 - [axstd](https://github.com/arceos-hypervisor/arceos/tree/vmm/ulib/axstd): a standard dependency interface for ArceOS's user app.
 - [axhal](https://github.com/arceos-hypervisor/arceos/tree/vmm/modules/axhal): for OS-related functions, including memory management, clock operations, and more.
 - [axtask](https://github.com/arceos-org/arceos/tree/monolithic/modules/axtask): for the scheduling of vCPUs.
@@ -68,11 +70,11 @@ A user app of ArceOS, which is:
   - highly architecture-dependent.
   - stores exception context frame of different architecture.
   - basic scheduling item.
- 	- arch-specific vcpu implementations need to be separated into separate crates.
+    - arch-specific vcpu implementations need to be separated into separate crates.
 
 - [axaddrspace](https://github.com/arceos-hypervisor/axaddrspace).
- 	- architecture-independent.
- 	- responsible for managing and mapping the guest VM's second-stage address space (GPA -> HPA).
+  - architecture-independent.
+  - responsible for managing and mapping the guest VM's second-stage address space (GPA -> HPA).
 
 - [axdevice](https://github.com/arceos-hypervisor/axdevice): providing device emulation support.
   - partially architecture-independent.
