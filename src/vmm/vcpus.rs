@@ -1,4 +1,5 @@
 use alloc::{collections::BTreeMap, vec::Vec};
+use cpumask::CpuMask;
 
 use core::{
     cell::UnsafeCell,
@@ -17,8 +18,8 @@ use axaddrspace::GuestPhysAddr;
 use axtask::{AxTaskRef, TaskExtRef, TaskInner, WaitQueue};
 use axvcpu::{AxVCpuExitReason, VCpuState};
 
-use crate::task::TaskExt;
 use crate::vmm::{VCpuRef, VMRef};
+use crate::{hal::arch::inject_interrupt, task::TaskExt};
 
 const KERNEL_STACK_SIZE: usize = 0x40000; // 256 KiB
 
@@ -449,38 +450,21 @@ fn vcpu_run() {
                     send_to_self,
                     vector,
                 } => {
-                    if send_to_all || send_to_self {
-                        unimplemented!(
-                            "SendIPI with send_to_all or send_to_self is not implemented yet"
-                        );
+                    debug!(
+                        "VM[{vm_id}] run VCpu[{vcpu_id}] SendIPI, target_cpu={target_cpu:#x}, target_cpu_aux={target_cpu_aux:#x}, vector={vector}",
+                    );
+                    if send_to_all {
+                        unimplemented!("Send IPI to all CPUs is not implemented yet");
                     }
 
-                    #[cfg(target_arch = "aarch64")]
-                    {
-                        let aff3 = (target_cpu >> 24) & 0xff;
-                        let aff2 = (target_cpu >> 16) & 0xff;
-                        let aff1 = (target_cpu >> 8) & 0xff;
-                        let irm = send_to_all as u64;
-
-                        let icc_sgi1r_value = (vector as u64) << 24
-                            | aff3 << 48
-                            | aff2 << 32
-                            | aff1 << 16
-                            | irm << 40
-                            | target_cpu_aux;
-
-                        debug!(
-                            "VM[{}] run VCpu[{}] SendIPI, target_cpu={:#x}, target_cpu_aux={:#x}, vector={}, icc_sgi1r_value={:#x}",
-                            vm_id, vcpu_id, target_cpu, target_cpu_aux, vector, icc_sgi1r_value
-                        );
-
-                        unsafe {
-                            core::arch::asm!(
-                                "msr icc_sgi1r_el1, {0}",
-                                in(reg) icc_sgi1r_value,
-                                options(nostack, nomem, preserves_flags)
-                            );
-                        }
+                    if target_cpu == vcpu_id as u64 || send_to_self {
+                        inject_interrupt(vector as _);
+                    } else {
+                        vm.inject_interrupt_to_vcpu(
+                            CpuMask::one_shot(target_cpu as _),
+                            vector as _,
+                        )
+                        .unwrap();
                     }
                 }
                 e => {

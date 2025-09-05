@@ -11,12 +11,10 @@ version = "0.1.0"
 
 [features]
 fs = ["axstd/fs"]
-hv = []
-irq = []
 ept-level-4 = ["axaddrspace/4-level-ept"]
 
-plat-aarch64-generic = ["axplat-aarch64-generic", "hv", "irq", "axstd/driver-dyn"]
-plat-x86-qemu-q35 = ["axplat-x86-qemu-q35", "hv", "irq"]
+plat-aarch64-generic = ["axplat-aarch64-generic", "axstd/driver-dyn"]
+plat-x86-qemu-q35 = ["axplat-x86-qemu-q35"]
 
 
 [dependencies]
