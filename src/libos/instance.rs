@@ -831,6 +831,8 @@ impl<H: PagingHandler> Instance<H> {
 
         // Set up gate process on each core.
         for (_as_root, p) in processes.iter_mut() {
+            info!("Setting up gate process for CPU {}", p.pid());
+
             let cpu_id = p.pid();
 
             let gp_as = p.addrspace_mut();
@@ -921,11 +923,8 @@ impl<H: PagingHandler> Instance<H> {
                     GP_ALL_EPTP_LIST_REGION_GVA,
                     |gva| GP_ALL_EPTP_LIST_REGIN_GPA.add(gva.sub_addr(GP_ALL_EPTP_LIST_REGION_GVA)),
                     EPTP_LIST_REGION_SIZE * MAX_INSTANCES_NUM,
-                    // Map as UNCACHED to make sure the update of EPTP list is visible to VMX immediately.
-                    MappingFlags::READ
-                        | MappingFlags::WRITE
-                        | MappingFlags::UNCACHED
-                        | MappingFlags::USER,
+                    // DO not map as UNCACHED, otherwise the performance is terrible.
+                    MappingFlags::READ | MappingFlags::WRITE | MappingFlags::USER,
                     true,
                     false,
                 )
@@ -938,8 +937,8 @@ impl<H: PagingHandler> Instance<H> {
                     .expect("INSTANCES_EPTP_LIST_REGIONS uninitialized")
                     .base(),
                 EPTP_LIST_REGION_SIZE * MAX_INSTANCES_NUM,
-                // Map as UNCACHED to make sure the update of EPTP list is visible to VMX immediately.
-                MappingFlags::READ | MappingFlags::WRITE | MappingFlags::UNCACHED,
+                // DO not map as UNCACHED, otherwise the performance is terrible.
+                MappingFlags::READ | MappingFlags::WRITE,
                 true,
             )?;
 
