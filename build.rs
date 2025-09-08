@@ -166,10 +166,10 @@ fn generate_guest_img_loading_functions(
     for config_file in config_files {
         if let Some(files) = parse_config_file(&config_file) {
             let id = files.id;
-            let kernel = files.kernel.display().to_string();
+            let kernel = files.kernel.canonicalize().unwrap().display().to_string();
             let dtb = match files.dtb {
                 Some(v) => {
-                    let s = v.display().to_string();
+                    let s = v.canonicalize().unwrap().display().to_string();
                     quote! { Some(include_bytes!(#s)) }
                 }
                 None => quote! { None },
@@ -177,7 +177,7 @@ fn generate_guest_img_loading_functions(
 
             let bios = match files.bios {
                 Some(v) => {
-                    let s = v.display().to_string();
+                    let s = v.canonicalize().unwrap().display().to_string();
                     quote! { Some(include_bytes!(#s)) }
                 }
                 None => quote! { None },
@@ -185,7 +185,7 @@ fn generate_guest_img_loading_functions(
 
             let ramdisk = match files.ramdisk {
                 Some(v) => {
-                    let s = v.display().to_string();
+                    let s = v.canonicalize().unwrap().display().to_string();
                     quote! { Some(include_bytes!(#s)) }
                 }
                 None => quote! { None },

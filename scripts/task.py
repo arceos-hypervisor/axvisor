@@ -2,7 +2,15 @@
 # -*- coding: utf-8 -*-
 import argparse
 import sys
+import os
 import importlib
+
+# 添加当前脚本所在目录的上级目录到 Python 路径
+script_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(script_dir)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
 from scripts.config import add_common_arguments
 
 

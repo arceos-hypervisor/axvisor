@@ -21,8 +21,15 @@ def main(args) -> int:
     cmd = format_make_command_base()
 
     if args.image:
+        # 处理镜像路径，如果是相对路径则转换为绝对路径
+        image_path = args.image
+        if not os.path.isabs(image_path):
+            # 相对于项目根目录计算绝对路径
+            project_root = os.getcwd()
+            image_path = os.path.abspath(os.path.join(project_root, image_path))
+
         # 如果指定了镜像路径和文件名，则添加到命令中
-        cmd.append(f"DISK_IMG={args.image}")
+        cmd.append(f"DISK_IMG={image_path}")
 
     cmd.append("disk_img")
 

@@ -30,6 +30,44 @@ class AxvisorConfig:
         if self.vmconfigs is None:
             self.vmconfigs = []
 
+    def _process_disk_img_paths(self):
+        """处理 arceos_args 中的 DISK_IMG 参数，将相对路径转换为绝对路径"""
+        if not self.arceos_args:
+            return
+
+        # 获取项目根目录（当前工作目录）
+        project_root = os.getcwd()
+
+        # 处理每个参数
+        processed_args = []
+        for arg in self.arceos_args:
+            if arg.startswith("DISK_IMG="):
+                # 提取路径部分
+                key, value = arg.split("=", 1)
+                # 去除可能的引号
+                disk_path = value.strip().strip('"').strip("'")
+
+                # 如果是相对路径，转换为绝对路径
+                if not os.path.isabs(disk_path):
+                    # 相对于项目根目录计算绝对路径
+                    abs_path = os.path.abspath(os.path.join(project_root, disk_path))
+                    # 保持原有的引号格式
+                    if value.strip().startswith('"') and value.strip().endswith('"'):
+                        processed_args.append(f'{key}="{abs_path}"')
+                    elif value.strip().startswith("'") and value.strip().endswith("'"):
+                        processed_args.append(f"{key}='{abs_path}'")
+                    else:
+                        processed_args.append(f'{key}="{abs_path}"')
+                else:
+                    # 已经是绝对路径，保持不变
+                    processed_args.append(arg)
+            else:
+                # 不是 DISK_IMG 参数，保持不变
+                processed_args.append(arg)
+
+        # 更新 arceos_args
+        self.arceos_args = processed_args
+
     def _load_platform_config(self):
         """从平台文件夹中的 axconfig.toml 文件读取配置参数"""
         try:
@@ -388,6 +426,9 @@ def create_config_from_args(args: argparse.Namespace) -> AxvisorConfig:
 
     if args.vmconfigs:
         config.vmconfigs = string_or_array_to_list(args.vmconfigs)
+
+    # 处理 DISK_IMG 路径转换
+    config._process_disk_img_paths()
 
     return config
 

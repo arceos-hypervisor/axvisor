@@ -58,68 +58,6 @@ AxVisor 的软件架构分为如下图所示的五层，其中，每一个框都
 
 AxVisor 启动之后会根据客户机配置文件中的信息加载并启动客户机。目前，AxVisor 即支持从 FAT32 文件系统加载客户机镜像，也支持通过静态编译方式（include_bytes）将客户机镜像绑定到虚拟机管理程序镜像中。
 
-## 快速开始
-
-### 1. Python 环境设置
-
-AxVisor 使用 Python 脚本 (`task.py`) 进行构建和运行管理。要设置所需的 Python 环境：
-
-```bash
-# 在虚拟环境中安装 Python 依赖
-./bootstrap.sh
-
-# 激活虚拟环境
-source venv/bin/activate
-
-# 或使用便捷脚本
-source activate.sh
-```
-
-`bootstrap.sh` 脚本将会：
-
-- 在 `venv/` 目录中创建 Python 虚拟环境
-- 从 `requirements.txt` 安装所有必需的依赖项
-- 测试 `task.py` 是否正常运行
-
-### 2. 基本使用
-
-设置好 Python 环境后：
-
-```bash
-# 运行项目
-./task.py run
-
-# 获取帮助
-./task.py --help
-./task.py build --help
-./task.py run --help
-```
-
-### 3. 退出虚拟环境
-
-完成项目工作后：
-
-```bash
-deactivate
-```
-
-## 使用 make 透传参数
-
-仓库根目录的 `Makefile` 会把额外的命令行参数透传给 Python 辅助脚本 `scripts.task.py`。因为 GNU Make 会解析以 `--` 开头的选项，推荐使用 `--` 分隔符将原始参数传递给底层脚本。示例：
-
-```bash
-# 推荐：在 `--` 之后传递原始参数
-make clippy -- --arch x86_64
-
-# 可选：使用变量传递（会被转发）
-make clippy ARCH=x86_64
-
-# 或通过 ARGS 传递
-make clippy ARGS="--arch x86_64"
-```
-
-以上三种方式都将会使 Python 脚本接收到 `--arch x86_64`；当需要传递任意包含 `--` 的标志时，请使用 `--` 分隔符以避免被 make 解析。
-
 ## 构建环境
 
 AxVisor 是使用 Rust 编程语言编写的，因此，需要根据 Rust 官方网站的说明安装 Rust 开发环境。此外，还需要安装 [cargo-binutils](https://github.com/rust-embedded/cargo-binutils) 以便使用 `rust-objcopy` 和 `rust-objdump` 等工具
@@ -146,10 +84,10 @@ cargo install cargo-binutils
    2. 手动挂载 `disk.img`，然后将自己的客户机镜像复制到该文件系统中
 
       ```bash
-      mkdir -p tmp
-      sudo mount disk.img tmp
-      sudo cp /PATH/TO/YOUR/GUEST/VM/IMAGE tmp/
-      sudo umount tmp
+      mkdir -p tmp/tmp_img
+      sudo mount disk.img tmp/tmp_img
+      sudo cp /PATH/TO/YOUR/GUEST/VM/IMAGE tmp/tmp_img/
+      sudo umount tmp/tmp_img
       ```
 
 3. 修改对应的 `./configs/vms/<ARCH_CONFIG>.toml` 文件中的配置项
@@ -157,22 +95,60 @@ cargo install cargo-binutils
    - `kernel_path` 指出内核镜像在文件系统中的路径
    - `entry_point` 指出内核镜像的入口地址
    - `kernel_load_addr` 指出内核镜像的加载地址
-   - 其他
 
-4. 执行 `make ACCEL=n ARCH=aarch64 LOG=info VM_CONFIGS=configs/vms/arceos-aarch64.toml APP_FEATURES=fs run` 构建 AxVisor，并在 QEMU 中启动。
+   ```console
+   cp configs/vms/linux-qemu-aarch64.toml tmp/
+   ```
+
+4. 执行 `make setup` 生成 AxVisor make 配置 `.hvconfig.toml`。
+
+5. 编辑 `.hvconfig.toml` 文件，设置 `vmconfigs` 项为您的客户机配置文件路径，例如：
+
+   ```toml
+   features = ["fs", "ept-level-4"]
+   arceos_args = [
+      "BUS=mmio",
+      "BLK=y",
+      "MEM=8g",
+      "LOG=debug",
+      "QEMU_ARGS=\"-machine gic-version=3  -cpu cortex-a72  \"",
+      "DISK_IMG=\"tmp/rootfs.img\"",
+   ]
+   vmconfigs = [ "tmp/arceos-aarch64.toml"]
+
+   ```
 
 ## 从内存加载运行
 
-1. 构建适用于自己架构的客户机镜像文件。以 ArceOS 主线代码为例，执行 `make PLATFORM=aarch64-qemu-virt SMP=1 A=examples/helloworld` 获取 `helloworld_aarch64-qemu-virt.bin`
+1. [参见 linux 构建帮助。](https://github.com/arceos-hypervisor/guest-test-linux) 获取 Image 和 rootfs.img。
 
 2. 修改对应的 `./configs/vms/<ARCH_CONFIG>.toml` 中的配置项
-   - `image_location="memory"` 配置项
-   - `kernel_path` 指定内核镜像在工作空间中的相对/绝对路径
-   - `entry_point` 指出内核镜像的入口地址
-   - `kernel_load_addr` 指出内核镜像的加载地址
+
+   ```console
+   mkdir -p tmp
+   cp configs/vms/linux-qemu-aarch64-mem.toml tmp/
+   ```
+
+   - `image_location="memory"` 表示从内存加载
+   - `kernel_path` 指定内核镜像在工作空间中的路径
+   - `dtb_path` 指定 dtb 文件在工作空间中的路径
    - 其他
 
-3. 执行 `make ACCEL=n ARCH=aarch64 LOG=info VM_CONFIGS=configs/vms/arceos-aarch64.toml run` 构建 AxVisor，并在 QEMU 中启动。
+3. 编辑 `.hvconfig.toml` 文件，设置 `vmconfigs` 项为您的客户机配置文件路径，例如：
+
+   ```toml
+   arceos_args = [
+      "BUS=mmio",
+      "BLK=y",
+      "MEM=8g",
+      "LOG=debug",
+      "QEMU_ARGS=\"-machine gic-version=3  -cpu cortex-a72  \"",
+      "DISK_IMG=\"tmp/rootfs.img\"",
+   ]
+   vmconfigs = [ "tmp/linux-qemu-aarch64-mem.toml"]
+   ```
+
+4. 执行 `make run` 构建 AxVisor 并在 QEMU 中启动。
 
 ## 启动示例
 
@@ -262,13 +238,29 @@ Hello, world!
 
 # 如何贡献
 
-欢迎 FORK 本仓库并提交 PR。
+欢迎 fork 本仓库并提交 pull request。
 
 您可以参考这些[讨论](https://github.com/arceos-hypervisor/axvisor/discussions)，以深入了解该项目的思路和未来发展方向。
 
 ## 开发
 
-AxVisor 作为组件化的虚拟机管理程序，很多组件是作为 Crate 来使用的，可以使用 `tool/dev_env.py` 命令将相关 Crate 本地化，方便开发调试。
+要为 AxVisor 做贡献，您可以按照以下步骤操作：
+
+1. 在 GitHub 上 fork 本仓库。
+2. 将您 fork 的仓库克隆到本地。
+3. 为您的功能或错误修复创建新分支。
+4. 进行更改并提交清晰的消息。
+5. 将更改推送到您 fork 的仓库。
+6. 对原始仓库的主分支提交 pull request。
+
+要开发 AxVisor 使用的 crate，您可以使用以下命令构建和运行项目：
+
+```bash
+cargo install cargo-lpatch
+cargo lpatch -n deps_crate_name
+```
+
+然后您可以修改 `crates/deps_crate_name` 目录中的代码，AxVisor 将自动使用这些代码。
 
 ## 贡献者
 
