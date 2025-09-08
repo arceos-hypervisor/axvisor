@@ -21,15 +21,23 @@ phys_cpu_sets = [1]
 entry_point = 0x8020_0000
 # The location of image: "memory" | "fs".
 # load from memory.
-image_location = "fs"
+image_location = "memory"
 # The file path of the kernel image.
-kernel_path = "/boot/Image"
+# kernel_path = "linux-6.6.62.bin"
+kernel_path = "/path/to/Image"
 # The load address of the kernel image.
 kernel_load_addr = 0x8020_0000
 # The file path of the device tree blob (DTB).
-dtb_path = "/boot/aarch64-qemu-gicv3.dtb"
+dtb_path = "/home/zhourui/arceos/axvisor-dev/tmp/aarch64-qemu-gicv3.dtb"
 # The load address of the device tree blob (DTB).
 dtb_load_addr = 0x8000_0000
+
+## load from file system
+# image_location = "fs"
+## The file path of the kernel image.
+# kernel_path = "linux-arceos-aarch64.bin"
+## The file path of the device tree blob (DTB).
+# dtb_path = "linux-rk3588.dtb"
 
 ## The file path of the ramdisk image.
 # ramdisk_path = ""

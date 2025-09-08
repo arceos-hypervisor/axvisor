@@ -43,30 +43,26 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "setup":
-        mod = importlib.import_module("scripts.setup")
-        exit_code = mod.main(args)
-        sys.exit(exit_code)
-    elif args.command == "build":
-        mod = importlib.import_module("scripts.build")
-        exit_code = mod.main(args)
-        sys.exit(exit_code)
-    elif args.command == "run":
-        mod = importlib.import_module("scripts.run")
-        exit_code = mod.main(args)
-        sys.exit(exit_code)
-    elif args.command == "clippy":
-        mod = importlib.import_module("scripts.clippy")
-        exit_code = mod.main(args)
-        sys.exit(exit_code)
-    elif args.command == "clean":
-        mod = importlib.import_module("scripts.clean")
-        exit_code = mod.main(args)
-        sys.exit(exit_code)
-    elif args.command == "disk_img":
-        mod = importlib.import_module("scripts.disk_img")
-        exit_code = mod.main(args)
-        sys.exit(exit_code)
+    command_map = {
+        "setup": "scripts.setup",
+        "build": "scripts.build",
+        "run": "scripts.run",
+        "clippy": "scripts.clippy",
+        "clean": "scripts.clean",
+        "disk_img": "scripts.disk_img",
+    }
+
+    def run_command(cmd_name):
+        module_name = command_map.get(cmd_name)
+        if not module_name:
+            return None
+        mod = importlib.import_module(module_name)
+        return mod.main(args)
+
+    if args.command in command_map:
+        exit_code = run_command(args.command)
+        # If the command module returned an exit code, use it; otherwise exit 0
+        sys.exit(0 if exit_code is None else exit_code)
     else:
         parser.print_help()
 

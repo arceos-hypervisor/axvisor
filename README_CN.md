@@ -103,6 +103,23 @@ source activate.sh
 deactivate
 ```
 
+## 使用 make 透传参数
+
+仓库根目录的 `Makefile` 会把额外的命令行参数透传给 Python 辅助脚本 `scripts.task.py`。因为 GNU Make 会解析以 `--` 开头的选项，推荐使用 `--` 分隔符将原始参数传递给底层脚本。示例：
+
+```bash
+# 推荐：在 `--` 之后传递原始参数
+make clippy -- --arch x86_64
+
+# 可选：使用变量传递（会被转发）
+make clippy ARCH=x86_64
+
+# 或通过 ARGS 传递
+make clippy ARGS="--arch x86_64"
+```
+
+以上三种方式都将会使 Python 脚本接收到 `--arch x86_64`；当需要传递任意包含 `--` 的标志时，请使用 `--` 分隔符以避免被 make 解析。
+
 ## 构建环境
 
 AxVisor 是使用 Rust 编程语言编写的，因此，需要根据 Rust 官方网站的说明安装 Rust 开发环境。此外，还需要安装 [cargo-binutils](https://github.com/rust-embedded/cargo-binutils) 以便使用 `rust-objcopy` 和 `rust-objdump` 等工具

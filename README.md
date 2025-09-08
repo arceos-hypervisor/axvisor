@@ -60,50 +60,19 @@ After AxVisor starts, it loads and starts the guest based on the information in 
 
 ## Quick Start
 
-### 1. Python Environment Setup
-
-AxVisor uses a Python script (`task.py`) for build and run management. To set up the required Python environment:
+### Run AxVisor
 
 ```bash
-# Install Python dependencies in a virtual environment
-./bootstrap.sh
-
-# Activate the virtual environment 
-source venv/bin/activate
-
-# Or use the convenience script
-source activate.sh
-```
-
-The `bootstrap.sh` script will:
-
-- Create a Python virtual environment in the `venv/` directory
-- Install all required dependencies from `requirements.txt`
-- Test that `task.py` runs correctly
-
-### 2. Basic Usage
-
-Once the Python environment is set up:
-
-```bash
-# Build the project
-./scripts/task.py build
-
-# Run the project
-./scripts/task.py run
-
 # Get help
-./scripts/task.py --help
-./scripts/task.py build --help
-./scripts/task.py run --help
-```
+make build -- --help
+make run -- --help
 
-### 3. Deactivating Virtual Environment
+# perpare guest config
 
-When you're done working with the project:
+mkdir -p tmp
+cp configs/vms/arceos-aarch64.toml tmp/
 
-```bash
-deactivate
+make run -- --plat aarch64-generic --arceos-args "MEM=4g,BUS=mmio,BLK=y,LOG=debug,QEMU_ARGS=\"-machine gic-version=3  -cpu cortex-a72  \"" --features "fs" --vmconfigs "configs/vms/arceos-aarch64.toml"
 ```
 
 ## Build Environment
@@ -124,18 +93,20 @@ In addition, you can use the [axvmconfig](https://github.com/arceos-hypervisor/a
 
 ## Load and run from file system
 
-1. Build a client image file suitable for your own architecture. Taking the ArceOS mainline code as an example, run `make PLATFORM=aarch64-qemu-virt SMP=1 A=examples/helloworld` to generate `helloworld_aarch64-qemu-virt.bin`.
+1. Build a client image file suitable for your own architecture. Taking the linux as an example, [See linux build help.](https://github.com/arceos-hypervisor/guest-test-linux), and get `rootfs.img`.
 
-2. Create a disk image file and place the guest machine image into the file system.
+2. Put guest dtb to rootfs.
 
-   1. Use the `make disk_img` command to generate an empty FAT32 disk image file named `disk.img`.
-   2. Manually mount `disk.img`, and then place your guest machine image into the file system.
+   1. cp `rootfs.img` to tmp directory and mount it.
+   2. Manually mount `rootfs.img`, and then place your guest machine dtb into the file system.
 
       ```console
-      mkdir -p tmp
-      sudo mount disk.img tmp
-      sudo cp /PATH/TO/YOUR/GUEST/VM/IMAGE tmp/
-      sudo umount tmp
+      dtc -I dts -O dtb -o tmp/aarch64-qemu-gicv3.dtb configs/vms/aarch64-qemu-gicv3.dts
+      sudo rm -rf tmp/rootfs
+      mkdir -p tmp/rootfs
+      sudo mount tmp/rootfs.img tmp/rootfs
+      sudo cp  tmp/aarch64-qemu-gicv3.dtb tmp/rootfs/boot/
+      sudo umount tmp/rootfs
       ```
 
 3. Modify the configuration items in the corresponding `./configs/vms/<ARCH_CONFIG>.toml`
@@ -145,11 +116,11 @@ In addition, you can use the [axvmconfig](https://github.com/arceos-hypervisor/a
    - `kernel_load_addr` specifies the loading address of the kernel image.
    - others
 
-4. Execute `make ACCEL=n ARCH=aarch64 LOG=info VM_CONFIGS=configs/vms/arceos-aarch64.toml APP_FEATURES=fs run` to build AxVisor and start it in QEMU.
+4. Execute `./make.sh run -- --plat aarch64-generic --arceos-args "MEM=4g,BUS=mmio,BLK=y,LOG=debug,DISK_IMG=tmp/rootfs.img" --features "fs" --vmconfigs configs/vms/linux-qemu-aarch64.toml` to build AxVisor and start it in QEMU.
 
 ## Load and run from memory
 
-1. Build a client image file suitable for your own architecture. Taking the ArceOS mainline code as an example, run `make PLATFORM=aarch64-qemu-virt SMP=1 A=examples/helloworld` to generate `helloworld_aarch64-qemu-virt.bin`.
+1. [See linux build help.](https://github.com/arceos-hypervisor/guest-test-linux)
 
 2. Modify the configuration items in the corresponding `./configs/vms/<ARCH_CONFIG>.toml`
    - `image_location="memory"` indicates loading from the memory.
