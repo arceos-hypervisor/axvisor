@@ -58,30 +58,6 @@ Currently, AxVisor has been verified in scenarios with the following systems as 
 
 After AxVisor starts, it loads and starts the guest based on the information in the guest configuration file. Currently, AxVisor supports loading guest images from a FAT32 file system and also supports binding guest images to the hypervisor image through static compilation (using include_bytes).
 
-## Quick Start
-
-For first-time users, you can quickly get started with AxVisor using our unified management script:
-
-```bash
-# Check system dependencies
-./axvisor.sh check-deps
-
-# Set up development environment
-./axvisor.sh setup
-
-# Quick build with default platform
-./axvisor.sh quick-build
-
-# Quick run with default configuration
-./axvisor.sh quick-run
-
-# View project status
-./axvisor.sh status
-
-# Get help
-./axvisor.sh help
-```
-
 ## Build Environment
 
 AxVisor is written in the Rust programming language, so you need to install the Rust development environment following the instructions on the official Rust website. Additionally, you need to install cargo-binutils to use tools like rust-objcopy and rust-objdump.

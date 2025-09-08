@@ -58,30 +58,6 @@ AxVisor 的软件架构分为如下图所示的五层，其中，每一个框都
 
 AxVisor 启动之后会根据客户机配置文件中的信息加载并启动客户机。目前，AxVisor 即支持从 FAT32 文件系统加载客户机镜像，也支持通过静态编译方式（include_bytes）将客户机镜像绑定到虚拟机管理程序镜像中。
 
-## 快速开始
-
-对于首次使用的用户，可以使用我们的统一管理脚本快速开始 AxVisor 的使用：
-
-```bash
-# 检查系统依赖
-./axvisor.sh check-deps
-
-# 设置开发环境
-./axvisor.sh setup
-
-# 快速构建（默认平台）
-./axvisor.sh quick-build
-
-# 快速运行（默认配置）
-./axvisor.sh quick-run
-
-# 查看项目状态
-./axvisor.sh status
-
-# 获取帮助
-./axvisor.sh help
-```
-
 ## 构建环境
 
 AxVisor 是使用 Rust 编程语言编写的，因此，需要根据 Rust 官方网站的说明安装 Rust 开发环境。此外，还需要安装 [cargo-binutils](https://github.com/rust-embedded/cargo-binutils) 以便使用 `rust-objcopy` 和 `rust-objdump` 等工具
