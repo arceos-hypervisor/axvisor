@@ -435,7 +435,6 @@ main() {
             
         # 构建和开发命令 - 统一使用 run_python_task
         "build")
-            ensure_config
             run_python_task build "$@"
             ;;
         "clean")
@@ -451,7 +450,6 @@ main() {
             run_python_task clippy "$@"
             ;;
         "run")
-            ensure_config
             run_python_task run "$@"
             ;;
         "disk_img")
