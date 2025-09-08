@@ -135,6 +135,6 @@ jobs:
         cargo version
         export DISK_IMG="${{ github.workspace }}/disk-x86_64.img"
         export VM_CONFIGS="$(pwd)/configs/vms/nimbos-x86_64.toml"
-        ./axvisor.sh run --plat ${{ matrix.plat }} --vmconfigs $VM_CONFIGS --features fs --arceos-args DISK_IMG=$DISK_IMG,BLK=y,MEM=1g
+        ./axvisor.sh run --plat ${{ matrix.plat }} --vmconfigs $VM_CONFIGS --features fs --arceos-args DISK_IMG=$DISK_IMG,BLK=y,MEM=8g
 
 
