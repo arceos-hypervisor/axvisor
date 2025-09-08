@@ -286,6 +286,7 @@ show_help() {
     echo "  defconfig       - ⚙️ 设置默认配置文件"
     echo "  check-deps      - ✅ 检查系统依赖"
     echo "  rebuild-venv    - 🔄 强制重建虚拟环境"
+    echo "  dev-env         - 🔧 开发环境工具"
     echo
     echo -e "${YELLOW}🔨 构建命令:${NC}"
     echo "  build [args]    - 🏗️ 构建项目 (支持完整参数透传)"
@@ -295,12 +296,6 @@ show_help() {
     echo -e "${YELLOW}▶️ 运行命令:${NC}"
     echo "  run [args]      - 🚀 运行项目 (支持完整参数透传)"
     echo "  disk_img [args] - 💾 创建磁盘镜像 (支持 --image 和其他参数)"
-    echo
-    echo -e "${YELLOW}⚡ 快捷方式:${NC}"
-    echo "  quick-build     - 🏃 快速构建 (默认平台)"
-    echo "  quick-run       - 🏃 快速运行 (默认配置)"
-    echo "  dev-build       - 👨‍💻 开发构建 (setup + build)"
-    echo "  dev-run         - 👨‍💻 开发运行 (setup + run)"
     echo
     echo -e "${YELLOW}ℹ️ 信息命令:${NC}"
     echo "  status          - 📊 显示项目状态"
@@ -314,21 +309,12 @@ show_help() {
     echo
     echo -e "${YELLOW}📚 构建示例:${NC}"
     echo "  $0 build --plat aarch64-qemu-virt-hv"
-    echo "  $0 build --plat aarch64-generic --features irq,mem"
+    echo "  $0 build --plat aarch64-generic --features fs"
     echo "  $0 clippy --arch aarch64"
-    echo "  $0 clippy x86_64 --verbose"
     echo
     echo -e "${YELLOW}🎮 运行示例:${NC}"
     echo "  $0 run --plat aarch64-qemu-virt-hv"
     echo "  $0 run --vmconfigs configs/vms/linux-qemu-aarch64.toml"
-    echo "  $0 disk_img --image custom.img"
-    echo "  $0 disk_img custom.img --size 128M"
-    echo
-    echo -e "${YELLOW}💡 其他示例:${NC}"
-    echo "  $0 defconfig"
-    echo "  $0 clippy aarch64"
-    echo "  $0 disk_img custom-disk.img"
-    echo "  $0 dev-build"
 }
 
 # 显示项目状态
@@ -378,19 +364,6 @@ rebuild_venv() {
     
     setup_venv
     success "虚拟环境重建完成"
-}
-
-# 开发者快捷方式
-dev_build() {
-    step "开发构建 (setup + build)..."
-    setup_environment
-    run_python_task build "$@"
-}
-
-dev_run() {
-    step "开发运行 (setup + run)..."
-    setup_environment
-    run_python_task run "$@"
 }
 
 # 设置完整的开发环境
@@ -455,30 +428,11 @@ main() {
         "disk_img")
             run_python_task disk_img "$@"
             ;;
-            
-        # 快捷方式
-        "quick-build")
-            ensure_config
-            step "快速构建 (默认平台)..."
-            run_python_task build --plat aarch64-generic
-            ;;
-        "quick-run")
-            ensure_config
-            step "快速运行 (默认配置)..."
-            run_python_task run --plat aarch64-generic
-            ;;
-        "dev-build")
-            ensure_config
-            dev_build "$@"
-            ;;
-        "dev-run")
-            ensure_config
-            dev_run "$@"
-            ;;
-            
-        # 其他 task.py 支持的命令 - 直接透传
-        "config"|"test"|"format"|"doc")
-            run_python_task "$cmd" "$@"
+        "dev-env")
+            step "设置开发环境..."
+            setup_venv
+            source "$VENV_DIR/bin/activate"
+            python3 scripts/dev_env.py "$@"
             ;;
             
         # 未知命令
