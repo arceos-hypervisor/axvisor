@@ -26,12 +26,13 @@ REQUIREMENTS="$PROJECT_ROOT/scripts/requirements.txt"
 # 切换到项目根目录
 cd "$PROJECT_ROOT"
 
-# 输出函数
-info() { echo -e "${BLUE}💡${NC} $*"; }
+# 输出函数 - 统一使用emoji符号
+info() { echo -e "${BLUE}ℹ️${NC} $*"; }
 success() { echo -e "${GREEN}✅${NC} $*"; }
-warning() { echo -e "${YELLOW}ℹ️${NC} $*"; }
+warning() { echo -e "${YELLOW}⚠️${NC} $*"; }
 error() { echo -e "${RED}❌${NC} $*"; }
-step() { echo -e "${CYAN}==>${NC} $*"; }
+step() { echo -e "${CYAN}🚀${NC} $*"; }
+debug() { echo -e "${CYAN}🔍${NC} $*"; }
 
 # 错误处理
 handle_error() {
@@ -137,55 +138,193 @@ ensure_config() {
 }
 
 # 运行 Python 任务
+# 运行 Python 任务 - 统一的任务执行入口
 run_python_task() {
+    local cmd="$1"
+    shift
+    
+    # 检查是否需要帮助
+    for arg in "$@"; do
+        if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
+            step "显示 $cmd 命令帮助..."
+            setup_venv
+            source "$VENV_DIR/bin/activate"
+            python3 scripts/task.py "$cmd" --help
+            return $?
+        fi
+    done
+    
+    # 根据命令类型进行智能参数解析
+    case "$cmd" in
+        "clippy")
+            parse_clippy_args "$@"
+            ;;
+        "disk_img")
+            parse_disk_img_args "$@"
+            ;;
+        "build")
+            parse_build_args "$@"
+            ;;
+        "run")
+            parse_run_args "$@"
+            ;;
+        *)
+            # 其他命令直接透传所有参数
+            step "执行 $cmd 命令..."
+            if [[ $# -gt 0 ]]; then
+                debug "参数: $*"
+            fi
+            setup_venv
+            source "$VENV_DIR/bin/activate"
+            python3 scripts/task.py "$cmd" "$@"
+            ;;
+    esac
+}
+
+# 解析 clippy 命令参数
+parse_clippy_args() {
+    local arch="aarch64"  # 默认架构
+    local extra_args=()
+    
+    # 解析参数
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --arch)
+                arch="$2"
+                shift 2
+                ;;
+            *)
+                # 如果没有 --arch 标志且是第一个未处理的参数，将其作为架构
+                if [[ ${#extra_args[@]} -eq 0 && "$1" != -* ]]; then
+                    arch="$1"
+                    shift
+                else
+                    extra_args+=("$1")
+                    shift
+                fi
+                ;;
+        esac
+    done
+    
+    step "运行代码检查 (架构: $arch)..."
+    if [[ ${#extra_args[@]} -gt 0 ]]; then
+        debug "额外参数: ${extra_args[*]}"
+    fi
+    
     setup_venv
     source "$VENV_DIR/bin/activate"
-    python3 scripts/task.py "$@"
+    python3 scripts/task.py clippy --arch "$arch" "${extra_args[@]}"
+}
+
+# 解析 disk_img 命令参数
+parse_disk_img_args() {
+    local image="disk.img"  # 默认镜像名
+    local extra_args=()
+    
+    # 解析参数
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --image)
+                image="$2"
+                shift 2
+                ;;
+            *)
+                # 如果没有 --image 标志且是第一个未处理的参数，将其作为镜像名
+                if [[ ${#extra_args[@]} -eq 0 && "$1" != -* ]]; then
+                    image="$1"
+                    shift
+                else
+                    extra_args+=("$1")
+                    shift
+                fi
+                ;;
+        esac
+    done
+    
+    step "创建磁盘镜像: $image"
+    if [[ ${#extra_args[@]} -gt 0 ]]; then
+        debug "额外参数: ${extra_args[*]}"
+    fi
+    
+    setup_venv
+    source "$VENV_DIR/bin/activate"
+    python3 scripts/task.py disk_img --image "$image" "${extra_args[@]}"
+}
+
+# 解析 build 命令参数
+parse_build_args() {
+    step "构建项目..."
+    if [[ $# -gt 0 ]]; then
+        debug "构建参数: $*"
+    fi
+    
+    setup_venv
+    source "$VENV_DIR/bin/activate"
+    python3 scripts/task.py build "$@"
+}
+
+# 解析 run 命令参数
+parse_run_args() {
+    step "运行项目..."
+    if [[ $# -gt 0 ]]; then
+        debug "运行参数: $*"
+    fi
+    
+    setup_venv
+    source "$VENV_DIR/bin/activate"
+    python3 scripts/task.py run "$@"
 }
 
 # 显示帮助信息
 show_help() {
-    echo -e "${CYAN}Axvisor 项目管理工具${NC}"
+    echo -e "${CYAN}🔧 Axvisor 项目管理工具${NC}"
     echo
-    echo -e "${YELLOW}用法:${NC} $0 <命令> [参数...]"
+    echo -e "${YELLOW}📋 用法:${NC} $0 <命令> [参数...]"
     echo
-    echo -e "${YELLOW}环境管理:${NC}"
-    echo "  setup           - 设置开发环境"
-    echo "  defconfig       - 设置默认配置文件"
-    echo "  check-deps      - 检查系统依赖"
-    echo "  rebuild-venv    - 强制重建虚拟环境"
+    echo -e "${YELLOW}🛠️ 环境管理:${NC}"
+    echo "  setup           - 🚀 设置开发环境"
+    echo "  defconfig       - ⚙️ 设置默认配置文件"
+    echo "  check-deps      - ✅ 检查系统依赖"
+    echo "  rebuild-venv    - 🔄 强制重建虚拟环境"
     echo
-    echo -e "${YELLOW}构建命令:${NC}"
-    echo "  build [args]    - 构建项目"
-    echo "  clean           - 清理构建产物"
-    echo "  clippy [arch]   - 运行代码检查"
+    echo -e "${YELLOW}🔨 构建命令:${NC}"
+    echo "  build [args]    - 🏗️ 构建项目 (支持完整参数透传)"
+    echo "  clean [args]    - 🧹 清理构建产物"
+    echo "  clippy [args]   - 🔍 运行代码检查 (支持 --arch 和其他参数)"
     echo
-    echo -e "${YELLOW}运行命令:${NC}"
-    echo "  run [args]      - 运行项目"
-    echo "  disk_img [img]  - 创建磁盘镜像"
+    echo -e "${YELLOW}▶️ 运行命令:${NC}"
+    echo "  run [args]      - 🚀 运行项目 (支持完整参数透传)"
+    echo "  disk_img [args] - 💾 创建磁盘镜像 (支持 --image 和其他参数)"
     echo
-    echo -e "${YELLOW}快捷方式:${NC}"
-    echo "  quick-build     - 快速构建 (默认平台)"
-    echo "  quick-run       - 快速运行 (默认配置)"
-    echo "  dev-build       - 开发构建 (setup + build)"
-    echo "  dev-run         - 开发运行 (setup + run)"
+    echo -e "${YELLOW}⚡ 快捷方式:${NC}"
+    echo "  quick-build     - 🏃 快速构建 (默认平台)"
+    echo "  quick-run       - 🏃 快速运行 (默认配置)"
+    echo "  dev-build       - 👨‍💻 开发构建 (setup + build)"
+    echo "  dev-run         - 👨‍💻 开发运行 (setup + run)"
     echo
-    echo -e "${YELLOW}信息命令:${NC}"
-    echo "  status          - 显示项目状态"
-    echo "  version         - 显示版本信息"
-    echo "  help            - 显示此帮助信息"
+    echo -e "${YELLOW}ℹ️ 信息命令:${NC}"
+    echo "  status          - 📊 显示项目状态"
+    echo "  version         - 📦 显示版本信息"
+    echo "  help            - ❓ 显示此帮助信息"
     echo
-    echo -e "${YELLOW}构建示例:${NC}"
+    echo -e "${YELLOW}🎯 高级功能:${NC}"
+    echo "  • 所有命令支持 --help 查看详细参数"
+    echo "  • 参数完全透传到 task.py，支持所有原生功能"
+    echo "  • 智能参数解析，兼容新老调用方式"
+    echo
+    echo -e "${YELLOW}📚 构建示例:${NC}"
     echo "  $0 build --plat aarch64-qemu-virt-hv"
     echo "  $0 build --plat aarch64-generic --features irq,mem"
-    echo "  $0 quick-build"
+    echo "  $0 clippy --arch aarch64"
+    echo "  $0 clippy x86_64 --verbose"
     echo
-    echo -e "${YELLOW}运行示例:${NC}"
+    echo -e "${YELLOW}🎮 运行示例:${NC}"
     echo "  $0 run --plat aarch64-qemu-virt-hv"
     echo "  $0 run --vmconfigs configs/vms/linux-qemu-aarch64.toml"
-    echo "  $0 quick-run"
+    echo "  $0 disk_img --image custom.img"
+    echo "  $0 disk_img custom.img --size 128M"
     echo
-    echo -e "${YELLOW}其他示例:${NC}"
+    echo -e "${YELLOW}💡 其他示例:${NC}"
     echo "  $0 defconfig"
     echo "  $0 clippy aarch64"
     echo "  $0 disk_img custom-disk.img"
@@ -294,37 +433,29 @@ main() {
             rebuild_venv
             ;;
             
-        # 构建命令
+        # 构建和开发命令 - 统一使用 run_python_task
         "build")
             ensure_config
-            step "构建项目..."
             run_python_task build "$@"
             ;;
         "clean")
-            step "清理构建产物..."
             run_python_task clean "$@"
             # 额外清理 cargo 产物
             if command -v cargo >/dev/null 2>&1; then
+                step "清理 Cargo 构建产物..."
                 cargo clean
             fi
             success "清理完成"
             ;;
         "clippy")
-            local arch="${1:-aarch64}"
-            step "运行代码检查 (架构: $arch)..."
-            run_python_task clippy --arch "$arch"
+            run_python_task clippy "$@"
             ;;
-            
-        # 运行命令
         "run")
             ensure_config
-            step "运行项目..."
             run_python_task run "$@"
             ;;
         "disk_img")
-            local image="${1:-disk.img}"
-            step "创建磁盘镜像: $image"
-            run_python_task disk_img --image "$image"
+            run_python_task disk_img "$@"
             ;;
             
         # 快捷方式
@@ -345,6 +476,11 @@ main() {
         "dev-run")
             ensure_config
             dev_run "$@"
+            ;;
+            
+        # 其他 task.py 支持的命令 - 直接透传
+        "config"|"test"|"format"|"doc")
+            run_python_task "$cmd" "$@"
             ;;
             
         # 未知命令
