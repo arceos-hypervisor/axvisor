@@ -27,10 +27,10 @@ REQUIREMENTS="$PROJECT_ROOT/scripts/requirements.txt"
 cd "$PROJECT_ROOT"
 
 # 输出函数
-info() { echo -e "${BLUE}ℹ${NC} $*"; }
-success() { echo -e "${GREEN}✓${NC} $*"; }
-warning() { echo -e "${YELLOW}⚠${NC} $*"; }
-error() { echo -e "${RED}✗${NC} $*"; }
+info() { echo -e "${BLUE}💡${NC} $*"; }
+success() { echo -e "${GREEN}✅${NC} $*"; }
+warning() { echo -e "${YELLOW}ℹ️${NC} $*"; }
+error() { echo -e "${RED}❌${NC} $*"; }
 step() { echo -e "${CYAN}==>${NC} $*"; }
 
 # 错误处理
