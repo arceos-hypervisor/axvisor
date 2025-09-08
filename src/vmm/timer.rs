@@ -96,7 +96,7 @@ pub fn check_events() {
     }
 }
 
-/// Schedule the next timer event based on the periodic interval
+// /// Schedule the next timer event based on the periodic interval
 // pub fn scheduler_next_event() {
 //     trace!("Scheduling next event...");
 //     let now_ns = axhal::time::monotonic_time_nanos();

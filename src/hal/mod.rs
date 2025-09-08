@@ -21,6 +21,7 @@ pub mod arch;
 
 use crate::{hal::arch::hardware_check, vmm};
 
+#[allow(unused)]
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub enum CacheOp {
