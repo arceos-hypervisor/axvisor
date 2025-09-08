@@ -39,7 +39,7 @@ axstd = {git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm-
 ]}
 
 # System dependent modules provided by ArceOS-Hypervisor.
-axaddrspace = "0.1"
+axaddrspace = "0.1.1"
 axhvc = {git = "https://github.com/arceos-hypervisor/axhvc.git"}
 axvcpu = "0.1"
 axvm = {git = "https://github.com/arceos-hypervisor/axvm.git", branch = "dev-irq"}
@@ -73,9 +73,9 @@ quote = "1.0"
 syn = "2.0"
 toml = {version = "0.9"}
 
-[patch.crates-io.axcpu]
-branch = "vmm"
-git = "https://github.com/arceos-hypervisor/axcpu"
+# [patch.crates-io.axcpu]
+# branch = "vmm"
+# git = "https://github.com/arceos-hypervisor/axcpu"
 
-[patch.crates-io.axaddrspace]
-git = "https://github.com/arceos-hypervisor/axaddrspace"
+# [patch.crates-io.axaddrspace]
+# git = "https://github.com/arceos-hypervisor/axaddrspace"

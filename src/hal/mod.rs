@@ -118,6 +118,10 @@ pub struct AxVCpuHalImpl;
 
 impl AxVCpuHal for AxVCpuHalImpl {
     type MmHal = AxMmHalImpl;
+
+    fn irq_hanlder() {
+        axhal::irq::irq_handler(0);
+    }
 }
 
 #[percpu::def_percpu]
