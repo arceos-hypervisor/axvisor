@@ -25,15 +25,27 @@ setup:
 	@./scripts/bootstrap.sh
 
 # build: build project using scripts/task.py via venv's python when available
+# Usage: make build [ARGS="--plat aarch64-qemu-virt-hv --features feature1,feature2"]
+# Examples:
+#   make build
+#   make build ARGS="--plat aarch64-qemu-virt-hv"
+#   make build ARGS="--features irq,mem --arceos-features smp"
 .PHONY: build
 build: setup
-	@echo "==> Building project using $(VENV_PYTHON) ./scripts/task.py build"
-	@$(VENV_PYTHON) ./scripts/task.py build
+	@echo "==> Building project using $(VENV_PYTHON) ./scripts/task.py build $(ARGS)"
+	@$(VENV_PYTHON) ./scripts/task.py build $(ARGS)
 
+# run: run project using scripts/task.py via venv's python when available
+# Usage: make run [ARGS="--plat aarch64-qemu-virt-hv --vmconfigs configs/vms/linux-qemu-aarch64.toml"]
+# Examples:
+#   make run
+#   make run ARGS="--plat aarch64-qemu-virt-hv"
+#   make run ARGS="--vmconfigs configs/vms/linux-qemu-aarch64.toml"
+#   make run ARGS="--arceos-args DISK_IMG=disk.img,LOG=debug"
 .PHONY: run
 run: setup
-	@echo "==> Running project using $(VENV_PYTHON) ./scripts/task.py run"
-	@$(VENV_PYTHON) ./scripts/task.py run
+	@echo "==> Running project using $(VENV_PYTHON) ./scripts/task.py run $(ARGS)"
+	@$(VENV_PYTHON) ./scripts/task.py run $(ARGS)
 
 .PHONY: clean
 clean:
@@ -45,3 +57,9 @@ ARCH ?= aarch64
 .PHONY: clippy
 clippy:
 	@$(VENV_PYTHON) ./scripts/task.py clippy --arch $(ARCH)
+
+DISK_IMG ?= disk.img
+
+.PHONY: disk_img
+disk_img:
+	@$(VENV_PYTHON) ./scripts/task.py disk_img --image $(DISK_IMG)
