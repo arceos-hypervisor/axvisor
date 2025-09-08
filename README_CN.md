@@ -58,6 +58,30 @@ AxVisor 的软件架构分为如下图所示的五层，其中，每一个框都
 
 AxVisor 启动之后会根据客户机配置文件中的信息加载并启动客户机。目前，AxVisor 即支持从 FAT32 文件系统加载客户机镜像，也支持通过静态编译方式（include_bytes）将客户机镜像绑定到虚拟机管理程序镜像中。
 
+## 快速开始
+
+对于首次使用的用户，可以使用我们的统一管理脚本快速开始 AxVisor 的使用：
+
+```bash
+# 检查系统依赖
+./axvisor.sh check-deps
+
+# 设置开发环境
+./axvisor.sh setup
+
+# 快速构建（默认平台）
+./axvisor.sh quick-build
+
+# 快速运行（默认配置）
+./axvisor.sh quick-run
+
+# 查看项目状态
+./axvisor.sh status
+
+# 获取帮助
+./axvisor.sh help
+```
+
 ## 构建环境
 
 AxVisor 是使用 Rust 编程语言编写的，因此，需要根据 Rust 官方网站的说明安装 Rust 开发环境。此外，还需要安装 [cargo-binutils](https://github.com/rust-embedded/cargo-binutils) 以便使用 `rust-objcopy` 和 `rust-objdump` 等工具
@@ -80,7 +104,7 @@ cargo install cargo-binutils
 
 2. 制作一个磁盘镜像文件，并将客户机镜像放到文件系统中
 
-   1. 使用 `make disk_img` 命令生成一个空的 FAT32 磁盘镜像文件 `disk.img`
+   1. 使用 `./axvisor.sh disk_img` 命令生成一个空的 FAT32 磁盘镜像文件 `disk.img`
    2. 手动挂载 `disk.img`，然后将自己的客户机镜像复制到该文件系统中
 
       ```bash
@@ -100,7 +124,7 @@ cargo install cargo-binutils
    cp configs/vms/linux-qemu-aarch64.toml tmp/
    ```
 
-4. 执行 `make setup` 生成 AxVisor make 配置 `.hvconfig.toml`。
+4. 执行 `./axvisor.sh defconfig` 设置开发环境并生成 AxVisor 配置 `.hvconfig.toml`。
 
 5. 编辑 `.hvconfig.toml` 文件，设置 `vmconfigs` 项为您的客户机配置文件路径，例如：
 
@@ -148,7 +172,7 @@ cargo install cargo-binutils
    vmconfigs = [ "tmp/linux-qemu-aarch64-mem.toml"]
    ```
 
-4. 执行 `make run` 构建 AxVisor 并在 QEMU 中启动。
+4. 执行 `./axvisor.sh run` 构建 AxVisor 并在 QEMU 中启动。
 
 ## 启动示例
 

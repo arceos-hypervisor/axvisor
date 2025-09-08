@@ -23,7 +23,7 @@ jobs:
       run: rustc --version --verbose
     - name: Clippy the repo
       continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
-      run: make clippy ARCH=${{ matrix.arch }}
+      run: ./axvisor.sh clippy --arch ${{ matrix.arch }}
 
   fmt:
     runs-on: ubuntu-latest
@@ -67,4 +67,4 @@ jobs:
     - name: Build the repo
       continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
       run: | 
-        make build ARGS="--plat ${{ matrix.plat }}"
+        ./axvisor.sh build --plat ${{ matrix.plat }}

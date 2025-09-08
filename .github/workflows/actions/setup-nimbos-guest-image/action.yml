@@ -61,7 +61,7 @@ runs:
   - name: Create Image
     shell: bash
     run: |
-      make disk_img DISK_IMG=${{ inputs.disk-path }}
+      ./axvisor.sh disk_img --image ${{ inputs.disk-path }}
       sudo mkdir -p img
       sudo chown root:root temp/*
       sudo mount ${{ inputs.disk-path }} img
