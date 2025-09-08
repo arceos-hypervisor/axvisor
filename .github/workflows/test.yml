@@ -37,11 +37,11 @@ jobs:
     - name: Run guests
       continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
       run: |
-        source ./scripts/bootstrap.sh
-        cargo version
-        export DISK_IMG="${{ github.workspace }}/disk-aarch64.img"
-        export VM_CONFIGS="$(pwd)/configs/vms/nimbos-aarch64.toml"
-        ./task.py run --plat ${{ matrix.plat }} --vmconfigs $VM_CONFIGS --features fs,ept-level-4 --arceos-args DISK_IMG=$DISK_IMG,BUS=mmio,BLK=y,MEM=8g
+  source ./scripts/bootstrap.sh
+  cargo version
+  export DISK_IMG="${{ github.workspace }}/disk-aarch64.img"
+  export VM_CONFIGS="$(pwd)/configs/vms/nimbos-aarch64.toml"
+  ./scripts/task.py run --plat ${{ matrix.plat }} --vmconfigs $VM_CONFIGS --features fs,ept-level-4 --arceos-args DISK_IMG=$DISK_IMG,BUS=mmio,BLK=y,MEM=8g
 
   aarch64-generic-phytiumpi:
     runs-on: [self-hosted, linux, docker]
@@ -134,10 +134,10 @@ jobs:
     - name: Run guests
       continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
       run: |
-        source ./scripts/bootstrap.sh
-        cargo version
-        export DISK_IMG="${{ github.workspace }}/disk-x86_64.img"
-        export VM_CONFIGS="$(pwd)/configs/vms/nimbos-x86_64.toml"
-        ./task.py run --plat ${{ matrix.plat }} --vmconfigs $VM_CONFIGS --features fs --arceos-args DISK_IMG=$DISK_IMG,BLK=y,MEM=1g
+  source ./scripts/bootstrap.sh
+  cargo version
+  export DISK_IMG="${{ github.workspace }}/disk-x86_64.img"
+  export VM_CONFIGS="$(pwd)/configs/vms/nimbos-x86_64.toml"
+  ./scripts/task.py run --plat ${{ matrix.plat }} --vmconfigs $VM_CONFIGS --features fs --arceos-args DISK_IMG=$DISK_IMG,BLK=y,MEM=1g
 
 

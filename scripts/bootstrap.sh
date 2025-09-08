@@ -6,13 +6,8 @@
 
 set -e  # 遇到错误时退出
 
-echo "=== Axvisor Bootstrap Script ==="
-
 # 检查是否已经在虚拟环境中
 if [[ -n "$VIRTUAL_ENV" ]]; then
-    echo "✓ 检测到已在虚拟环境中: $VIRTUAL_ENV"
-    echo "跳过虚拟环境设置，仅检查依赖..."
-    
     # 检查 requirements.txt 文件是否存在
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -24,12 +19,36 @@ if [[ -n "$VIRTUAL_ENV" ]]; then
     fi
     
     # 安装/更新依赖
-    echo "检查并安装 Python 依赖..."
     pip install -r scripts/requirements.txt -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
     
-    echo "=== Bootstrap 完成 ==="
-    echo "依赖检查完成，虚拟环境已就绪！"
     exit 0
+fi
+
+# If bootstrap marker exists, assume bootstrap already done
+MARKER_DIR="venv"
+MARKER_FILE="$MARKER_DIR/.bootstrapped"
+
+# compute dependency hash based on python version and requirements content
+compute_dep_hash() {
+    local pyver
+    pyver=$(python3 --version 2>/dev/null || echo "unknown")
+    if [[ -f "scripts/requirements.txt" ]]; then
+        cat scripts/requirements.txt | sed '/^#/d' | tr -d '\r' | sha256sum | awk '{print $1}' | awk -v p="$pyver" '{print p "-" $0}' | sha256sum | awk '{print $1}'
+    else
+        echo "$pyver-$(date +%s)" | sha256sum | awk '{print $1}'
+    fi
+}
+
+# If marker exists and hash matches, skip bootstrap
+if [[ -f "$MARKER_FILE" ]]; then
+    existing_hash=$(awk -F":" '/^hash:/ {print $2}' "$MARKER_FILE" | tr -d '[:space:]') || existing_hash=""
+    current_hash=$(compute_dep_hash)
+    if [[ "$existing_hash" == "$current_hash" ]]; then
+        echo "✓ bootstrap 已完成且依赖未更改（hash匹配），跳过引导"
+        exit 0
+    else
+        echo "检测到依赖变更或 Python 版本变更，重新运行 bootstrap..."
+    fi
 fi
 
 echo "正在设置 Python 虚拟环境..."
@@ -89,11 +108,11 @@ pip install -r scripts/requirements.txt -i https://mirrors.tuna.tsinghua.edu.cn/
 echo "依赖安装完成!"
 
 # 测试 task.py 是否可以正常运行
-echo "测试 task.py..."
-if python3 ./task.py --help > /dev/null 2>&1; then
-    echo "✓ task.py 运行正常"
+echo "测试 scripts/task.py..."
+if python3 ./scripts/task.py --help > /dev/null 2>&1; then
+    echo "✓ scripts/task.py 运行正常"
 else
-    echo "✗ task.py 运行失败，请检查安装"
+    echo "✗ scripts/task.py 运行失败，请检查安装"
 fi
 
 echo "=== Bootstrap 完成 ==="
@@ -103,10 +122,21 @@ echo "要使用项目，请先激活虚拟环境："
 echo "  source venv/bin/activate"
 echo ""
 echo "然后您可以使用以下命令:"
-echo "  ./task.py build          # 构建项目"
-echo "  ./task.py run            # 运行项目"
-echo "  ./task.py build --help   # 查看构建选项"
-echo "  ./task.py run --help     # 查看运行选项"
+echo "  ./scripts/task.py build          # 构建项目"
+echo "  ./scripts/task.py run            # 运行项目"
+echo "  ./scripts/task.py build --help   # 查看构建选项"
+echo "  ./scripts/task.py run --help     # 查看运行选项"
 echo ""
 echo "要退出虚拟环境，请运行:"
 echo "  deactivate"
+
+# 写入 bootstrap 完成标记，包含时间戳
+if [[ -d "$VENV_DIR" ]]; then
+    mkdir -p "$VENV_DIR"
+    dep_hash=$(compute_dep_hash)
+    cat > "$MARKER_FILE" <<EOF
+hash: $dep_hash
+timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+EOF
+    echo "wrote bootstrap marker to $MARKER_FILE (hash=$dep_hash)"
+fi

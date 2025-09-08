@@ -86,9 +86,6 @@ source activate.sh
 设置好 Python 环境后：
 
 ```bash
-# 构建项目
-./task.py build
-
 # 运行项目
 ./task.py run
 
@@ -172,10 +169,6 @@ cargo install cargo-binutils
  d8888888888 888     Y88b.    Y8b.     Y88b. .d88P Y88b  d88P
 d88P     888 888      "Y8888P  "Y8888   "Y88888P"   "Y8888P"
 
-arch = aarch64
-platform = aarch64-qemu-virt-hv
-target = aarch64-unknown-none-softfloat
-build_mode = release
 log_level = info
 smp = 1
 

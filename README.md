@@ -87,15 +87,15 @@ Once the Python environment is set up:
 
 ```bash
 # Build the project
-./task.py build
+./scripts/task.py build
 
 # Run the project
-./task.py run
+./scripts/task.py run
 
 # Get help
-./task.py --help
-./task.py build --help
-./task.py run --help
+./scripts/task.py --help
+./scripts/task.py build --help
+./scripts/task.py run --help
 ```
 
 ### 3. Deactivating Virtual Environment

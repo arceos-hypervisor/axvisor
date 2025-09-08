@@ -17,6 +17,7 @@ source ./activate.sh
 
 ### 1. build - 构建项目
 
+./scripts/task.py <command> [options]
 构建 Axvisor 项目。
 
 ```bash
@@ -26,29 +27,29 @@ source ./activate.sh
 **功能**：
 
 - 自动设置 ArceOS 依赖（如果尚未设置）
-- 根据配置生成构建命令
+./scripts/task.py build [options]
 - 执行 make 构建
 
 **示例**：
 
 ```bash
 # 使用 .hvconfig.toml 中的配置构建
-./task.py build
+./scripts/task.py build
 
 # 指定平台构建
-./task.py build --plat aarch64-generic
+./scripts/task.py build --plat aarch64-generic
 
 # 添加特性
-./task.py build --features "feature1,feature2"
+./scripts/task.py build --features "feature1,feature2"
 
 # 添加 ArceOS 特性
-./task.py build --arceos-features "page-alloc-64g,smp"
+./scripts/task.py build --arceos-features "page-alloc-64g,smp"
 
 # 添加 ArceOS Makefile 参数
-./task.py build --arceos-args "NET=y,BLK=y,MEM=8g,LOG=debug"
+./scripts/task.py build --arceos-args "NET=y,BLK=y,MEM=8g,LOG=debug"
 
 # 指定 VM 配置文件
-./task.py build --vmconfigs "config1.toml,config2.toml"
+./scripts/task.py build --vmconfigs "config1.toml,config2.toml"
 ```
 
 ### 3. run - 运行项目
@@ -56,16 +57,17 @@ source ./activate.sh
 构建并运行 Axvisor 项目。
 
 ```bash
-./task.py run [options]
+./scripts/task.py run [options]
 ```
 
 **功能**：
 
 - 首先执行构建步骤
 - 如果构建成功，则运行项目
-- 支持所有构建选项
+./scripts/task.py run
 
 **示例**：
+./scripts/task.py run --plat aarch64-generic --arceos-args "MEM=4g,BUS=mmio,BLK=y,LOG=debug" --features "fs"
 
 ```bash
 # 使用 .hvconfig.toml 中的配置运行
@@ -75,7 +77,7 @@ source ./activate.sh
 ./task.py run --plat aarch64-generic --arceos-args "MEM=4g,BUS=mmio,BLK=y,LOG=debug" --features "fs"
 ```
 
-## 命令行参数
+./scripts/task.py run --arceos-args "QEMU_ARGS=\"-smp 4 -m 2G -netdev user,id=net0\""
 
 ### 通用参数
 
@@ -86,6 +88,8 @@ source ./activate.sh
 | `--plat` | string | aarch64-generic | 指定目标平台 |
 | `--arch` | string | 自动检测 | 指定目标架构 |
 | `--package` | string | 自动检测 | 指定平台包名 |
+cp .hvconfig.dev.toml .hvconfig.toml && ./scripts/task.py build
+cp .hvconfig.prod.toml .hvconfig.toml && ./scripts/task.py run
 | `--features` | string | 无 | Hypervisor 特性（逗号分隔） |
 | `--arceos-features` | string | 无 | ArceOS 特性（逗号分隔） |
 | `--arceos-args` | string | 无 | ArceOS 参数（逗号分隔） |
