@@ -31,7 +31,8 @@ setup:
 #   make build ARGS="--plat aarch64-qemu-virt-hv"
 #   make build ARGS="--features irq,mem --arceos-features smp"
 .PHONY: build
-build: setup
+build: 
+	@./scripts/bootstrap.sh
 	@echo "==> Building project using $(VENV_PYTHON) ./scripts/task.py build $(ARGS)"
 	@$(VENV_PYTHON) ./scripts/task.py build $(ARGS)
 
@@ -43,12 +44,14 @@ build: setup
 #   make run ARGS="--vmconfigs configs/vms/linux-qemu-aarch64.toml"
 #   make run ARGS="--arceos-args DISK_IMG=disk.img,LOG=debug"
 .PHONY: run
-run: setup
+run: 
+	@./scripts/bootstrap.sh
 	@echo "==> Running project using $(VENV_PYTHON) ./scripts/task.py run $(ARGS)"
 	@$(VENV_PYTHON) ./scripts/task.py run $(ARGS)
 
 .PHONY: clean
 clean:
+	@./scripts/bootstrap.sh
 	@$(VENV_PYTHON) ./scripts/task.py clean
 	@cargo clean
 
@@ -56,10 +59,12 @@ ARCH ?= aarch64
 
 .PHONY: clippy
 clippy:
+	@./scripts/bootstrap.sh
 	@$(VENV_PYTHON) ./scripts/task.py clippy --arch $(ARCH)
 
 DISK_IMG ?= disk.img
 
 .PHONY: disk_img
 disk_img:
+	@./scripts/bootstrap.sh
 	@$(VENV_PYTHON) ./scripts/task.py disk_img --image $(DISK_IMG)
