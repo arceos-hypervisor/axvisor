@@ -28,7 +28,7 @@ spin = "0.9"
 timer_list = "0.1.0"
 
 # System dependent modules provided by ArceOS.
-axstd = {git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm-dev", features = [
+axstd = {git = "https://github.com/arceos-hypervisor/arceos.git", branch = "hypervisor", features = [
   "alloc",
   "paging",
   "irq",

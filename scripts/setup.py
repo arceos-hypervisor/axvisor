@@ -18,7 +18,7 @@ def setup_arceos():
                     "clone",
                     "https://github.com/arceos-hypervisor/arceos",
                     "-b",
-                    "vmm-dev",
+                    "hypervisor",
                     arceos_dir,
                 ],
                 check=True,
