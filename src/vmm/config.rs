@@ -224,6 +224,13 @@ pub fn init_guest_vms() {
     for raw_cfg_str in gvm_raw_configs {
         let vm_create_config =
             AxVMCrateConfig::from_toml(raw_cfg_str).expect("Failed to resolve VM config");
+        if let Some(linux) = super::images::get_image_header(&vm_create_config) {
+            info!(
+                "VM[{}] Linux image header: {:#x?}",
+                vm_create_config.base.id, linux
+            );
+        }
+
         let mut vm_config = AxVMConfig::from(vm_create_config.clone());
 
         // Overlay VM config with the given DTB.

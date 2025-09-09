@@ -7,6 +7,35 @@ use crate::hal::CacheOp;
 use crate::vmm::VMRef;
 use crate::vmm::config::config;
 
+mod linux;
+
+pub fn get_image_header(config: &AxVMCrateConfig) -> Option<linux::Header> {
+    match config.kernel.image_location.as_deref() {
+        Some("memory") => with_memory_image(config, linux::Header::parse),
+        #[cfg(feature = "fs")]
+        Some("fs") => {
+            let read_size = linux::Header::hdr_size();
+            let data = fs::kernal_read(config, read_size).ok()?;
+            linux::Header::parse(&data)
+        }
+        _ => unimplemented!(
+            "Check your \"image_location\" in config.toml, \"memory\" and \"fs\" are supported,\n NOTE: \"fs\" feature should be enabled if you want to load images from filesystem. (APP_FEATURES=fs)"
+        ),
+    }
+}
+
+fn with_memory_image<F, R>(config: &AxVMCrateConfig, func: F) -> R
+where
+    F: FnOnce(&[u8]) -> R,
+{
+    let vm_imags = config::get_memory_images()
+        .iter()
+        .find(|&v| v.id == config.base.id)
+        .expect("VM images is missed, Perhaps add `VM_CONFIGS=PATH/CONFIGS/FILE` command.");
+
+    func(vm_imags.kernel)
+}
+
 /// Loads the VM image files.
 pub fn load_vm_images(config: AxVMCrateConfig, vm: VMRef) -> AxResult {
     match config.kernel.image_location.as_deref() {
@@ -103,13 +132,43 @@ fn load_vm_image_from_memory(image_buffer: &[u8], load_addr: usize, vm: VMRef) -
 mod fs {
     use alloc::string::String;
 
-    use std::fs::File;
+    use std::{fs::File, vec::Vec};
 
     use axerrno::{AxResult, ax_err, ax_err_type};
 
     use crate::hal::CacheOp;
 
     use super::*;
+
+    pub fn kernal_read(config: &AxVMCrateConfig, read_size: usize) -> AxResult<Vec<u8>> {
+        use std::fs::File;
+        use std::io::Read;
+        let file_name = &config.kernel.kernel_path;
+
+        let mut file = File::open(file_name).map_err(|err| {
+            ax_err_type!(
+                NotFound,
+                format!(
+                    "Failed to open {}, err {:?}, please check your disk.img",
+                    file_name, err
+                )
+            )
+        })?;
+
+        let mut buffer = vec![0u8; read_size];
+
+        file.read_exact(&mut buffer).map_err(|err| {
+            ax_err_type!(
+                NotFound,
+                format!(
+                    "Failed to read {}, err {:?}, please check your disk.img",
+                    file_name, err
+                )
+            )
+        })?;
+
+        Ok(buffer)
+    }
 
     /// Loads the VM image files from the filesystem
     /// into the guest VM's memory space based on the VM configuration.
