@@ -1069,7 +1069,6 @@ dependencies = [
  "arm_vcpu 0.1.1 (git+https://github.com/arceos-hypervisor/arm_vcpu?branch=next-dev)",
  "arm_vgic 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "axaddrspace 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "axcpu",
  "axdevice 0.1.0 (git+https://github.com/arceos-hypervisor/axdevice.git)",
  "axdevice_base",
  "axerrno",
