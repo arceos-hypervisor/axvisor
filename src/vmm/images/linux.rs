@@ -19,6 +19,7 @@ pub struct Header {
     pub arch: ImageArch,
 }
 
+#[allow(unused)]
 impl Header {
     pub fn parse(image: &[u8]) -> Option<Self> {
         if let Some(hdr) = ARM64Header::parse(image) {
