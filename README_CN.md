@@ -76,12 +76,35 @@ cargo install cargo-binutils
 
 ## 从文件系统加载运行
 
+### 使用 NimbOS 作为 x86_64 客户机
+
+1. 执行仓库内的脚本下载并准备 NimbOS 镜像（x86_64）：
+
+   ```bash
+   ./scripts/nimbos.sh --arch x86_64
+   ```
+
+2. 执行 `./axvisor.sh defconfig` 以设置开发环境并生成 AxVisor 配置文件 `.hvconfig.toml`。
+
+3. 编辑生成的 `.hvconfig.toml`，将 `vmconfigs` 项设置为指向 NimbOS 的客户机配置文件，例如：
+
+   ```toml
+   plat = "x86-qemu-q35"
+   features = ["fs"]
+   arceos_args = [ "BLK=y", "DISK_IMG=tmp/nimbos-x86_64.img", "LOG=warn"]
+   vmconfigs = [ "configs/vms/nimbos-x86_64.toml",]
+   ```
+
+4. 执行 `./axvisor.sh run` 构建 AxVisor 并在 QEMU 中启动 NimbOS 客户机。
+
+### 通用：从文件系统加载其他客户机镜像的步骤
+
 1. 构建适用于自己架构的客户机镜像文件。以 ArceOS 主线代码为例，执行 `make PLATFORM=aarch64-qemu-virt SMP=1 A=examples/helloworld` 获取 `helloworld_aarch64-qemu-virt.bin`
 
 2. 制作一个磁盘镜像文件，并将客户机镜像放到文件系统中
 
-   1. 使用 `./axvisor.sh disk_img` 命令生成一个空的 FAT32 磁盘镜像文件 `disk.img`
-   2. 手动挂载 `disk.img`，然后将自己的客户机镜像复制到该文件系统中
+   - 使用 `./axvisor.sh disk_img` 命令生成一个空的 FAT32 磁盘镜像文件 `disk.img`
+   - 手动挂载 `disk.img`，然后将自己的客户机镜像复制到该文件系统中
 
       ```bash
       mkdir -p tmp/tmp_img

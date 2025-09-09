@@ -76,12 +76,36 @@ In addition, you can use the [axvmconfig](https://github.com/arceos-hypervisor/a
 
 ## Load and run from file system
 
+### NimbOS as guest (x86_64)
+
+1. Execute script to download and prepare NimbOS image.
+
+   ```shell
+   ./scripts/nimbos.sh --arch x86_64
+   ```
+
+2. Execute `./axvisor.sh defconfig` to set up the development environment and generate AxVisor config `.hvconfig.toml`.
+
+3. Edit the `.hvconfig.toml` file to set the `vmconfigs` item to the path of your guest configuration file, for example:
+
+   ```toml
+   plat = "x86-qemu-q35"
+   features = ["fs"]
+   arceos_args = [ "BLK=y", "DISK_IMG=tmp/nimbos-x86_64.img", "LOG=warn"]
+   vmconfigs = [ "configs/vms/nimbos-x86_64.toml",]
+
+   ```
+
+4. Execute `./axvisor.sh run` to build AxVisor and start it in QEMU.
+
+### ArceOS as guest
+
 1. Build a client image file suitable for your own architecture. Taking the ArceOS mainline code as an example, run `make PLATFORM=aarch64-qemu-virt SMP=1 A=examples/helloworld` to generate `helloworld_aarch64-qemu-virt.bin`.
 
 2. Create a disk image file and place the guest machine image into the file system.
 
-   1. Use the `./axvisor.sh disk_img` command to generate an empty FAT32 disk image file named `disk.img`.
-   2. Manually mount `disk.img`, and then place your guest machine image into the file system.
+   - Use the `./axvisor.sh disk_img` command to generate an empty FAT32 disk image file named `disk.img`.
+   - Manually mount `disk.img`, and then place your guest machine image into the file system.
 
       ```console
       mkdir -p tmp/tmp_img
