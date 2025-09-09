@@ -11,7 +11,7 @@ version = "0.1.0"
 
 [features]
 fs = ["axstd/fs"]
-ept-level-4 = ["axaddrspace/4-level-ept"]
+4-level-ept = ["axaddrspace/4-level-ept", "axvm/4-level-ept"]
 
 plat-aarch64-generic = ["axplat-aarch64-generic", "axstd/driver-dyn"]
 plat-x86-qemu-q35 = ["axplat-x86-qemu-q35"]
