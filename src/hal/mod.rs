@@ -189,6 +189,8 @@ pub(crate) fn enable_virtualization() {
 
 #[axvisor_api::api_mod_impl(axvisor_api::memory)]
 mod memory_api_impl {
+    use core::{alloc::Layout, ptr::NonNull};
+
     use super::*;
 
     extern fn alloc_frame() -> Option<HostPhysAddr> {
@@ -200,8 +202,16 @@ mod memory_api_impl {
         frame_align_pow2: usize,
     ) -> Option<HostPhysAddr> {
         arceos::modules::axalloc::global_allocator()
-            .alloc_pages(num_frames, PAGE_SIZE_4K << frame_align_pow2)
-            .map(|vaddr| <AxMmHalImpl as AxMmHal>::virt_to_phys(vaddr.into()))
+            .alloc(
+                Layout::from_size_align(
+                    num_frames * PAGE_SIZE_4K,
+                    PAGE_SIZE_4K << frame_align_pow2,
+                )
+                .unwrap(),
+            )
+            // .alloc_pages(num_frames, PAGE_SIZE_4K << frame_align_pow2)
+            // .map(|vaddr| <AxMmHalImpl as AxMmHal>::virt_to_phys(vaddr.into()))
+            .map(|vaddr| HostPhysAddr::from(vaddr.as_ptr() as usize))
             .ok()
     }
 
@@ -210,7 +220,11 @@ mod memory_api_impl {
     }
 
     extern fn dealloc_contiguous_frames(paddr: HostPhysAddr, num_frames: usize) {
-        arceos::modules::axalloc::global_allocator().dealloc_pages(paddr.as_usize(), num_frames);
+        // arceos::modules::axalloc::global_allocator().dealloc_pages(paddr.as_usize(), num_frames);
+        arceos::modules::axalloc::global_allocator().dealloc(
+            unsafe { NonNull::new_unchecked(paddr.as_usize() as _) },
+            Layout::from_size_align(num_frames * PAGE_SIZE_4K, PAGE_SIZE_4K).unwrap(),
+        );
     }
 
     extern fn phys_to_virt(paddr: HostPhysAddr) -> HostVirtAddr {
