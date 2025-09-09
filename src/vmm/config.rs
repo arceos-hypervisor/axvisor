@@ -53,7 +53,10 @@ pub fn parse_vm_dtb(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
     }
 
     if vm_cfg.memory_regions().is_empty() {
-        info!("No memory region configured, using DTB memory regions: {:x?}", dram_regions);
+        info!(
+            "No memory region configured, using DTB memory regions: {:x?}",
+            dram_regions
+        );
         for mem in fdt.memory() {
             for region in mem.regions() {
                 // Skip empty regions
