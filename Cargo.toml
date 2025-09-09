@@ -75,7 +75,7 @@ toml = {version = "0.9"}
 
 [workspace]
 exclude = ["crates/arceos"]
-members = ["platform/*", "crates/*"]
+members = ["platform/*"]
 
 [patch.crates-io]
 axvcpu = {git="https://github.com/arceos-hypervisor/axvcpu.git", branch="next"}
