@@ -5,7 +5,6 @@ version = "0.1.0"
 
 [features]
 fp-simd = ["axplat-x86-pc/fp-simd"]
-reboot-on-system-off = ["axplat-x86-pc/reboot_on_system_off"]
 rtc = ["axplat-x86-pc/x86_rtc"]
 
 [dependencies]
