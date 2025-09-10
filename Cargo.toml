@@ -54,6 +54,8 @@ page_table_multiarch = "0.5"
 percpu = {version = "0.2", features = ["arm-el2"]}
 rdrive = "0.16"
 
+vm-fdt = { git = "https://github.com/bullhh/vm-fdt.git", default-features = false, features = ["alloc"]}
+
 axdevice = {git = "https://github.com/arceos-hypervisor/axdevice.git"}
 axdevice_base = "0.1"
 axvisor_api = "0.1"

@@ -42,42 +42,6 @@ pub fn parse_vm_dtb(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
     let fdt = Fdt::from_bytes(dtb)
         .expect("Failed to parse DTB image, perhaps the DTB is invalid or corrupted");
 
-    let mut dram_regions = Vec::new();
-    for mem in fdt.memory() {
-        for region in mem.regions() {
-            if region.size == 0 {
-                continue;
-            }
-            dram_regions.push((region.address as usize, region.size));
-        }
-    }
-
-    if vm_cfg.memory_regions().is_empty() {
-        info!(
-            "No memory region configured, using DTB memory regions: {:x?}",
-            dram_regions
-        );
-        for mem in fdt.memory() {
-            for region in mem.regions() {
-                // Skip empty regions
-                if region.size == 0 {
-                    continue;
-                }
-                warn!("DTB memory region: {:?}", region);
-                vm_cfg.add_memory_region(VmMemConfig {
-                    gpa: region.address as usize,
-                    size: region.size,
-                    flags: (MappingFlags::READ
-                        | MappingFlags::WRITE
-                        | MappingFlags::EXECUTE
-                        | MappingFlags::USER)
-                        .bits(),
-                    map_type: VmMemMappingType::MapIdentical,
-                });
-            }
-        }
-    }
-
     for reserved in fdt.reserved_memory() {
         warn!("Find reserved memory: {:?}", reserved.name());
     }
