@@ -35,7 +35,7 @@ axstd = {git = "https://github.com/arceos-hypervisor/arceos.git", branch = "hype
   "multitask",
   "smp",
   "page-alloc-64g",
-  "myplat"
+  "myplat",
 ]}
 
 # System dependent modules provided by ArceOS-Hypervisor.
@@ -77,7 +77,7 @@ toml = {version = "0.9"}
 
 [workspace]
 exclude = ["crates/arceos"]
-members = ["platform/*"]
+members = ["platform/*", "crates/*"]
 
 [patch.crates-io]
-axvcpu = {git="https://github.com/arceos-hypervisor/axvcpu.git", branch="next"}
+axvcpu = {git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "next"}
