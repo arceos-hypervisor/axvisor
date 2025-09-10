@@ -7,10 +7,10 @@ use std::os::arceos::{
 };
 
 use axerrno::{AxResult, ax_err_type};
-use memory_addr::{PAGE_SIZE_4K, align_up_4k};
+use memory_addr::PAGE_SIZE_4K;
 use page_table_multiarch::PagingHandler;
 
-use arceos::modules::{axalloc, axhal};
+use arceos::modules::axhal;
 use axaddrspace::{AxMmHal, HostPhysAddr, HostVirtAddr};
 use axvcpu::AxVCpuHal;
 use axvm::{AxVMHal, AxVMPerCpu};
@@ -38,28 +38,6 @@ pub struct AxVMHalImpl;
 
 impl AxVMHal for AxVMHalImpl {
     type PagingHandler = axhal::paging::PagingHandlerImpl;
-
-    fn alloc_memory_region_at(base: HostPhysAddr, size: usize) -> bool {
-        axalloc::global_allocator()
-            .alloc_pages_at(
-                base.as_usize(),
-                align_up_4k(size) / PAGE_SIZE_4K,
-                PAGE_SIZE_4K,
-            )
-            .map_err(|err| {
-                error!(
-                    "Failed to allocate memory region [{:?}~{:?}]: {:?}",
-                    base,
-                    base + size,
-                    err
-                );
-            })
-            .is_ok()
-    }
-
-    fn dealloc_memory_region_at(base: HostPhysAddr, size: usize) {
-        axalloc::global_allocator().dealloc_pages(base.as_usize(), size / PAGE_SIZE_4K)
-    }
 
     fn virt_to_phys(vaddr: HostVirtAddr) -> HostPhysAddr {
         axhal::mem::virt_to_phys(vaddr)

@@ -420,7 +420,7 @@ fn vcpu_run() {
                     );
 
                     // Get the mapping relationship between all vCPUs and physical CPUs from the configuration
-                    let vcpu_mappings = vm.config().get_vcpu_affinities_pcpu_ids();
+                    let vcpu_mappings = vm.get_vcpu_affinities_pcpu_ids();
 
                     // Find the vCPU ID corresponding to the physical ID
                     let target_vcpu_id = vcpu_mappings

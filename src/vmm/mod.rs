@@ -1,11 +1,11 @@
 mod config;
+mod fdt;
 mod hvc;
 mod images;
 mod ivc;
 pub mod timer;
 mod vcpus;
 mod vm_list;
-mod fdt;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 use std::os::arceos::{
