@@ -230,8 +230,10 @@ pub fn init_guest_vms() {
         // Load corresponding images for VM.
         info!("VM[{}] created success, loading images...", vm.id());
 
-        let mut loader = ImageLoader::new(vm_create_config, main_mem, vm.clone());
-        loader.load().expect("Failed to load VM images");
+        let mut loader = ImageLoader::new(main_mem, vm_create_config, vm.clone());
+        loader
+            .load()
+            .expect("Failed to load VM images");
 
         if let Err(e) = vm.init() {
             panic!("VM[{}] setup failed: {:?}", vm.id(), e);

@@ -43,46 +43,48 @@ where
 }
 
 pub struct ImageLoader {
-    config: AxVMCrateConfig,
     main_memory: VMMemoryRegion,
     vm: VMRef,
-    kernel_addr: GuestPhysAddr,
-    dtb_addr: GuestPhysAddr,
+    config: AxVMCrateConfig,
+    kernel_load_gpa: GuestPhysAddr,
+    bios_load_gpa: Option<GuestPhysAddr>,
+    dtb_load_gpa: Option<GuestPhysAddr>,
+    ramdisk_load_gpa: Option<GuestPhysAddr>,
 }
 
 impl ImageLoader {
-    pub fn new(config: AxVMCrateConfig, main_memory: VMMemoryRegion, vm: VMRef) -> Self {
+    pub fn new(main_memory: VMMemoryRegion, config: AxVMCrateConfig, vm: VMRef) -> Self {
         Self {
-            config,
             main_memory,
             vm,
-            kernel_addr: GuestPhysAddr::default(),
-            dtb_addr: GuestPhysAddr::default(),
+            config,
+            kernel_load_gpa: GuestPhysAddr::default(),
+            bios_load_gpa: None,
+            dtb_load_gpa: None,
+            ramdisk_load_gpa: None,
         }
     }
 
     pub fn load(&mut self) -> AxResult {
         info!(
             "Loading VM[{}] images into memory region: gpa={:#x}, hva={:#x}, size={:#}",
-            self.config.base.id,
+            self.vm.id(),
             self.main_memory.gpa,
             self.main_memory.hva,
             Byte::from(self.main_memory.size())
         );
+
         self.vm.with_config(|config| {
-            self.kernel_addr = config.image_config.kernel_load_gpa;
-            self.dtb_addr = config.image_config.dtb_load_gpa.unwrap();
+            self.kernel_load_gpa = config.image_config.kernel_load_gpa;
+            self.dtb_load_gpa = config.image_config.dtb_load_gpa;
+            self.bios_load_gpa = config.image_config.bios_load_gpa;
+            self.ramdisk_load_gpa = config.image_config.ramdisk_load_gpa;
         });
 
         match self.config.kernel.image_location.as_deref() {
             Some("memory") => self.load_vm_images_from_memory(),
             #[cfg(feature = "fs")]
-            Some("fs") => fs::load_vm_images_from_filesystem(
-                self.kernel_addr,
-                self.dtb_addr,
-                self.config.clone(),
-                self.vm.clone(),
-            ),
+            Some("fs") => fs::load_vm_images_from_filesystem(self),
             _ => unimplemented!(
                 "Check your \"image_location\" in config.toml, \"memory\" and \"fs\" are supported,\n NOTE: \"fs\" feature should be enabled if you want to load images from filesystem. (APP_FEATURES=fs)"
             ),
@@ -99,18 +101,18 @@ impl ImageLoader {
             .find(|&v| v.id == self.config.base.id)
             .expect("VM images is missed, Perhaps add `VM_CONFIGS=PATH/CONFIGS/FILE` command.");
 
-        load_vm_image_from_memory(vm_imags.kernel, self.kernel_addr, self.vm.clone())
+        load_vm_image_from_memory(vm_imags.kernel, self.kernel_load_gpa, self.vm.clone())
             .expect("Failed to load VM images");
         // Load DTB image
         if let Some(buffer) = vm_imags.dtb {
             debug!(
                 "DTB buffer addr: {:x}, size: {:#}",
-                self.dtb_addr,
+                self.dtb_load_gpa.unwrap(),
                 Byte::from(buffer.len())
             );
 
             updated_fdt(
-                self.dtb_addr,
+                self.dtb_load_gpa.unwrap(),
                 NonNull::new(buffer.as_ptr() as *mut u8).unwrap(),
                 buffer.len(),
                 self.vm.clone(),
@@ -119,22 +121,14 @@ impl ImageLoader {
 
         // Load BIOS image
         if let Some(buffer) = vm_imags.bios {
-            load_vm_image_from_memory(
-                buffer,
-                self.config.kernel.bios_load_addr.unwrap().into(),
-                self.vm.clone(),
-            )
-            .expect("Failed to load BIOS images");
+            load_vm_image_from_memory(buffer, self.bios_load_gpa.unwrap(), self.vm.clone())
+                .expect("Failed to load BIOS images");
         }
 
         // Load Ramdisk image
         if let Some(buffer) = vm_imags.ramdisk {
-            load_vm_image_from_memory(
-                buffer,
-                self.config.kernel.ramdisk_load_addr.unwrap().into(),
-                self.vm.clone(),
-            )
-            .expect("Failed to load Ramdisk images");
+            load_vm_image_from_memory(buffer, self.ramdisk_load_gpa.unwrap(), self.vm.clone())
+                .expect("Failed to load Ramdisk images");
         };
 
         Ok(())
@@ -192,8 +186,6 @@ pub fn load_vm_image_from_memory(
 
 #[cfg(feature = "fs")]
 mod fs {
-    use alloc::string::String;
-
     use std::{fs::File, vec::Vec};
 
     use axerrno::{AxResult, ax_err, ax_err_type};
@@ -236,39 +228,34 @@ mod fs {
 
     /// Loads the VM image files from the filesystem
     /// into the guest VM's memory space based on the VM configuration.
-    pub(crate) fn load_vm_images_from_filesystem(
-        kernel_addr: GuestPhysAddr,
-        dtb_addr: GuestPhysAddr,
-        config: AxVMCrateConfig,
-        vm: VMRef,
-    ) -> AxResult {
+    pub(crate) fn load_vm_images_from_filesystem(loader: &ImageLoader) -> AxResult {
         info!("Loading VM images from filesystem");
         // Load kernel image.
-        load_vm_image(config.kernel.kernel_path, kernel_addr, vm.clone())?;
+        load_vm_image(
+            &loader.config.kernel.kernel_path,
+            loader.kernel_load_gpa,
+            loader.vm.clone(),
+        )?;
         // Load BIOS image if needed.
-        if let Some(bios_path) = config.kernel.bios_path {
-            if let Some(bios_load_addr) = config.kernel.bios_load_addr {
-                load_vm_image(bios_path, GuestPhysAddr::from(bios_load_addr), vm.clone())?;
+        if let Some(bios_path) = &loader.config.kernel.bios_path {
+            if let Some(bios_load_addr) = loader.bios_load_gpa {
+                load_vm_image(bios_path, bios_load_addr, loader.vm.clone())?;
             } else {
                 return ax_err!(NotFound, "BIOS load addr is missed");
             }
         };
         // Load Ramdisk image if needed.
-        if let Some(ramdisk_path) = config.kernel.ramdisk_path {
-            if let Some(ramdisk_load_addr) = config.kernel.ramdisk_load_addr {
-                load_vm_image(
-                    ramdisk_path,
-                    GuestPhysAddr::from(ramdisk_load_addr),
-                    vm.clone(),
-                )?;
+        if let Some(ramdisk_path) = &loader.config.kernel.ramdisk_path {
+            if let Some(ramdisk_load_addr) = loader.ramdisk_load_gpa {
+                load_vm_image(ramdisk_path, ramdisk_load_addr, loader.vm.clone())?;
             } else {
                 return ax_err!(NotFound, "Ramdisk load addr is missed");
             }
         };
         // Load DTB image if needed.
         // Todo: generate DTB file for guest VM.
-        if let Some(dtb_path) = config.kernel.dtb_path {
-            let (dtb_file, dtb_size) = open_image_file(dtb_path.as_str())?;
+        if let Some(dtb_path) = &loader.config.kernel.dtb_path {
+            let (dtb_file, dtb_size) = open_image_file(dtb_path)?;
             info!("DTB file size {}", dtb_size);
 
             let mut file = BufReader::new(dtb_file);
@@ -281,6 +268,8 @@ mod fs {
                 )
             })?;
 
+            let dtb_addr = loader.dtb_load_gpa.unwrap();
+
             info!(
                 "DTB buffer addr: {:x}, size: {:#}",
                 dtb_addr,
@@ -290,15 +279,15 @@ mod fs {
                 dtb_addr,
                 NonNull::new(dtb_buffer.as_mut_ptr()).unwrap(),
                 dtb_size,
-                vm.clone(),
+                loader.vm.clone(),
             );
         };
         Ok(())
     }
 
-    fn load_vm_image(image_path: String, image_load_gpa: GuestPhysAddr, vm: VMRef) -> AxResult {
+    fn load_vm_image(image_path: &str, image_load_gpa: GuestPhysAddr, vm: VMRef) -> AxResult {
         use std::io::{BufReader, Read};
-        let (image_file, image_size) = open_image_file(image_path.as_str())?;
+        let (image_file, image_size) = open_image_file(image_path)?;
 
         let image_load_regions = vm.get_image_load_region(image_load_gpa, image_size)?;
         let mut file = BufReader::new(image_file);
