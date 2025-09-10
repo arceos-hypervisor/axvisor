@@ -47,7 +47,7 @@ pub fn inject_interrupt_gic_v3(vector: usize) {
     let elsr = ICH_ELRSR_EL2.read(ICH_ELRSR_EL2::STATUS);
     let lr_num = ICH_VTR_EL2.read(ICH_VTR_EL2::LISTREGS) as usize + 1;
 
-    let mut free_lr = -1 as isize;
+    let mut free_lr = -1_isize;
 
     // First, check if this interrupt is already pending/active
     for i in 0..lr_num {
@@ -60,15 +60,16 @@ pub fn inject_interrupt_gic_v3(vector: usize) {
         }
         let lr_val = ich_lr_el2_get(i);
 
-        if lr_val.read(ICH_LR_EL2::VINTID) == vector as u64 {
-            if lr_val.matches_any(&[ICH_LR_EL2::STATE::Pending, ICH_LR_EL2::STATE::Active]) {}
+        if lr_val.read(ICH_LR_EL2::VINTID) == vector as u64
+            && lr_val.matches_any(&[ICH_LR_EL2::STATE::Pending, ICH_LR_EL2::STATE::Active])
+        {
             debug!(
                 "Virtual interrupt {} already pending/active in LR{}, skipping",
                 vector, i
             );
             // If the interrupt is already pending or active, we can skip injecting it again.
             // This is important to avoid duplicate injections.
-            return; // already injected
+            continue;
         }
     }
 
