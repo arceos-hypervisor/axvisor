@@ -75,11 +75,12 @@ quote = "1.0"
 syn = "2.0"
 toml = {version = "0.9"}
 
-[workspace]
-exclude = ["crates/arceos"]
-members = [
-  "platform/*", # "crates/*"
-]
+# [workspace]
+# exclude = ["crates/arceos"]
+# members = [
+#   "platform/*",
+#   "crates/*",
+# ]
 
 [patch.crates-io]
 axvcpu = {git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "next"}

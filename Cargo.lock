@@ -814,7 +814,6 @@ dependencies = [
  "x2apic",
  "x86",
  "x86_64",
- "x86_rtc",
 ]
 
 [[package]]
@@ -4418,16 +4417,6 @@ dependencies = [
  "bitflags 2.9.4",
  "rustversion",
  "volatile",
-]
-
-[[package]]
-name = "x86_rtc"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1a42420da20c01d82e5d42231570efa3b9e16a5515eaaf9ee4e964f49cc1313"
-dependencies = [
- "cfg-if",
- "x86_64",
 ]
 
 [[package]]
