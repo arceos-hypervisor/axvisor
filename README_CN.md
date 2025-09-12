@@ -76,12 +76,12 @@ cargo install cargo-binutils
 
 ## 从文件系统加载运行
 
-### 使用 NimbOS 作为 x86_64 客户机
+### 使用 NimbOS 作为客户机
 
-1. 执行仓库内的脚本下载并准备 NimbOS 镜像（x86_64）：
+1. 执行仓库内的脚本下载并准备 NimbOS 镜像：
 
    ```bash
-   ./scripts/nimbos.sh --arch x86_64
+   ./scripts/nimbos.sh --arch aarch64
    ```
 
 2. 执行 `./axvisor.sh defconfig` 以设置开发环境并生成 AxVisor 配置文件 `.hvconfig.toml`。
@@ -89,60 +89,20 @@ cargo install cargo-binutils
 3. 编辑生成的 `.hvconfig.toml`，将 `vmconfigs` 项设置为指向 NimbOS 的客户机配置文件，例如：
 
    ```toml
-   plat = "x86-qemu-q35"
-   features = ["fs"]
-   arceos_args = [ "BLK=y", "DISK_IMG=tmp/nimbos-x86_64.img", "LOG=warn"]
-   vmconfigs = [ "configs/vms/nimbos-x86_64.toml",]
+   plat = "aarch64-generic"
+   features = ["fs", "ept-level-4"]
+   arceos_args = [ "BUS=mmio","BLK=y", "DISK_IMG=tmp/nimbos-aarch64.img", "LOG=info"]
+   vmconfigs = [ "configs/vms/nimbos-aarch64.toml",]
    ```
 
 4. 执行 `./axvisor.sh run` 构建 AxVisor 并在 QEMU 中启动 NimbOS 客户机。
 
-### 通用：从文件系统加载其他客户机镜像的步骤
-
-1. 构建适用于自己架构的客户机镜像文件。以 ArceOS 主线代码为例，执行 `make PLATFORM=aarch64-qemu-virt SMP=1 A=examples/helloworld` 获取 `helloworld_aarch64-qemu-virt.bin`
-
-2. 制作一个磁盘镜像文件，并将客户机镜像放到文件系统中
-
-   - 使用 `./axvisor.sh disk_img` 命令生成一个空的 FAT32 磁盘镜像文件 `disk.img`
-   - 手动挂载 `disk.img`，然后将自己的客户机镜像复制到该文件系统中
-
-      ```bash
-      mkdir -p tmp/tmp_img
-      sudo mount disk.img tmp/tmp_img
-      sudo cp /PATH/TO/YOUR/GUEST/VM/IMAGE tmp/tmp_img/
-      sudo umount tmp/tmp_img
-      ```
-
-3. 修改对应的 `./configs/vms/<ARCH_CONFIG>.toml` 文件中的配置项
-   - `image_location="fs"` 表示从文件系统加载
-   - `kernel_path` 指出内核镜像在文件系统中的路径
-   - `entry_point` 指出内核镜像的入口地址
-   - `kernel_load_addr` 指出内核镜像的加载地址
-
-   ```console
-   cp configs/vms/linux-qemu-aarch64.toml tmp/
-   ```
-
-4. 执行 `./axvisor.sh defconfig` 设置开发环境并生成 AxVisor 配置 `.hvconfig.toml`。
-
-5. 编辑 `.hvconfig.toml` 文件，设置 `vmconfigs` 项为您的客户机配置文件路径，例如：
-
-   ```toml
-   features = ["fs", "ept-level-4"]
-   arceos_args = [
-      "BUS=mmio",
-      "BLK=y",
-      "MEM=8g",
-      "LOG=debug",
-      "QEMU_ARGS=\"-machine gic-version=3  -cpu cortex-a72  \"",
-      "DISK_IMG=\"tmp/rootfs.img\"",
-   ]
-   vmconfigs = [ "tmp/arceos-aarch64.toml"]
-
-   ```
+### 更多客户机
+   TODO
 
 ## 从内存加载运行
 
+### 使用 linux 作为客户机
 1. [参见 linux 构建帮助。](https://github.com/arceos-hypervisor/guest-test-linux) 获取 Image 和 rootfs.img。
 
 2. 修改对应的 `./configs/vms/<ARCH_CONFIG>.toml` 中的配置项
@@ -172,6 +132,9 @@ cargo install cargo-binutils
    ```
 
 4. 执行 `./axvisor.sh run` 构建 AxVisor 并在 QEMU 中启动。
+
+### 更多客户机
+   TODO
 
 ## 启动示例
 

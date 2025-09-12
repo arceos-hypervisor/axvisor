@@ -53,10 +53,6 @@ Currently, AxVisor has been verified in scenarios with the following systems as 
   - currently only Linux with passthrough device on aarch64 is tested.
   - single core: [config.toml](configs/vms/linux-qemu-aarch64.toml) | [dts](configs/vms/linux-qemu.dts)
   - smp: [config.toml](configs/vms/linux-qemu-aarch64-smp2.toml) | [dts](configs/vms/linux-qemu-smp2.dts)
-# Quick Start
-```
-./quick_start.sh arceos
-```
 
 
 # Build and Run
@@ -81,12 +77,12 @@ In addition, you can use the [axvmconfig](https://github.com/arceos-hypervisor/a
 
 ## Load and run from file system
 
-### NimbOS as guest (x86_64)
+### NimbOS as guest 
 
 1. Execute script to download and prepare NimbOS image.
 
    ```shell
-   ./scripts/nimbos.sh --arch x86_64
+   ./scripts/nimbos.sh --arch aarch64
    ```
 
 2. Execute `./axvisor.sh defconfig` to set up the development environment and generate AxVisor config `.hvconfig.toml`.
@@ -94,61 +90,19 @@ In addition, you can use the [axvmconfig](https://github.com/arceos-hypervisor/a
 3. Edit the `.hvconfig.toml` file to set the `vmconfigs` item to the path of your guest configuration file, for example:
 
    ```toml
-   plat = "x86-qemu-q35"
-   features = ["fs"]
-   arceos_args = [ "BLK=y", "DISK_IMG=tmp/nimbos-x86_64.img", "LOG=warn"]
-   vmconfigs = [ "configs/vms/nimbos-x86_64.toml",]
-
+   plat = "aarch64-generic"
+   features = ["fs", "ept-level-4"]
+   arceos_args = [ "BUS=mmio","BLK=y", "DISK_IMG=tmp/nimbos-aarch64.img", "LOG=info"]
+   vmconfigs = [ "configs/vms/nimbos-aarch64.toml",]
    ```
 
 4. Execute `./axvisor.sh run` to build AxVisor and start it in QEMU.
 
-### ArceOS as guest
-
-1. Build a client image file suitable for your own architecture. Taking the ArceOS mainline code as an example, run `make PLATFORM=aarch64-qemu-virt SMP=1 A=examples/helloworld` to generate `helloworld_aarch64-qemu-virt.bin`.
-
-2. Create a disk image file and place the guest machine image into the file system.
-
-   - Use the `./axvisor.sh disk_img` command to generate an empty FAT32 disk image file named `disk.img`.
-   - Manually mount `disk.img`, and then place your guest machine image into the file system.
-
-      ```console
-      mkdir -p tmp/tmp_img
-      sudo mount disk.img tmp/tmp_img
-      sudo cp /PATH/TO/YOUR/GUEST/VM/IMAGE tmp/tmp_img/
-      sudo umount tmp/tmp_img
-      ```
-
-3. Modify the configuration items in the corresponding `./configs/vms/<ARCH_CONFIG>.toml`
-   - `image_location="fs"` indicates loading from the file system.
-   - `kernel_path` specifies the path to the kernel image in the file system.
-   - `entry_point` specifies the entry address of the kernel image.
-   - `kernel_load_addr` specifies the loading address of the kernel image.
-   - others
-
-   ```console
-   cp configs/vms/linux-qemu-aarch64.toml tmp/
-   ```
-
-4. Execute `./axvisor.sh defconfig` to set up the development environment and generate AxVisor config `.hvconfig.toml`.
-
-5. Edit the `.hvconfig.toml` file to set the `vmconfigs` item to the path of your guest configuration file, for example:
-
-   ```toml
-   features = ["fs", "ept-level-4"]
-   arceos_args = [
-      "BUS=mmio",
-      "BLK=y",
-      "MEM=8g",
-      "LOG=debug",
-      "QEMU_ARGS=\"-machine gic-version=3  -cpu cortex-a72  \"",
-      "DISK_IMG=\"tmp/rootfs.img\"",
-   ]
-   vmconfigs = [ "tmp/arceos-aarch64.toml"]
-
-   ```
+### More
+   TODO
 
 ## Load and run from memory
+### linux as guest 
 
 1. [See linux build help.](https://github.com/arceos-hypervisor/guest-test-linux) to get Image and rootfs.img.
 
@@ -179,6 +133,9 @@ In addition, you can use the [axvmconfig](https://github.com/arceos-hypervisor/a
    ```
 
 4. Execute `./axvisor.sh run` to build AxVisor and start it in QEMU.
+
+### More
+   TODO
 
 # Contributing
 
