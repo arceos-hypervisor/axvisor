@@ -44,7 +44,7 @@ jobs:
         ./axvisor.sh run --plat ${{ matrix.plat }} --vmconfigs $VM_CONFIGS --features fs,ept-level-4 --arceos-args DISK_IMG=$DISK_IMG,BUS=mmio,BLK=y,MEM=8g
 
   aarch64-generic-phytiumpi:
-    runs-on: [self-hosted, linux, docker， phytiumpi]
+    runs-on: [self-hosted, linux, docker, phytiumpi]
     strategy:
       fail-fast: false
       matrix:
