@@ -8,13 +8,10 @@ from .config import AxvisorConfig, create_config_from_args, format_make_command_
 from .setup import setup_arceos
 
 try:
-    # Prefer tomllib on Python 3.11+
-    import tomllib as _toml_impl  # type: ignore
+    # Use third-party `toml` package for parsing (keep behaviour simple)
+    import toml as _toml_impl  # type: ignore
 except Exception:
-    try:
-        import toml as _toml_impl  # type: ignore
-    except Exception:
-        _toml_impl = None
+    _toml_impl = None
 
 
 def main(args) -> int:
@@ -32,26 +29,14 @@ def main(args) -> int:
         print(f"未找到 {cargo_toml_path}，无法继续")
         return 1
 
-    # 解析 Cargo.toml，优先使用 tomllib（需要以二进制打开），否则使用 toml 包
+    # 解析 Cargo.toml，使用第三方 toml 包（文本模式）
     parsed = None
     if _toml_impl is None:
-        print(
-            "需要 Python 3.11 的 tomllib 或安装 python-toml 包（pip install toml）来解析 Cargo.toml"
-        )
+        print("需要安装 python-toml 包（pip install toml）来解析 Cargo.toml")
         return 1
     try:
-        # 如果实现是 tomllib，需要以二进制方式读取
-        if (
-            getattr(_toml_impl, "loads", None) is None
-            and getattr(_toml_impl, "load", None) is not None
-        ):
-            # tomllib: load(fileobj) expects binary fileobj
-            with open(cargo_toml_path, "rb") as f:
-                parsed = _toml_impl.load(f)
-        else:
-            # toml (third-party) works with text
-            with open(cargo_toml_path, "r", encoding="utf-8") as f:
-                parsed = _toml_impl.load(f)
+        with open(cargo_toml_path, "r", encoding="utf-8") as f:
+            parsed = _toml_impl.load(f)
     except Exception as e:
         print(f"解析 Cargo.toml 失败: {e}")
         return 1
