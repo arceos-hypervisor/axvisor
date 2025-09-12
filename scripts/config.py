@@ -234,7 +234,7 @@ class AxvisorConfig:
 
         # 处理 vmconfigs 作为环境变量
         if self.vmconfigs:
-            env_vars["AXVISOR_VM_CONFIGS"] = ",".join(self.vmconfigs)
+            env_vars["AXVISOR_VM_CONFIGS"] = ":".join(self.vmconfigs)
 
         return env_vars
 
