@@ -53,6 +53,11 @@ Currently, AxVisor has been verified in scenarios with the following systems as 
   - currently only Linux with passthrough device on aarch64 is tested.
   - single core: [config.toml](configs/vms/linux-qemu-aarch64.toml) | [dts](configs/vms/linux-qemu.dts)
   - smp: [config.toml](configs/vms/linux-qemu-aarch64-smp2.toml) | [dts](configs/vms/linux-qemu-smp2.dts)
+# Quick Start
+```
+./quick_start.sh arceos
+```
+
 
 # Build and Run
 
