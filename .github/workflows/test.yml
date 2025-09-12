@@ -98,7 +98,7 @@ jobs:
         cd ..
 
   x86-qemu-q35:
-    runs-on:  [self-hosted, linux, docker]
+    runs-on:  [self-hosted, linux, intel]
     strategy:
       fail-fast: false
       matrix:
