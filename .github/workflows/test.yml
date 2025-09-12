@@ -44,7 +44,7 @@ jobs:
         ./axvisor.sh run --plat ${{ matrix.plat }} --vmconfigs $VM_CONFIGS --features fs,ept-level-4 --arceos-args DISK_IMG=$DISK_IMG,BUS=mmio,BLK=y,MEM=8g
 
   aarch64-generic-phytiumpi:
-    runs-on: [self-hosted, linux, docker]
+    runs-on: [self-hosted, linux, docker， phytiumpi]
     strategy:
       fail-fast: false
       matrix:
@@ -71,7 +71,7 @@ jobs:
         cd ..
 
   aarch64-generic-rk3568:
-    runs-on: [self-hosted, linux, docker]
+    runs-on: [self-hosted, linux, docker, roc-rk3568-pc]
     strategy:
       fail-fast: false
       matrix:
@@ -136,5 +136,3 @@ jobs:
         export DISK_IMG="${{ github.workspace }}/disk-x86_64.img"
         export VM_CONFIGS="$(pwd)/configs/vms/nimbos-x86_64.toml"
         ./axvisor.sh run --plat ${{ matrix.plat }} --vmconfigs $VM_CONFIGS --features fs --arceos-args DISK_IMG=$DISK_IMG,BLK=y
-
-
