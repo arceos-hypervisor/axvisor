@@ -20,11 +20,11 @@ English | [中文](README_CN.md)
 
 # Introduction
 
-AxVisor is a hypervisor implemented based on the ArceOS unikernel framework. Its goal is to leverage the foundational operating system features provided by ArceOS to implement a unified modular hypervisor.
+AxVisor is a Hypervisor implemented based on the ArceOS unikernel framework. Its goal is to leverage the basic operating system functionalities provided by ArceOS as a foundation to build a unified and componentized Hypervisor.
 
-"Unified" refers to using the same codebase to support x86_64, Arm (aarch64), and RISC-V architectures simultaneously, in order to maximize the reuse of architecture-independent code and simplify development and maintenance costs.
+**Unified** means using the same codebase to support three architectures—x86_64, Arm (aarch64), and RISC-V—maximizing the reuse of architecture-agnostic code and simplifying development and maintenance efforts.
 
-"Modular" means that the functionality of the hypervisor is decomposed into multiple modules, each implementing a specific function. The modules communicate with each other through standard interfaces to achieve decoupling and reuse of functionality.
+**Componentized** means that the Hypervisor's functionalities are decomposed into multiple independently usable components. Each component implements a specific function, and components communicate through standardized interfaces to achieve decoupling and reusability.
 
 ## Architecture
 
@@ -40,7 +40,7 @@ Currently, AxVisor has been verified on the following platforms:
 
 - [x] QEMU ARM64 virt (qemu-max)
 - [x] Rockchip RK3568 / RK3588
-- [x] 黑芝麻华山 A1000
+- [x] PhytiumPi
 
 ## Guest VMs
 
@@ -50,10 +50,6 @@ Currently, AxVisor has been verified in scenarios with the following systems as 
 - [Starry-OS](https://github.com/Starry-OS)
 - [NimbOS](https://github.com/equation314/nimbos)
 - Linux
-  - currently only Linux with passthrough device on aarch64 is tested.
-  - single core: [config.toml](configs/vms/linux-qemu-aarch64.toml) | [dts](configs/vms/linux-qemu.dts)
-  - smp: [config.toml](configs/vms/linux-qemu-aarch64-smp2.toml) | [dts](configs/vms/linux-qemu-smp2.dts)
-
 
 # Build and Run
 
@@ -77,6 +73,8 @@ In addition, you can use the [axvmconfig](https://github.com/arceos-hypervisor/a
 
 ## Load and run from file system
 
+Loading from the filesystem refers to the method where the AxVisor image, Linux guest image, and its device tree are independently deployed in the filesystem on the storage. After AxVisor starts, it loads the guest image and its device tree from the filesystem to boot the guest.
+
 ### NimbOS as guest 
 
 1. Execute script to download and prepare NimbOS image.
@@ -98,27 +96,28 @@ In addition, you can use the [axvmconfig](https://github.com/arceos-hypervisor/a
 
 4. Execute `./axvisor.sh run` to build AxVisor and start it in QEMU.
 
-### More
+### More guest
+
    TODO
 
 ## Load and run from memory
+
+Loading from memory refers to a method where the AxVisor image, guest image, and its device tree are already packaged together during the build phase. Only AxVisor itself needs to be deployed in the file system on the storage device. After AxVisor starts, it loads the guest image and its device tree from memory to boot the guest.
+
 ### linux as guest 
 
-1. [See linux build help.](https://github.com/arceos-hypervisor/guest-test-linux) to get Image and rootfs.img.
-
-2. Modify the configuration items in the corresponding `./configs/vms/<ARCH_CONFIG>.toml`
-
+1. Prepare working directory
    ```console
    mkdir -p tmp
-   cp configs/vms/linux-qemu-aarch64-mem.toml tmp/
+   cp configs/vms/linux-aarch64-qemu-smp1.toml tmp/
+   cp configs/vms/linux-aarch64-qemu-smp1.dts tmp/
    ```
 
-   - `image_location="memory"` indicates loading from the memory.
-   - `kernel_path` kernel_path specifies the path of the kernel image in the workspace.
-   - `dtb_path` specifies the path of the dtb file in the workspace.
-   - others
+2. [See Linux build help](https://github.com/arceos-hypervisor/guest-test-linux) to get the guest Image and rootfs.img, then copy them to the `tmp` directory.
 
-3. Edit the `.hvconfig.toml` file to set the `vmconfigs` item to the path of your guest configuration file, for example:
+3. Execute `dtc -O dtb -I dts -o tmp/linux-aarch64-qemu-smp1.dtb tmp/linux-aarch64-qemu-smp1.dts` to build the guest device tree file
+
+4. Execute `./axvisor.sh defconfig`, then edit the `.hvconfig.toml` file, set the `vmconfigs` item to your guest machine configuration file path, with the following content:
 
    ```toml
    arceos_args = [
@@ -129,12 +128,13 @@ In addition, you can use the [axvmconfig](https://github.com/arceos-hypervisor/a
       "QEMU_ARGS=\"-machine gic-version=3  -cpu cortex-a72  \"",
       "DISK_IMG=\"tmp/rootfs.img\"",
    ]
-   vmconfigs = [ "tmp/linux-qemu-aarch64-mem.toml"]
+   vmconfigs = [ "tmp/linux-aarch64-qemu-smp1.toml"]
    ```
 
 4. Execute `./axvisor.sh run` to build AxVisor and start it in QEMU.
 
-### More
+### More guest
+
    TODO
 
 # Contributing

@@ -6,7 +6,7 @@
 
 <h2 align="center">AxVisor</h1>
 
-<p align="center">一个基于 ArceOS 的统一模块化虚拟机管理程序</p>
+<p align="center">一个基于 ArceOS 的统一组件化虚拟机管理程序</p>
 
 <div align="center">
 
@@ -20,15 +20,15 @@
 
 # 简介
 
-AxVisor 是基于 ArceOS unikernel 框架实现的 Hypervisor。其目标是利用 ArceOS 提供的基础操作系统功能作为基础，实现一个统一的模块化 Hypervisor。
+AxVisor 是基于 ArceOS unikernel 框架实现的 Hypervisor。其目标是利用 ArceOS 提供的基础操作系统功能作为基础，实现一个统一的组件化 Hypervisor。
 
-“统一”指使用同一套代码同时支持 x86_64、Arm(aarch64) 和 RISC-V 三种架构，以最大化复用架构无关代码，简化代码开发和维护成本。
+**统一**是指使用同一套代码同时支持 x86_64、Arm(aarch64) 和 RISC-V 三种架构，以最大化复用架构无关代码，简化代码开发和维护成本。
 
-“模块化”指 Hypervisor 的功能被分解为多个模块，每个模块实现一个特定的功能，模块之间通过标准接口进行通信，以实现功能的解耦和复用。
+**组件化**是指 Hypervisor 的功能被分解为多个可独立使用的组件，每个组件实现一个特定的功能，组件之间通过标准接口进行通信，以实现功能的解耦和复用。
 
 ## 架构
 
-AxVisor 的软件架构分为如下图所示的五层，其中，每一个框都是一个独立的模块，模块之间通过标准接口进行通信。
+AxVisor 的软件架构分为如下图所示的五层，其中，每一个框都是一个独立的组件，组件之间通过标准接口进行通信。
 
 ![Architecture](https://arceos-hypervisor.github.io/doc/assets/arceos-hypervisor-architecture.png)
 
@@ -40,7 +40,7 @@ AxVisor 的软件架构分为如下图所示的五层，其中，每一个框都
 
 - [x] QEMU ARM64 virt (qemu-max)
 - [x] Rockchip RK3568 / RK3588
-- [x] 黑芝麻华山 A1000
+- [x] 飞腾派
 
 ## 客户机
 
@@ -50,9 +50,6 @@ AxVisor 的软件架构分为如下图所示的五层，其中，每一个框都
 - [Starry-OS](https://github.com/Starry-OS)
 - [NimbOS](https://github.com/equation314/nimbos)
 - Linux
-  - currently only Linux with passthrough device on aarch64 is tested.
-  - single core: [config.toml](configs/vms/linux-qemu-aarch64.toml) | [dts](configs/vms/linux-qemu.dts)
-  - smp: [config.toml](configs/vms/linux-qemu-aarch64-smp2.toml) | [dts](configs/vms/linux-qemu-smp2.dts)
 
 # 构建及运行
 
@@ -76,7 +73,9 @@ cargo install cargo-binutils
 
 ## 从文件系统加载运行
 
-### 使用 NimbOS 作为客户机
+从文件系统加载是指将 AxVisor 镜像和 Linux 客户机镜像及其设备树独立部署在存储器上的文件系统中，AxVisor 启动后从文件系统中加载客户机镜像及其设备树进而启动客户机的方式。
+
+### NimbOS 作为客户机
 
 1. 执行仓库内的脚本下载并准备 NimbOS 镜像：
 
@@ -98,26 +97,27 @@ cargo install cargo-binutils
 4. 执行 `./axvisor.sh run` 构建 AxVisor 并在 QEMU 中启动 NimbOS 客户机。
 
 ### 更多客户机
+
    TODO
 
 ## 从内存加载运行
 
-### 使用 linux 作为客户机
-1. [参见 linux 构建帮助。](https://github.com/arceos-hypervisor/guest-test-linux) 获取 Image 和 rootfs.img。
+从内存加载是指在构建时已经将 AxVisor 镜像与客户机镜像及其设备树打包在了一起，而只需要将 AxVisor 本身部署在存储器上文件系统中，AxVisor 启动后从内存中加载客户机镜像及其设备树进而启动客户机的方式。
 
-2. 修改对应的 `./configs/vms/<ARCH_CONFIG>.toml` 中的配置项
+### Linux 作为客户机
 
+1. 准备工作目录及相关文件
    ```console
    mkdir -p tmp
-   cp configs/vms/linux-qemu-aarch64-mem.toml tmp/
+   cp configs/vms/linux-aarch64-qemu-smp1.toml tmp/
+   cp configs/vms/linux-aarch64-qemu-smp1.dts tmp/
    ```
 
-   - `image_location="memory"` 表示从内存加载
-   - `kernel_path` 指定内核镜像在工作空间中的路径
-   - `dtb_path` 指定 dtb 文件在工作空间中的路径
-   - 其他
+2. [参见 linux 构建帮助](https://github.com/arceos-hypervisor/guest-test-linux)获取客户机 Image 和 rootfs.img，然后复制到 `tmp` 目录中。
 
-3. 编辑 `.hvconfig.toml` 文件，设置 `vmconfigs` 项为您的客户机配置文件路径，例如：
+3. 构建客户机设备树 `dtc -O dtb -I dts -o tmp/linux-aarch64-qemu-smp1.dtb tmp/linux-aarch64-qemu-smp1.dts`
+
+4. 执行 `./axvisor.sh defconfig`，然后编辑 `.hvconfig.toml` 文件，设置 `vmconfigs` 项为您的客户机配置文件路径，例如：
 
    ```toml
    arceos_args = [
@@ -128,12 +128,13 @@ cargo install cargo-binutils
       "QEMU_ARGS=\"-machine gic-version=3  -cpu cortex-a72  \"",
       "DISK_IMG=\"tmp/rootfs.img\"",
    ]
-   vmconfigs = [ "tmp/linux-qemu-aarch64-mem.toml"]
+   vmconfigs = [ "tmp/linux-aarch64-qemu-smp1.toml"]
    ```
 
 4. 执行 `./axvisor.sh run` 构建 AxVisor 并在 QEMU 中启动。
 
 ### 更多客户机
+
    TODO
 
 ## 启动示例
