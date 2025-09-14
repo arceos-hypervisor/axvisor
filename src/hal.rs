@@ -133,7 +133,7 @@ pub(crate) fn enable_virtualization() {
                     .hardware_enable()
                     .expect("Failed to enable virtualization");
 
-                info!("Hardware virtualization support enabled on core {}", cpu_id);
+                debug!("Hardware virtualization support enabled on core {}", cpu_id);
 
                 let _ = CORES.fetch_add(1, Ordering::Release);
             },

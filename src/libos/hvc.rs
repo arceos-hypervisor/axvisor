@@ -67,12 +67,6 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
             HyperCallCode::HAllocMMRegion => {
                 self.alloc_mm_region(self.args[0] as usize, self.args[1] != 0)
             }
-            HyperCallCode::HIVCGet => self.ivc_get(
-                self.args[0] as u32,
-                self.args[1] as usize,
-                self.args[2] as usize,
-                self.args[3] as usize,
-            ),
             HyperCallCode::HClearGuestAreas => self.clear_guest_areas(),
             _ => {
                 unimplemented!();
@@ -142,27 +136,6 @@ impl<'a, H: PagingHandler> InstanceCall<'a, H> {
         self.instance
             .clear_guest_areas(self.pcpu.current_ept_root())?;
         Ok(0)
-    }
-
-    fn ivc_get(
-        &self,
-        key: u32,
-        size: usize,
-        flags: usize,
-        shm_base_gva_ptr: usize,
-    ) -> HyperCallResult {
-        info!(
-            "HIVCGet key: {:#x}, size: {:#x}, flags: {:#x}, shm_base_gva_ptr: {:#x}",
-            key, size, flags, shm_base_gva_ptr
-        );
-
-        self.instance.process_ivc_get(
-            self.pcpu.current_ept_root(),
-            key,
-            size,
-            flags,
-            shm_base_gva_ptr,
-        )
     }
 }
 

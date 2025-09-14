@@ -78,13 +78,6 @@ impl HyperCall {
                 self.args[4] as usize,
                 self.args[5] as usize,
             ),
-            HyperCallCode::HIVCGet => self.ivc_get(
-                self.args[0] as u32,
-                self.args[1] as usize,
-                self.args[2] as usize,
-                self.args[3] as usize,
-            ),
-            HyperCallCode::HIVCDt => self.ivc_dt(self.args[0] as u32),
             _ => {
                 unimplemented!()
             }
@@ -380,106 +373,19 @@ impl HyperCall {
         Ok(instance_gpa.as_usize())
     }
 
-    fn ivc_get(
-        &self,
-        key: u32,
-        size: usize,
-        flags: usize,
-        shm_base_gpa_ptr: usize,
-    ) -> HyperCallResult {
-        let vm_id = self.vm.id();
-        let flags = ShmFlags::from_bits_retain(flags);
+    // fn ivc_dt(&self, key: u32) -> HyperCallResult {
+    //     info!("HIVCDt VM [{}], key {:#x}", self.vm.id(), key);
 
-        let (size, alignment) = if flags.contains(ShmFlags::SHM_HUGETLB) {
-            if flags.contains(ShmFlags::SHM_HUGE_1GB) {
-                // Huge pages are always 1GB, so we align the size to 1GB.
-                (align_up(size, PAGE_SIZE_1G), PAGE_SIZE_1G)
-            } else if flags.contains(ShmFlags::SHM_HUGE_2MB) {
-                // Huge pages are always 2MB, so we align the size to 2MB.
-                (align_up(size, PAGE_SIZE_2M), PAGE_SIZE_2M)
-            } else {
-                return ax_err!(InvalidInput, "Invalid huge page size for IVC channel");
-            }
-        } else {
-            // Regular pages are 4KB, so we align the size to 4KB.
-            (align_up_4k(size), PAGE_SIZE_4K)
-        };
+    //     let vm_id = self.vm.id();
 
-        let shm_base_gpa_ptr = GuestPhysAddr::from_usize(shm_base_gpa_ptr);
-        info!(
-            "HIVCGet VM [{}], key {:#x}, size {:#x} alignment {:#x}",
-            vm_id, key, size, alignment
-        );
-        info!(
-            "HIVCGet VM [{}], flags {:?} raw_flags {:#x}",
-            vm_id,
-            flags,
-            flags.bits()
-        );
+    //     // Unsubscribe from the IVC channel.
+    //     let (base_gpa, size) = ivc::unsubscribe_from_channel(key, vm_id)?;
 
-        let shm_base_gpa = self.vm.alloc_one_shm_region(size, alignment)?;
+    //     // Unmap the shared memory region from the guest.
+    //     self.vm.unmap_region(base_gpa, size)?;
 
-        if !shm_base_gpa.is_aligned(alignment) {
-            error!(
-                "HIVCGet VM [{}] failed to allocate shared memory region at {:#x} with size {:#x} alignment {:#x}",
-                vm_id, shm_base_gpa, size, alignment
-            );
-            return ax_err!(NoMemory, "Failed to allocate shared memory region");
-        }
-
-        // Try to create a new IVC channel.
-        if flags.contains(ShmFlags::IPC_CREAT) && !ivc::contains_channel(key) {
-            // Create a new IVC channel.
-            let mut channel = IVCChannel::allocate(key, size)?;
-
-            self.vm.map_region(
-                shm_base_gpa,
-                channel.base_hpa(),
-                channel.size(),
-                MappingFlags::READ | MappingFlags::WRITE,
-                true, // Allow huge pages
-            )?;
-
-            channel.add_subscriber(vm_id, shm_base_gpa, size);
-
-            ivc::insert_channel(key, channel, false)?;
-        } else {
-            if flags.contains(ShmFlags::IPC_EXCL) && ivc::contains_channel(key) {
-                warn!("IVC channel with key {:#x} already exists", key);
-                return ax_err!(AlreadyExists, "IVC channel already exists");
-            }
-            // Subcribe to an existing IVC channel.
-            let (base_hpa, actual_size) =
-                ivc::subscribe_to_channel(key, vm_id, shm_base_gpa, size)?;
-            self.vm.map_region(
-                shm_base_gpa,
-                base_hpa,
-                actual_size,
-                MappingFlags::READ | MappingFlags::WRITE,
-                true, // Allow huge pages
-            )?;
-        }
-
-        // Write the base GPA to the guest.
-        self.vm
-            .write_to_guest_of(shm_base_gpa_ptr, &shm_base_gpa.as_usize())?;
-
-        Ok(0)
-    }
-
-    fn ivc_dt(&self, key: u32) -> HyperCallResult {
-        info!("HIVCDt VM [{}], key {:#x}", self.vm.id(), key);
-
-        let vm_id = self.vm.id();
-
-        // Unsubscribe from the IVC channel.
-        let (base_gpa, size) = ivc::unsubscribe_from_channel(key, vm_id)?;
-
-        // Unmap the shared memory region from the guest.
-        self.vm.unmap_region(base_gpa, size)?;
-
-        Ok(0)
-    }
+    //     Ok(0)
+    // }
 }
 #[allow(unused)]
 mod vm_flags {
