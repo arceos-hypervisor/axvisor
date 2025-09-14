@@ -11,3 +11,5 @@ mod mm;
 
 pub use percpu::gpa_to_hpa;
 pub use percpu::libos_vcpu_run;
+
+pub use mm::npt_mapping;

@@ -475,47 +475,11 @@ impl<H: PagingHandler> Instance<H> {
         Ok(())
     }
 
-    pub fn process_ivc_get(
-        &self,
-        eptp: HostPhysAddr,
-        key: u32,
-        size: usize,
-        flags: usize,
-        shm_base_gva_ptr: usize,
-    ) -> AxResult<usize> {
+    pub fn init_ivc_shm_sync(&self, shmkey: u32, alignment: PageSize) -> AxResult<GuestPhysAddr> {
         info!(
-            "Instance[{}] HIVCGet key {:#x}, size {:#x}, flags {:#x}, shm_base_gva_ptr {:#x}",
-            self.id(),
-            key,
-            size,
-            flags,
-            shm_base_gva_ptr
-        );
-
-        self.processes
-            .lock()
-            .get_mut(&eptp)
-            .ok_or_else(|| {
-                warn!("EPTP {:?} not found in processes", eptp);
-                ax_err_type!(InvalidInput, "Invalid EPTP")
-            })?
-            .addrspace_mut()
-            .ivc_get(key, size, flags, shm_base_gva_ptr)
-    }
-
-    pub fn init_ivc_shm_sync(
-        &self,
-        shmkey: u32,
-        flags: MappingFlags,
-        size: usize,
-        alignment: PageSize,
-    ) -> AxResult<GuestPhysAddr> {
-        info!(
-            "Instance[{}] initializing IVC SHM sync: shmkey {:#x}, flags {:#x}, size {:#x}, alignment {:?}",
+            "Instance[{}] initializing IVC SHM sync: shmkey {:#x}, alignment: {:?}",
             self.id(),
             shmkey,
-            flags,
-            size,
             alignment
         );
 
@@ -525,7 +489,7 @@ impl<H: PagingHandler> Instance<H> {
             .expect("Instance should have at least one process")
             .get_mut()
             .addrspace_mut()
-            .ivc_shm_sync(shmkey, flags, size, alignment)
+            .ivc_shm_sync(shmkey, alignment)
     }
 
     pub fn setup_init_task(&self, raw_args: &[u8]) -> AxResult {

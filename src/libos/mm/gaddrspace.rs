@@ -44,7 +44,7 @@ use crate::libos::mm::gpt::{
     ENTRY_COUNT, GuestEntry, MoreGenericPTE, p1_index, p2_index, p3_index, p4_index, p5_index,
 };
 use crate::region::{HostPhysicalRegion, HostPhysicalRegionRef};
-use crate::vmm::ivc::{self, IVCChannel, ShmFlags};
+use crate::vmm::ivc;
 
 pub type EqAddrSpace<H> = GuestAddrSpace<EPTMetadata, EPTEntry, GuestEntry, H>;
 
@@ -293,19 +293,20 @@ impl<
 
         // Handle ivc shared memory regions.
         for (key, shm_base_gpa) in &self.ivc_shm_keys {
-            let (base_hpa, size, _) = ivc::get_channel_info(key)?;
+            info!("Mapping IVC region key [{:#x}] @{:?}", key, shm_base_gpa,);
 
-            info!(
-                "Mapping IVC region key [{:#x}] @{:?} to {:?}, size {:#x}",
-                key, shm_base_gpa, base_hpa, size
-            );
-
-            forked_addrspace.map_linear(
+            ivc::sync_channel_mapping(
+                *key,
+                self.instance_id(),
                 *shm_base_gpa,
-                base_hpa,
-                size,
                 MappingFlags::READ | MappingFlags::WRITE,
-                true,
+                |start_gpa: M::VirtAddr,
+                 start_hpa: HostPhysAddr,
+                 size: usize,
+                 flags: MappingFlags,
+                 allow_huge: bool| {
+                    forked_addrspace.map_linear(start_gpa, start_hpa, size, flags, allow_huge)
+                },
             )?;
         }
 
@@ -1455,6 +1456,7 @@ impl<
         Ok(())
     }
 
+    #[allow(unused)]
     pub fn copy_into_guest_of<T>(&mut self, src: &T, dst: GuestVirtAddr) -> AxResult
     where
         T: Sized + Copy,
@@ -1598,29 +1600,25 @@ impl<
     H: PagingHandler,
 > GuestAddrSpace<M, EPTE, GPTE, H>
 {
-    pub fn ivc_shm_sync(
-        &mut self,
-        shmkey: u32,
-        flags: MappingFlags,
-        size: usize,
-        alignment: PageSize,
-    ) -> AxResult<GuestPhysAddr> {
+    pub fn ivc_shm_sync(&mut self, shmkey: u32, alignment: PageSize) -> AxResult<GuestPhysAddr> {
         let instance_id = self.instance_id();
-        debug!(
-            "Instance [{instance_id}] ivc_shm_sync key: {:#x}, size: {:#x}, flags: {:#x}, alignment: {:?}",
-            shmkey, size, flags, alignment
-        );
+        debug!("Instance [{instance_id}] ivc_shm_sync key: {:#x}", shmkey);
+
+        let total_size = ivc::get_channel_region_size(shmkey).ok_or_else(|| {
+            warn!("IVC channel with key {:#x} does not exist", shmkey);
+            ax_err_type!(NotFound, "IVC channel does not exist")
+        })?;
 
         // To avoid potential GPA overlap issues, we do not use the same base GPA as
         // the host Linux, instead, we allocate a new base GPA from the instance's ShmManager.
         // Actualy, the shm base GPA wil be returned to the guest Instance through a quite long path,
         // 1. The shmgpa will be return to axcli daemon process as the return value of this hypercall,
         // 2. The axcli daemon will check the returned shmgpa, and fill it into the `ShmArgs` struct,
-        // which is passed by the shim as one of the  scf arguments.
+        // which is passed by the shim as one of the scf arguments.
         let shm_base = self
             .instance_region_mut()
             .shm_manager_mut()
-            .alloc_pages(size / PAGE_SIZE_4K, alignment as usize)?;
+            .alloc_pages(total_size / PAGE_SIZE_4K, alignment as usize)?;
 
         let shm_base_gpa = GuestPhysAddr::from_usize(shm_base);
 
@@ -1636,103 +1634,24 @@ impl<
         }
 
         // Subscribe to an existing IVC channel.
-        let (base_hpa, actual_size) =
-            ivc::subscribe_to_channel(shmkey, instance_id, shm_base_gpa, size)?;
-
-        debug!(
-            "Instance [{}] subscribing to IVC channel key {:#x}, base HPA: {:?}, size: {:#x}",
-            self.instance_id(),
+        ivc::subscribe_to_channel(
             shmkey,
-            base_hpa,
-            actual_size
-        );
-
-        self.ept_map_linear(
+            instance_id,
             shm_base_gpa,
-            base_hpa,
-            actual_size,
-            flags,
-            true, // Allow huge pages
+            total_size,
+            MappingFlags::READ | MappingFlags::WRITE,
+            |start_gpa: M::VirtAddr,
+             start_hpa: HostPhysAddr,
+             size: usize,
+             flags: MappingFlags,
+             allow_huge: bool| {
+                self.ept_map_linear(start_gpa, start_hpa, size, flags, allow_huge)
+            },
         )?;
 
         self.ivc_shm_keys.insert(shmkey, shm_base_gpa);
 
         Ok(shm_base_gpa)
-    }
-
-    pub fn ivc_get(
-        &mut self,
-        key: u32,
-        size: usize,
-        flags: usize,
-        shm_base_gva_ptr: usize,
-    ) -> AxResult<usize> {
-        debug!(
-            "ivc_get key: {:#x}, size: {:#x}, flags: {:#x}, shm_base_gva_ptr: {:#x}",
-            key, size, flags, shm_base_gva_ptr
-        );
-
-        debug!("Allocate {} pages for IVC channel", size / PAGE_SIZE_4K);
-
-        let shm_base = self
-            .instance_region_mut()
-            .shm_manager_mut()
-            .alloc_pages(size / PAGE_SIZE_4K, PAGE_SIZE_4K)?;
-
-        let shm_base_gpa = GuestPhysAddr::from_usize(shm_base);
-
-        let size = align_up_4k(size);
-        let instance_id = self.instance_id();
-        let flags = ShmFlags::from_bits_retain(flags);
-
-        // Try to create a new IVC channel.
-        if flags.contains(ShmFlags::IPC_CREAT) && !ivc::contains_channel(key) {
-            // Create a new IVC channel.
-            let mut channel = IVCChannel::allocate(key, size)?;
-
-            self.ept_map_linear(
-                shm_base_gpa,
-                channel.base_hpa(),
-                channel.size(),
-                MappingFlags::READ | MappingFlags::WRITE,
-                true, // Allow huge pages
-            )?;
-
-            channel.add_subscriber(instance_id, shm_base_gpa, size);
-
-            ivc::insert_channel(key, channel, false)?;
-        } else {
-            if flags.contains(ShmFlags::IPC_EXCL) && ivc::contains_channel(key) {
-                warn!("IVC channel with key {:#x} already exists", key);
-                return ax_err!(AlreadyExists, "IVC channel already exists");
-            }
-            // Subcribe to an existing IVC channel.
-            let (base_hpa, actual_size) =
-                ivc::subscribe_to_channel(key, instance_id, shm_base_gpa, size)?;
-
-            debug!(
-                "Instance [{}] subscribing to IVC channel key {:#x}, base HPA: {:?}, size: {:#x}",
-                self.instance_id(),
-                key,
-                base_hpa,
-                actual_size
-            );
-
-            self.ept_map_linear(
-                shm_base_gpa,
-                base_hpa,
-                actual_size,
-                MappingFlags::READ | MappingFlags::WRITE,
-                true, // Allow huge pages
-            )?;
-        }
-
-        self.ivc_shm_keys.insert(key, shm_base_gpa);
-
-        // Write the base GPA to the guest.
-        self.copy_into_guest_of(&shm_base, GuestVirtAddr::from_usize(shm_base_gva_ptr))?;
-
-        Ok(key as usize)
     }
 }
 
