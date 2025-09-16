@@ -263,7 +263,7 @@ pub(crate) fn disable_virtualization(vcpu: VCpuRef, ret_code: usize) -> AxResult
         .cpu_id()
         .ok_or_else(|| ax_err_type!(BadState, "Virtualization is not enabled on this core"))?;
 
-    info!(
+    debug!(
         "vCPU {} try to disable virtualization on core {}",
         vcpu.id(),
         cpu_id

@@ -436,8 +436,8 @@ impl<H: PagingHandler> Instance<H> {
         self.instance_inner_region_mut()
             .instance_frame_allocator
             .increase_segment_at(allocated_region_gpa_base.as_usize(), region_granularity);
-        info!(
-            "Extending instance region at [{:?} ~ {:?}], total segments: {}, used/total: [{}/{}]",
+        debug!(
+            "Extending instance shared region at [{:?} ~ {:?}], total segments: {}, used/total: [{}/{}]",
             allocated_region_gpa_base,
             allocated_region_gpa_base.add(region_granularity),
             self.instance_inner_region_mut()
@@ -472,6 +472,24 @@ impl<H: PagingHandler> Instance<H> {
             })?
             .addrspace_mut()
             .alloc_mm_region_with_pages(requested_pages)?;
+        Ok(())
+    }
+
+    pub fn alloc_process_pt_region(&self, eptp: HostPhysAddr) -> AxResult {
+        trace!("Allocating PT region for eptp {:?}", eptp);
+
+        self.processes
+            .lock()
+            .get_mut(&eptp)
+            .ok_or_else(|| {
+                warn!(
+                    "Process with EPTP {:?} not found in instance processes",
+                    eptp
+                );
+                ax_err_type!(InvalidInput, "Invalid EPTP")
+            })?
+            .addrspace_mut()
+            .alloc_pt_region()?;
         Ok(())
     }
 

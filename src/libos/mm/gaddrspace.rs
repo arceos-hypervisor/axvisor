@@ -1745,7 +1745,6 @@ impl<
                     pt_allocator.total_pages(),
                 );
 
-                self.check_pt_region()?;
                 allocated_frame_base
             }
         };
@@ -1786,6 +1785,29 @@ impl<
                 self.process_inner_region_mut()
                     .pt_frame_allocator
                     .increase_segment_at(allocated_region_gpa_base.as_usize(), PAGE_SIZE_2M);
+
+                // The mapping of the first page table region is done in [`Self::setup_pt_regions()`],
+                // so we only need to map the newly allocated page table region here.
+                // This strange design is due to that we need to allocate the first physical
+                // frame as the guest page table root frame first.
+                if current_pt_region_count != 0 {
+                    let guest_pt_region_gva =
+                        GUEST_PT_BASE_GVA.add(current_pt_region_count * PAGE_SIZE_2M);
+                    info!(
+                        "Mapping instance PT addr {:?} to {:?}",
+                        guest_pt_region_gva, allocated_region_gpa_base
+                    );
+                    // Map guest page table region.
+                    self.guest_map_region(
+                        guest_pt_region_gva,
+                        |_| allocated_region_gpa_base,
+                        PAGE_SIZE_2M,
+                        MappingFlags::READ | MappingFlags::WRITE,
+                        true,
+                        false,
+                    )
+                    .map_err(paging_err_to_ax_err)?;
+                }
 
                 info!(
                     "Allocating pt region at [{:?} ~ {:?}], total segments: {}, pages used/total:[{}/{}]",
@@ -1901,10 +1923,6 @@ impl<
                 Ok(())
             }
         }
-    }
-
-    fn check_pt_region(&mut self) -> AxResult {
-        Ok(())
     }
 }
 

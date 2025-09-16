@@ -348,13 +348,14 @@ impl HyperCall {
                     gva, gpa, alignment
                 );
             }
-            let (hpa, _hflags, hpgsize) = self.vm.guest_phys_to_host_phys(gpa).ok_or_else(|| {
-                warn!(
-                    "Failed to convert guest physical address {:#x} to host physical address",
-                    gpa
-                );
-                ax_err_type!(InvalidData, "Invalid guest physical address")
-            })?;
+            let (hpa, _hflags, hpgsize) =
+                self.vm.guest_phys_to_host_phys(gpa).ok_or_else(|| {
+                    warn!(
+                        "Failed to convert guest physical address {:#x} to host physical address",
+                        gpa
+                    );
+                    ax_err_type!(InvalidData, "Invalid guest physical address")
+                })?;
 
             let npt_mapping = GuestNestedMapping::new(gva, gpa, gpgsize, hpa, hpgsize);
             npt_mappings.insert(gva, npt_mapping);
