@@ -984,7 +984,6 @@ dependencies = [
 [[package]]
 name = "axvm"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/axvm.git?branch=next#b4f561f568536078b02a58572cae5f442102782c"
 dependencies = [
  "arm_vcpu",
  "arm_vgic 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",

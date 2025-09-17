@@ -7,8 +7,6 @@ use axvm::VMMemoryRegion;
 use axvm::config::AxVMCrateConfig;
 use byte_unit::Byte;
 
-use crate::vmm::fdt::updated_fdt;
-
 use crate::hal::CacheOp;
 use crate::vmm::VMRef;
 use crate::vmm::config::config;
@@ -105,18 +103,8 @@ impl ImageLoader {
             .expect("Failed to load VM images");
         // Load DTB image
         if let Some(buffer) = vm_imags.dtb {
-            debug!(
-                "DTB buffer addr: {:x}, size: {:#}",
-                self.dtb_load_gpa.unwrap(),
-                Byte::from(buffer.len())
-            );
-
-            updated_fdt(
-                self.dtb_load_gpa.unwrap(),
-                NonNull::new(buffer.as_ptr() as *mut u8).unwrap(),
-                buffer.len(),
-                self.vm.clone(),
-            );
+            load_vm_image_from_memory(buffer, self.dtb_load_gpa.unwrap(), self.vm.clone())
+                .expect("Failed to load BIOS images");
         }
 
         // Load BIOS image
@@ -194,8 +182,6 @@ mod fs {
 
     use super::*;
 
-    use std::io::{BufReader, Read};
-
     pub fn kernal_read(config: &AxVMCrateConfig, read_size: usize) -> AxResult<Vec<u8>> {
         use std::fs::File;
         use std::io::Read;
@@ -255,32 +241,11 @@ mod fs {
         // Load DTB image if needed.
         // Todo: generate DTB file for guest VM.
         if let Some(dtb_path) = &loader.config.kernel.dtb_path {
-            let (dtb_file, dtb_size) = open_image_file(dtb_path)?;
-            info!("DTB file size {}", dtb_size);
-
-            let mut file = BufReader::new(dtb_file);
-            let mut dtb_buffer = vec![0; dtb_size];
-
-            file.read_exact(&mut dtb_buffer).map_err(|err| {
-                ax_err_type!(
-                    Io,
-                    format!("Failed in reading from file {}, err {:?}", dtb_path, err)
-                )
-            })?;
-
-            let dtb_addr = loader.dtb_load_gpa.unwrap();
-
-            info!(
-                "DTB buffer addr: {:x}, size: {:#}",
-                dtb_addr,
-                Byte::from(dtb_size)
-            );
-            updated_fdt(
-                dtb_addr,
-                NonNull::new(dtb_buffer.as_mut_ptr()).unwrap(),
-                dtb_size,
-                loader.vm.clone(),
-            );
+            if let Some(dtb_load_addr) = loader.dtb_load_gpa {
+                load_vm_image(dtb_path, dtb_load_addr, loader.vm.clone())?;
+            } else {
+                return ax_err!(NotFound, "DTB load addr is missed");
+            }
         };
         Ok(())
     }
