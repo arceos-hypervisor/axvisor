@@ -938,6 +938,7 @@ dependencies = [
  "linux-raw-sys 0.9.4",
  "log",
  "memory_addr",
+ "numeric-enum-macro",
  "page_table_multiarch",
  "shenango_defs",
  "spin",

@@ -1,16 +1,17 @@
 //! Inter-VM communication (IVC) module.
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
-use memory_addr::{PAGE_SIZE_4K, align_up_4k};
+use memory_addr::{MemoryAddr, PAGE_SIZE_4K, align_up_4k};
 
 use std::os::arceos::modules::axhal::paging::PagingHandlerImpl;
 use std::sync::Mutex;
 
-use axaddrspace::{GuestPhysAddr, HostPhysAddr};
+use axaddrspace::{GuestPhysAddr, GuestVirtAddr, GuestVirtAddrRange, HostPhysAddr, MappingFlags};
 use axerrno::{AxResult, ax_err};
 use bitflags::bitflags;
 use page_table_multiarch::PagingHandler;
 
+use crate::libos::npt_mapping::GuestNestedMapping;
 use crate::region::HostPhysicalRegion;
 
 // https://elixir.bootlin.com/linux/v6.8.10/source/include/uapi/asm-generic/hugetlb_encode.h#L26
@@ -93,22 +94,64 @@ pub fn insert_channel(
     }
 }
 
-pub fn get_channel_info(
-    channel_key: &u32,
-) -> AxResult<(HostPhysAddr, usize, Vec<(usize, GuestPhysAddr, usize)>)> {
+pub fn get_channel_region_size(channel_key: u32) -> Option<usize> {
     let channels = IVC_CHANNELS.lock();
-    if let Some(channel) = channels.get(channel_key) {
-        Ok((channel.base_hpa(), channel.size(), channel.subscribers()))
+    channels
+        .get(&channel_key)
+        .map(|ch| ch.backend_region().size())
+}
+
+#[allow(unused)]
+pub fn contains_channel(channel_key: u32) -> bool {
+    IVC_CHANNELS.lock().contains_key(&channel_key)
+}
+
+pub fn sync_channel_mapping(
+    key: u32,
+    subscriber_vm_id: usize,
+    subscriber_gpa: GuestPhysAddr,
+    flags: MappingFlags,
+    mapper: impl FnMut(GuestPhysAddr, HostPhysAddr, usize, MappingFlags, bool) -> AxResult,
+) -> AxResult {
+    let channels = IVC_CHANNELS.lock();
+    if let Some(channel) = channels.get(&key) {
+        if let Some((gpa, size)) = channel.subscribers().iter().find_map(|(vm_id, gpa, size)| {
+            if *vm_id == subscriber_vm_id {
+                Some((*gpa, *size))
+            } else {
+                None
+            }
+        }) {
+            if gpa != subscriber_gpa {
+                return ax_err!(
+                    InvalidInput,
+                    format!(
+                        "IVC channel key [{:#x}] subscriber VM {} GPA mismatch: expected {:?}, got {:?}",
+                        key, subscriber_vm_id, gpa, subscriber_gpa
+                    )
+                );
+            }
+
+            channel
+                .backend_region()
+                .ivc_map_linear(gpa, size, flags, mapper)?;
+
+            Ok(())
+        } else {
+            ax_err!(
+                NotFound,
+                format!(
+                    "IVC channel key [{:#x}] has no subscriber VM {}",
+                    key, subscriber_vm_id
+                )
+            )
+        }
     } else {
         Err(axerrno::ax_err_type!(
             NotFound,
-            format!("IVC channel key {:#x} not found", channel_key)
+            format!("IVC channel key [{:#x}] not found", key)
         ))
     }
-}
-
-pub fn contains_channel(channel_key: u32) -> bool {
-    IVC_CHANNELS.lock().contains_key(&channel_key)
 }
 
 /// Subcribe to a channel of the given key, this function will pass the subscriber VM ID and
@@ -118,12 +161,14 @@ pub fn contains_channel(channel_key: u32) -> bool {
 /// if not, it will return an error.
 /// If the channel is successfully subscribed, it will add the subscriber VM ID to the channel and
 /// return the base address and size of the shared region in host physical address.
-pub fn subscribe_to_channel<'a>(
+pub fn subscribe_to_channel(
     key: u32,
     subscriber_vm_id: usize,
     subscriber_gpa: GuestPhysAddr,
     subscriber_gpa_size: usize,
-) -> AxResult<(HostPhysAddr, usize)> {
+    flags: MappingFlags,
+    mapper: impl FnMut(GuestPhysAddr, HostPhysAddr, usize, MappingFlags, bool) -> AxResult,
+) -> AxResult {
     warn!(
         "Subscribing to IVC channel key {:#x} VM {}",
         key, subscriber_vm_id
@@ -145,7 +190,15 @@ pub fn subscribe_to_channel<'a>(
         let actual_mapped_size = channel.size().min(subscriber_gpa_size);
         // Add the subscriber VM ID to the channel.
         channel.add_subscriber(subscriber_vm_id, subscriber_gpa, actual_mapped_size);
-        Ok((channel.base_hpa(), actual_mapped_size))
+
+        channel.backend_region().ivc_map_linear(
+            subscriber_gpa,
+            actual_mapped_size,
+            flags,
+            mapper,
+        )?;
+
+        Ok(())
     } else {
         Err(axerrno::ax_err_type!(
             NotFound,
@@ -158,6 +211,7 @@ pub fn subscribe_to_channel<'a>(
 /// If the channel does not exist, it will return an error.
 /// If the channel exists, it will remove the subscriber VM ID from the channel and return the base address and size of the shared region in guest physical address of the subscriber VM.
 /// If the channel has no subscribers, it will remove the channel from the global map.
+#[allow(unused)]
 pub fn unsubscribe_from_channel(key: u32, vm_id: usize) -> AxResult<(GuestPhysAddr, usize)> {
     let mut channels = IVC_CHANNELS.lock();
     if let Some(channel) = channels.get_mut(&key) {
@@ -178,25 +232,88 @@ pub fn unsubscribe_from_channel(key: u32, vm_id: usize) -> AxResult<(GuestPhysAd
     }
 }
 
-enum IVCRegionType<H: PagingHandler> {
+pub enum IVCRegionType<H: PagingHandler> {
     /// IVC type inherited from host shared memory region.
-    Shm { base: HostPhysAddr, size: usize },
+    Shm {
+        _shmkey: usize,
+        host_gva_range: GuestVirtAddrRange,
+        size: usize,
+        nested_mappings: BTreeMap<GuestVirtAddr, GuestNestedMapping>,
+    },
     /// IVC type for guest shared memory region.
     IVC { region: HostPhysicalRegion<H> },
 }
 
 impl<H: PagingHandler> IVCRegionType<H> {
-    pub fn base(&self) -> HostPhysAddr {
-        match self {
-            IVCRegionType::Shm { base, .. } => *base,
-            IVCRegionType::IVC { region } => region.base(),
-        }
-    }
-
     pub fn size(&self) -> usize {
         match self {
             IVCRegionType::Shm { size, .. } => *size,
             IVCRegionType::IVC { region } => region.size(),
+        }
+    }
+
+    pub fn ivc_map_linear(
+        &self,
+        base_gpa: GuestPhysAddr,
+        total_size: usize,
+        flags: MappingFlags,
+        mut ept_mapper: impl FnMut(GuestPhysAddr, HostPhysAddr, usize, MappingFlags, bool) -> AxResult,
+    ) -> AxResult {
+        match self {
+            IVCRegionType::Shm {
+                host_gva_range,
+                size,
+                nested_mappings,
+                ..
+            } => {
+                if total_size != *size {
+                    return ax_err!(
+                        InvalidInput,
+                        format!(
+                            "IVC SHM size {:#x} does not match total size {:#x}",
+                            size, total_size
+                        )
+                    );
+                }
+
+                let mut mapped_size = 0;
+                for (gva, npt_mapping) in nested_mappings {
+                    if gva != &npt_mapping.gva {
+                        return ax_err!(
+                            InvalidInput,
+                            format!(
+                                "IVC SHM nested mapping GVA {:?} does not match key {:?}",
+                                npt_mapping.gva, gva
+                            )
+                        );
+                    }
+
+                    let gpa_offset = gva.as_usize() - host_gva_range.start.as_usize();
+
+                    ept_mapper(
+                        base_gpa.add(gpa_offset),
+                        npt_mapping.hpa,
+                        npt_mapping.gpgsize as usize,
+                        flags,
+                        true,
+                    )?;
+
+                    mapped_size += npt_mapping.gpgsize as usize;
+                }
+
+                if mapped_size != total_size {
+                    error!(
+                        "IVC SHM mapped size {:#x} does not match total size {:#x}",
+                        mapped_size, total_size
+                    );
+                    return ax_err!(InvalidInput, "mapped_size mismatched in ivc_map_linear");
+                }
+
+                Ok(())
+            }
+            IVCRegionType::IVC { region } => {
+                ept_mapper(base_gpa, region.base(), region.size(), flags, true)
+            }
         }
     }
 }
@@ -215,9 +332,12 @@ impl<H: PagingHandler> core::fmt::Debug for IVCChannel<H> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
-            "IVCChannel[{:#x}], base: {:?}, size: {:#x}, subscribers {:x?}",
+            "IVCChannel[{:#x}], type {} size: {:#x}, subscribers {:x?}",
             self.key,
-            self.region.base(),
+            match &self.region {
+                IVCRegionType::Shm { .. } => "\"SYSV-SHM\"",
+                IVCRegionType::IVC { .. } => "\"AXIVC\"",
+            },
             self.region.size(),
             self.subscriber_vms
         )
@@ -238,6 +358,7 @@ impl<H: PagingHandler> Drop for IVCChannel<H> {
 }
 
 impl<H: PagingHandler> IVCChannel<H> {
+    #[allow(unused)]
     pub fn allocate(key: u32, size: usize) -> AxResult<Self> {
         let size = align_up_4k(size);
         let region = HostPhysicalRegion::allocate(size, Some(PAGE_SIZE_4K))?;
@@ -248,19 +369,26 @@ impl<H: PagingHandler> IVCChannel<H> {
         })
     }
 
-    pub fn construct_from_shm(key: u32, size: usize, base_hpa: HostPhysAddr) -> AxResult<Self> {
+    pub fn construct_from_shm(
+        key: u32,
+        host_gva_range: GuestVirtAddrRange,
+        size: usize,
+        nested_mappings: BTreeMap<GuestVirtAddr, GuestNestedMapping>,
+    ) -> AxResult<Self> {
         Ok(Self {
             key,
             subscriber_vms: BTreeMap::new(),
             region: IVCRegionType::Shm {
-                base: base_hpa,
+                _shmkey: key as usize,
+                host_gva_range,
                 size,
+                nested_mappings,
             },
         })
     }
 
-    pub fn base_hpa(&self) -> HostPhysAddr {
-        self.region.base()
+    pub fn backend_region(&self) -> &IVCRegionType<H> {
+        &self.region
     }
 
     pub fn size(&self) -> usize {

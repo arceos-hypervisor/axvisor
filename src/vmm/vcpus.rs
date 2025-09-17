@@ -274,7 +274,7 @@ fn vm_alloc_vcpu_task(vm: VMRef, vcpu: VCpuRef) -> AxTaskRef {
 
     vcpu_task.init_task_ext(TaskExt::new(TaskExtType::VM(vm), vcpu));
 
-    info!(
+    debug!(
         "Vcpu task {} created {:?}",
         vcpu_task.id_name(),
         vcpu_task.cpumask()

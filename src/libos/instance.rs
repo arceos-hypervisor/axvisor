@@ -436,8 +436,8 @@ impl<H: PagingHandler> Instance<H> {
         self.instance_inner_region_mut()
             .instance_frame_allocator
             .increase_segment_at(allocated_region_gpa_base.as_usize(), region_granularity);
-        info!(
-            "Extending instance region at [{:?} ~ {:?}], total segments: {}, used/total: [{}/{}]",
+        debug!(
+            "Extending instance shared region at [{:?} ~ {:?}], total segments: {}, used/total: [{}/{}]",
             allocated_region_gpa_base,
             allocated_region_gpa_base.add(region_granularity),
             self.instance_inner_region_mut()
@@ -475,47 +475,29 @@ impl<H: PagingHandler> Instance<H> {
         Ok(())
     }
 
-    pub fn process_ivc_get(
-        &self,
-        eptp: HostPhysAddr,
-        key: u32,
-        size: usize,
-        flags: usize,
-        shm_base_gva_ptr: usize,
-    ) -> AxResult<usize> {
-        info!(
-            "Instance[{}] HIVCGet key {:#x}, size {:#x}, flags {:#x}, shm_base_gva_ptr {:#x}",
-            self.id(),
-            key,
-            size,
-            flags,
-            shm_base_gva_ptr
-        );
+    pub fn alloc_process_pt_region(&self, eptp: HostPhysAddr) -> AxResult {
+        trace!("Allocating PT region for eptp {:?}", eptp);
 
         self.processes
             .lock()
             .get_mut(&eptp)
             .ok_or_else(|| {
-                warn!("EPTP {:?} not found in processes", eptp);
+                warn!(
+                    "Process with EPTP {:?} not found in instance processes",
+                    eptp
+                );
                 ax_err_type!(InvalidInput, "Invalid EPTP")
             })?
             .addrspace_mut()
-            .ivc_get(key, size, flags, shm_base_gva_ptr)
+            .alloc_pt_region()?;
+        Ok(())
     }
 
-    pub fn init_ivc_shm_sync(
-        &self,
-        shmkey: u32,
-        flags: MappingFlags,
-        size: usize,
-        alignment: PageSize,
-    ) -> AxResult<GuestPhysAddr> {
+    pub fn init_ivc_shm_sync(&self, shmkey: u32, alignment: PageSize) -> AxResult<GuestPhysAddr> {
         info!(
-            "Instance[{}] initializing IVC SHM sync: shmkey {:#x}, flags {:#x}, size {:#x}, alignment {:?}",
+            "Instance[{}] initializing IVC SHM sync: shmkey {:#x}, alignment: {:?}",
             self.id(),
             shmkey,
-            flags,
-            size,
             alignment
         );
 
@@ -525,7 +507,7 @@ impl<H: PagingHandler> Instance<H> {
             .expect("Instance should have at least one process")
             .get_mut()
             .addrspace_mut()
-            .ivc_shm_sync(shmkey, flags, size, alignment)
+            .ivc_shm_sync(shmkey, alignment)
     }
 
     pub fn setup_init_task(&self, raw_args: &[u8]) -> AxResult {
