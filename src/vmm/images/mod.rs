@@ -104,7 +104,7 @@ impl ImageLoader {
         // Load DTB image
         if let Some(buffer) = vm_imags.dtb {
             load_vm_image_from_memory(buffer, self.dtb_load_gpa.unwrap(), self.vm.clone())
-                .expect("Failed to load BIOS images");
+                .expect("Failed to load DTB images");
         }
 
         // Load BIOS image
@@ -132,7 +132,7 @@ pub fn load_vm_image_from_memory(
 
     let image_size = image_buffer.len();
 
-    debug!(
+    info!(
         "loading VM image from memory {:?} {}",
         load_addr,
         image_buffer.len()
