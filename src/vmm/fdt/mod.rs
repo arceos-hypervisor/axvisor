@@ -12,3 +12,4 @@ mod test;
 pub use parser::parse_fdt;
 pub use test::print_fdt;
 pub use device::{build_node_path};
+pub use create::update_fdt;

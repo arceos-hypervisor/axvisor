@@ -208,25 +208,26 @@ pub fn init_guest_vms() {
         // if bootarg != 0 {
         //     crate::vmm::fdt::parse_fdt(bootarg, &mut vm_config);
         // }
-        // if let Some(dtb) = get_vm_dtb(&vm_config) {
-        //     info!("VM[{}] found DTB , parsing...", vm_config.id());
+        if let Some(dtb) = get_vm_dtb(&vm_config) {
+            info!("VM[{}] found DTB , parsing...", vm_config.id());
 
-        //     // crate::vmm::fdt::parse_vm_fdt(&mut vm_config, dtb);
-        //     //test
-        //     let bootarg = dtb.as_ptr() as usize;
-        //     crate::vmm::fdt::print_fdt(bootarg);
-        //     crate::vmm::fdt::parse_fdt(bootarg, &mut vm_config, &vm_create_config);
-        //     //test
+            // crate::vmm::fdt::parse_vm_fdt(&mut vm_config, dtb);
+            //test
+            let bootarg = dtb.as_ptr() as usize;
+            crate::vmm::fdt::print_fdt(bootarg);
+            crate::vmm::fdt::parse_fdt(bootarg, &mut vm_config, &vm_create_config);
+            //test
 
 
-        // } else {
-        //     info!("VM[{}] DTB not found, generating based on the configuration file.", vm_config.id());
+        } else {
+            info!("VM[{}] DTB not found, generating based on the configuration file.", vm_config.id());
 
-        //     let bootarg: usize = std::os::arceos::modules::axhal::get_bootarg();
-        //     if bootarg != 0 {
-        //         crate::vmm::fdt::parse_fdt(bootarg, &mut vm_config, &vm_create_config);
-        //     }
-        // }
+            let bootarg: usize = std::os::arceos::modules::axhal::get_bootarg();
+            if bootarg != 0 {
+                crate::vmm::fdt::print_fdt(bootarg);
+                crate::vmm::fdt::parse_fdt(bootarg, &mut vm_config, &vm_create_config);
+            }
+        }
 
         // Overlay VM config with the given DTB.
         if let Some(dtb) = get_vm_dtb(&vm_config) {

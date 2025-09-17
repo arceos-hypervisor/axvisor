@@ -4,12 +4,15 @@ use alloc::vec::Vec;
 use fdt_parser::{Fdt, Node};
 use vm_fdt::{FdtWriter, FdtWriterNode};
 use axvm::config::{AxVMConfig, AxVMCrateConfig};
-
+use crate::vmm::{VMRef, images::load_vm_image_from_memory};
+use axaddrspace::GuestPhysAddr;
+use core::ptr::NonNull;
+use axvm::VMMemoryRegion;
 use crate::vmm::fdt::print_fdt;
 use crate::vmm::fdt::test::print_guest_fdt;
 
 
-pub fn crate_guest_fdt(fdt: &Fdt, passthrough_device_names: &Vec<String>, vm_cfg: &AxVMConfig, crate_config: &AxVMCrateConfig) {
+pub fn crate_guest_fdt(fdt: &Fdt, passthrough_device_names: &Vec<String>, crate_config: &AxVMCrateConfig) {
     let mut fdt_writer = FdtWriter::new().unwrap();
     // 跟踪上一个处理节点的层级，用于层级变化处理
     let mut previous_node_level = 0;
@@ -66,18 +69,11 @@ pub fn crate_guest_fdt(fdt: &Fdt, passthrough_device_names: &Vec<String>, vm_cfg
     while let Some(node) = node_stack.pop() {
         previous_node_level -= 1;
         fdt_writer.end_node(node).unwrap();
-
-        // add memory node
-        if previous_node_level == 1 {
-            info!("Adding memory node:{:x?}", crate_config.kernel.memory_regions);
-            let memory_node = fdt_writer.begin_node("memory").unwrap();
-            add_memory_node(&mut fdt_writer, crate_config);
-            fdt_writer.end_node(memory_node).unwrap();
-        }
     }
     assert_eq!(previous_node_level , 0);
 
     print_guest_fdt(fdt_writer.finish().unwrap().as_slice());
+    let guest_fdt_bytes = fdt_writer.finish().unwrap();
     // use std::io::Write;
     // use std::fs::File;
     // let guest_fdt_bytes = fdt_writer.finish().unwrap();
@@ -189,26 +185,6 @@ fn is_ancestor_of_passthrough_device(node_path: &str, passthrough_device_names: 
     false
 }
 
-fn add_memory_node(fdt_writer: &mut FdtWriter, crate_config: &AxVMCrateConfig) {
-    let new_memory = &crate_config.kernel.memory_regions;
-    let mut new_value: Vec<u32> = Vec::new();
-    for mem in new_memory {
-        let gpa = mem.gpa as u64;
-        let size = mem.size as u64;
-        new_value.push((gpa >> 32) as u32);
-        new_value.push((gpa & 0xFFFFFFFF) as u32);
-        new_value.push((size >> 32) as u32);
-        new_value.push((size & 0xFFFFFFFF) as u32);
-    }
-    debug!("new_value: {:#?}", new_value);
-    fdt_writer
-        .property_array_u32("reg", new_value.as_ref())
-        .unwrap();
-    fdt_writer
-        .property_string("device_type", "memory")
-        .unwrap();
-}
-
 fn need_cpu_node(phys_cpu_ids: &Vec<usize>, node: &Node, node_path: &str) -> bool{ 
     let mut should_include_node = false;
     
@@ -230,4 +206,73 @@ fn need_cpu_node(phys_cpu_ids: &Vec<usize>, node: &Node, node_path: &str) -> boo
         }
     }
     should_include_node
+}
+
+fn add_memory_node(new_memory: &[VMMemoryRegion], new_fdt: &mut FdtWriter) {
+    let mut new_value: Vec<u32> = Vec::new();
+    for mem in new_memory {
+        let gpa = mem.gpa.as_usize() as u64;
+        let size = mem.size() as u64;
+        new_value.push((gpa >> 32) as u32);
+        new_value.push((gpa & 0xFFFFFFFF) as u32);
+        new_value.push((size >> 32) as u32);
+        new_value.push((size & 0xFFFFFFFF) as u32);
+    }
+    info!("new_value: {:#x?}", new_value);
+    new_fdt
+        .property_array_u32("reg", new_value.as_ref())
+        .unwrap();
+    new_fdt.property_string("device_type", "memory").unwrap();
+}
+
+pub fn update_fdt(dest_addr: GuestPhysAddr, fdt_src: NonNull<u8>, dtb_size: usize, vm: VMRef) {
+    let mut new_fdt = FdtWriter::new().unwrap();
+    let mut previous_node_level = 0;
+    let mut node_stack: Vec<FdtWriterNode> = Vec::new();
+
+    let fdt_bytes = unsafe { core::slice::from_raw_parts(fdt_src.as_ptr(), dtb_size) };
+    let fdt = Fdt::from_bytes(fdt_bytes)
+        .map_err(|e| format!("Failed to parse FDT: {e:#?}"))
+        .expect("Failed to parse FDT");
+
+    for node in fdt.all_nodes() {
+        if node.name() == "/" {
+            // 根节点处理
+            node_stack.push(new_fdt.begin_node("").unwrap());
+        } else if node.name().starts_with("memory") {
+            // Skip memory nodes, will add them later
+            continue;
+        } else {
+            // 处理节点层级变化
+            handle_node_level_change(&mut new_fdt, &mut node_stack, node.level, previous_node_level);
+            // 开始新节点
+            node_stack.push(new_fdt.begin_node(node.name()).unwrap());
+        }
+
+        previous_node_level = node.level;
+
+        for prop in node.propertys() {
+            new_fdt.property(prop.name, prop.raw_value()).unwrap();
+        }
+    }
+
+    // 结束所有未关闭的节点，并在适当位置添加内存节点
+    while let Some(node) = node_stack.pop() {
+        previous_node_level -= 1;
+        new_fdt.end_node(node).unwrap();
+
+        // add memory node
+        if previous_node_level == 1 {
+            let memory_regions = vm.memory_regions();
+            info!("Adding memory node with regions: {:?}", memory_regions);
+            let memory_node = new_fdt.begin_node("memory").unwrap();
+            add_memory_node(&memory_regions, &mut new_fdt);
+            new_fdt.end_node(memory_node).unwrap();
+        }
+    }
+    
+    assert_eq!(previous_node_level, 0);
+    let new_fdt_bytes = new_fdt.finish().unwrap();
+    // 加载更新后的FDT到VM
+    load_vm_image_from_memory(&new_fdt_bytes, dest_addr, vm.clone()).expect("Failed to load VM images");
 }
