@@ -2,9 +2,10 @@
 use alloc::vec::Vec;
 use alloc::string::ToString;
 use fdt_parser::{Fdt, FdtHeader};
-use axvm::config::AxVMConfig;
+use axvm::config::{AxVMConfig, AxVMCrateConfig};
 
-pub fn parse_fdt(fdt_addr: usize, vm_cfg: &mut AxVMConfig) {
+
+pub fn parse_fdt(fdt_addr: usize, vm_cfg: &mut AxVMConfig, crate_config: &AxVMCrateConfig) {
     const FDT_VALID_MAGIC: u32 = 0xd00d_feed;
     let header = unsafe {
         core::slice::from_raw_parts(fdt_addr as *const u8, core::mem::size_of::<FdtHeader>())
@@ -29,22 +30,21 @@ pub fn parse_fdt(fdt_addr: usize, vm_cfg: &mut AxVMConfig) {
         .map_err(|e| format!("Failed to parse FDT: {:#?}", e))
         .expect("Failed to parse FDT");
 
-    set_phys_cpu_sets(vm_cfg, &fdt);
+    set_phys_cpu_sets(vm_cfg, &fdt, crate_config);
     // 调用修改后的函数并获取返回的设备名称列表
     let passthrough_device_names = super::device::find_all_passthrough_devices(vm_cfg, &fdt);
 
-    super::create::crate_guest_fdt(&fdt, &passthrough_device_names, vm_cfg);
+    super::create::crate_guest_fdt(&fdt, &passthrough_device_names, vm_cfg, crate_config);
     // 注意：这里我们不再需要将设备添加到VM配置中，因为函数已经返回了设备名称列表
 }
 
-pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt) {
+pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt, crate_config: &AxVMCrateConfig) {
     // Find and parse CPU information from host DTB
     let host_cpus: Vec<_> = fdt.find_nodes("/cpus/cpu").collect();
     info!("Found {} host CPU nodes", &host_cpus.len());
 
-    //get phys_cpu_ids in guest config.toml
-    let vcpu_mappings = vm_cfg.get_vcpu_affinities_pcpu_ids();
-    debug!("vcpu_mappings: {:?}", vcpu_mappings);
+    let phys_cpu_ids = crate_config.base.phys_cpu_ids.as_ref().expect("ERROR: phys_cpu_ids not found in config.toml");
+    debug!("phys_cpu_ids: {:?}", phys_cpu_ids);
 
     // 收集所有CPU节点信息到Vec中，避免多次使用迭代器
     let cpu_nodes_info: Vec<_> = host_cpus
@@ -89,7 +89,7 @@ pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt) {
 
     // 根据vcpu_mappings中的phys_cpu_ids计算phys_cpu_sets
     let mut new_phys_cpu_sets = Vec::new();
-    for (vcpu_id, _phys_cpu_set, phys_cpu_id) in &vcpu_mappings {
+    for phys_cpu_id in phys_cpu_ids {
         // 在unique_cpu_addresses中查找phys_cpu_id对应的索引
         if let Some(cpu_index) = unique_cpu_addresses
             .iter()
@@ -99,12 +99,12 @@ pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt) {
             new_phys_cpu_sets.push(cpu_mask);
             debug!(
                 "vCPU {} with phys_cpu_id 0x{:x} mapped to CPU index {} (mask: 0x{:x})",
-                vcpu_id, phys_cpu_id, cpu_index, cpu_mask
+                vm_cfg.id(), phys_cpu_id, cpu_index, cpu_mask
             );
         } else {
             error!(
                 "vCPU {} with phys_cpu_id 0x{:x} not found in device tree!",
-                vcpu_id, phys_cpu_id
+                vm_cfg.id(), phys_cpu_id
             );
         }
     }
@@ -112,8 +112,8 @@ pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt) {
     // 更新VM配置中的phys_cpu_sets（如果VM配置支持设置的话）
     info!("Calculated phys_cpu_sets: {:?}", new_phys_cpu_sets);
 
-    vm_cfg.set_guest_cpu_sets(new_phys_cpu_sets);
+    vm_cfg.phys_cpu_ls_mut().set_guest_cpu_sets(new_phys_cpu_sets);
 
-    let vcpu_mappings = vm_cfg.get_vcpu_affinities_pcpu_ids();
+    let vcpu_mappings = vm_cfg.phys_cpu_ls_mut().get_vcpu_affinities_pcpu_ids();
     info!("vcpu_mappings: {:?}", vcpu_mappings);
 }

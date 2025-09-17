@@ -1008,8 +1008,6 @@ dependencies = [
 [[package]]
 name = "axvmconfig"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3618f2ebd9b25027b70f423c48a8482dc2883ca17f76d2a8d1fdac377e762f02"
 dependencies = [
  "axerrno",
  "enumerable",

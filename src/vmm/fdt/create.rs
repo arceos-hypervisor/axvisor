@@ -3,16 +3,19 @@ use alloc::string::ToString;
 use alloc::vec::Vec;
 use fdt_parser::{Fdt, Node};
 use vm_fdt::{FdtWriter, FdtWriterNode};
-use axvm::config::AxVMConfig;
+use axvm::config::{AxVMConfig, AxVMCrateConfig};
+
+use crate::vmm::fdt::print_fdt;
+use crate::vmm::fdt::test::print_guest_fdt;
 
 
-pub fn crate_guest_fdt(fdt: &Fdt, passthrough_device_names: &Vec<String>, vm_cfg: &AxVMConfig) {
+pub fn crate_guest_fdt(fdt: &Fdt, passthrough_device_names: &Vec<String>, vm_cfg: &AxVMConfig, crate_config: &AxVMCrateConfig) {
     let mut fdt_writer = FdtWriter::new().unwrap();
     // 跟踪上一个处理节点的层级，用于层级变化处理
     let mut previous_node_level = 0;
     // 维护FDT节点栈，用于正确开始和结束节点
     let mut node_stack: Vec<FdtWriterNode> = Vec::new();
-    let phys_cpu_ids = get_phys_cpu_ids(vm_cfg);
+    let phys_cpu_ids = crate_config.base.phys_cpu_ids.clone().expect("ERROR: phys_cpu_ids is None");
 
     let all_nodes: Vec<Node> = fdt.all_nodes().collect();
 
@@ -66,20 +69,20 @@ pub fn crate_guest_fdt(fdt: &Fdt, passthrough_device_names: &Vec<String>, vm_cfg
 
         // add memory node
         if previous_node_level == 1 {
-            info!("Adding memory node with regions: {:x?}", vm_cfg.memory_regions());
+            info!("Adding memory node:{:x?}", crate_config.kernel.memory_regions);
             let memory_node = fdt_writer.begin_node("memory").unwrap();
-            add_memory_node(vm_cfg, &mut fdt_writer);
+            add_memory_node(&mut fdt_writer, crate_config);
             fdt_writer.end_node(memory_node).unwrap();
         }
     }
     assert_eq!(previous_node_level , 0);
 
-
-    use std::io::Write;
-    use std::fs::File;
-    let guest_fdt_bytes = fdt_writer.finish().unwrap();
-    let mut file = File::create("guest_fdt.dtb").expect("Failed to create file");
-    file.write_all(&guest_fdt_bytes).unwrap(); 
+    print_guest_fdt(fdt_writer.finish().unwrap().as_slice());
+    // use std::io::Write;
+    // use std::fs::File;
+    // let guest_fdt_bytes = fdt_writer.finish().unwrap();
+    // let mut file = File::create("guest_fdt.dtb").expect("Failed to create file");
+    // file.write_all(&guest_fdt_bytes).unwrap(); 
 }
 
 /// 节点处理动作枚举
@@ -186,8 +189,8 @@ fn is_ancestor_of_passthrough_device(node_path: &str, passthrough_device_names: 
     false
 }
 
-fn add_memory_node(vm_cfg: &AxVMConfig, fdt_writer: &mut FdtWriter) {
-    let new_memory = vm_cfg.memory_regions();
+fn add_memory_node(fdt_writer: &mut FdtWriter, crate_config: &AxVMCrateConfig) {
+    let new_memory = &crate_config.kernel.memory_regions;
     let mut new_value: Vec<u32> = Vec::new();
     for mem in new_memory {
         let gpa = mem.gpa as u64;
@@ -227,15 +230,4 @@ fn need_cpu_node(phys_cpu_ids: &Vec<usize>, node: &Node, node_path: &str) -> boo
         }
     }
     should_include_node
-}
-
-fn get_phys_cpu_ids(vm_cfg: &AxVMConfig) -> Vec<usize> {
-    let vcpu_mappings = vm_cfg.get_vcpu_affinities_pcpu_ids();
-    debug!("vcpu_mappings: {:?}", vcpu_mappings);
-
-    let mut phys_cpu_ids = Vec::new();
-    for (_vcpu_id, _phys_cpu_set, phys_cpu_id) in vcpu_mappings {
-        phys_cpu_ids.push(phys_cpu_id);
-    }
-    phys_cpu_ids
 }

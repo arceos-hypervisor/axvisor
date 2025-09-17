@@ -58,8 +58,8 @@ pub fn print_fdt(fdt_addr: usize) {
             node_properties_count
         );
 
-        for _prop in node.propertys() {
-            // info!("属性: {}, 节点: {}", prop.name, node.name());
+        for prop in node.propertys() {
+            trace!("属性: {}, 节点: {:x?}", prop.name, prop.raw_value());
         }
     }
 
@@ -112,8 +112,8 @@ pub fn print_guest_fdt(fdt_bytes: &[u8]) {
             node_properties_count
         );
 
-        for _prop in node.propertys() {
-            trace!("属性: {}, 节点: {}", _prop.name, node.name());
+        for prop in node.propertys() {
+            trace!("属性: {}, 节点: {:x?}", prop.name, prop.raw_value());
         }
     }
 
