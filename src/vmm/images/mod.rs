@@ -9,7 +9,7 @@ use byte_unit::Byte;
 
 use crate::hal::CacheOp;
 use crate::vmm::VMRef;
-use crate::vmm::config::config;
+use crate::vmm::config::{config, get_vm_dtb_arc};
 
 use crate::vmm::fdt::update_fdt;
 
@@ -104,17 +104,19 @@ impl ImageLoader {
         load_vm_image_from_memory(vm_imags.kernel, self.kernel_load_gpa, self.vm.clone())
             .expect("Failed to load VM images");
         // Load DTB image
-        if let Some(buffer) = vm_imags.dtb {
+        let vm_config = axvm::config::AxVMConfig::from(self.config.clone());
+        if let Some(dtb_arc) = get_vm_dtb_arc(&vm_config) {
+            let dtb_slice: &[u8] = &*dtb_arc;
             debug!(
                 "DTB buffer addr: {:x}, size: {:#}",
                 self.dtb_load_gpa.unwrap(),
-                Byte::from(buffer.len())
+                Byte::from(dtb_slice.len())
             );
 
             update_fdt(
                 self.dtb_load_gpa.unwrap(),
-                NonNull::new(buffer.as_ptr() as *mut u8).unwrap(),
-                buffer.len(),
+                NonNull::new(dtb_slice.as_ptr() as *mut u8).unwrap(),
+                dtb_slice.len(),
                 self.vm.clone(),
             );
         }

@@ -34,7 +34,7 @@ pub fn parse_fdt(fdt_addr: usize, vm_cfg: &mut AxVMConfig, crate_config: &AxVMCr
     // 调用修改后的函数并获取返回的设备名称列表
     let passthrough_device_names = super::device::find_all_passthrough_devices(vm_cfg, &fdt);
 
-    super::create::crate_guest_fdt(&fdt, &passthrough_device_names, crate_config);
+    let _ = super::create::crate_guest_fdt_with_cache(&fdt, &passthrough_device_names, crate_config);
     // 注意：这里我们不再需要将设备添加到VM配置中，因为函数已经返回了设备名称列表
 }
 

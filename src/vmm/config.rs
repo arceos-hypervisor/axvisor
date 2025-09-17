@@ -11,6 +11,15 @@ use memory_addr::MemoryAddr;
 
 use crate::vmm::{VM, images::ImageLoader, vm_list::push_vm};
 
+// 添加用于存储生成的DTB的全局静态变量
+use alloc::collections::BTreeMap;
+use alloc::sync::Arc;
+use lazyinit::LazyInit;
+use spin::Mutex;
+
+// 用于存储生成的DTB数据的全局缓存
+pub static GENERATED_DTB_CACHE: LazyInit<Mutex<BTreeMap<usize, Arc<[u8]>>>> = LazyInit::new();
+
 #[allow(clippy::module_inception)]
 pub mod config {
     use alloc::vec::Vec;
@@ -35,8 +44,36 @@ pub fn get_vm_dtb(vm_cfg: &AxVMConfig) -> Option<&'static [u8]> {
     let vm_imags = config::get_memory_images()
         .iter()
         .find(|&v| v.id == vm_cfg.id())?;
-    // .expect("VM images is missed, Perhaps add `VM_CONFIGS=PATH/CONFIGS/FILE` command.");
-    vm_imags.dtb
+    
+    if let Some(dtb) = vm_imags.dtb {
+        return Some(dtb);
+    }
+    
+    None
+}
+
+/// 获取VM的DTB数据（返回Arc<[u8]>，支持缓存数据）
+pub fn get_vm_dtb_arc(vm_cfg: &AxVMConfig) -> Option<Arc<[u8]>> {
+    // 首先尝试返回静态DTB数据
+    let vm_imags = config::get_memory_images()
+        .iter()
+        .find(|&v| v.id == vm_cfg.id())?;
+    
+    if let Some(dtb) = vm_imags.dtb {
+        // 将&'static [u8]转换为Arc<[u8]>
+        return Some(Arc::from(dtb));
+    }
+    
+    // 如果内存镜像中没有DTB，则尝试从生成的DTB缓存中获取
+    if let Some(cache) = GENERATED_DTB_CACHE.get() {
+        let cache_lock = cache.lock();
+        if let Some(dtb) = cache_lock.get(&vm_cfg.id()) {
+            // 返回缓存中的Arc引用
+            return Some(dtb.clone());
+        }
+    }
+    
+    None
 }
 
 pub fn parse_vm_dtb(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
@@ -186,6 +223,9 @@ pub fn parse_vm_dtb(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
 }
 
 pub fn init_guest_vms() {
+    // 初始化DTB缓存
+    GENERATED_DTB_CACHE.init_once(Mutex::new(BTreeMap::new()));
+    
     let gvm_raw_configs = config::static_vm_configs();
 
     for raw_cfg_str in gvm_raw_configs {
@@ -230,7 +270,8 @@ pub fn init_guest_vms() {
         }
 
         // Overlay VM config with the given DTB.
-        if let Some(dtb) = get_vm_dtb(&vm_config) {
+        if let Some(dtb_arc) = get_vm_dtb_arc(&vm_config) {
+            let dtb = dtb_arc.as_ref();
             parse_vm_dtb(&mut vm_config, dtb);
         } else {
             warn!(

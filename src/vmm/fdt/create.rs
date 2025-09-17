@@ -10,9 +10,23 @@ use core::ptr::NonNull;
 use axvm::VMMemoryRegion;
 use crate::vmm::fdt::print_fdt;
 use crate::vmm::fdt::test::print_guest_fdt;
+// 引入缓存相关的模块
+use alloc::collections::BTreeMap;
+use alloc::sync::Arc;
+use spin::Mutex;
+use lazyinit::LazyInit;
 
 
-pub fn crate_guest_fdt(fdt: &Fdt, passthrough_device_names: &Vec<String>, crate_config: &AxVMCrateConfig) {
+/// 生成客户机FDT并返回DTB数据
+/// 
+/// # 参数
+/// * `fdt` - 源FDT数据
+/// * `passthrough_device_names` - 直通设备名称列表
+/// * `crate_config` - VM创建配置
+/// 
+/// # 返回值
+/// 返回生成的DTB数据
+pub fn crate_guest_fdt(fdt: &Fdt, passthrough_device_names: &Vec<String>, crate_config: &AxVMCrateConfig) -> Vec<u8> {
     let mut fdt_writer = FdtWriter::new().unwrap();
     // 跟踪上一个处理节点的层级，用于层级变化处理
     let mut previous_node_level = 0;
@@ -72,13 +86,35 @@ pub fn crate_guest_fdt(fdt: &Fdt, passthrough_device_names: &Vec<String>, crate_
     }
     assert_eq!(previous_node_level , 0);
 
-    print_guest_fdt(fdt_writer.finish().unwrap().as_slice());
     let guest_fdt_bytes = fdt_writer.finish().unwrap();
-    // use std::io::Write;
-    // use std::fs::File;
-    // let guest_fdt_bytes = fdt_writer.finish().unwrap();
-    // let mut file = File::create("guest_fdt.dtb").expect("Failed to create file");
-    // file.write_all(&guest_fdt_bytes).unwrap(); 
+
+    print_guest_fdt(guest_fdt_bytes.as_slice());
+    
+    // 返回生成的DTB数据，让调用者决定如何使用
+    guest_fdt_bytes
+}
+
+/// 生成客户机FDT并缓存结果
+/// 
+/// # 参数
+/// * `fdt` - 源FDT数据
+/// * `passthrough_device_names` - 直通设备名称列表
+/// * `crate_config` - VM创建配置
+/// 
+/// # 返回值
+/// 返回生成的DTB数据，并将其存储在全局缓存中
+pub fn crate_guest_fdt_with_cache(fdt: &Fdt, passthrough_device_names: &Vec<String>, crate_config: &AxVMCrateConfig) -> Vec<u8> {
+    // 生成DTB数据
+    let dtb_data = crate_guest_fdt(fdt, passthrough_device_names, crate_config);
+    
+    // 将数据存储到全局缓存中
+    if let Some(cache) = crate::vmm::config::GENERATED_DTB_CACHE.get() {
+        let mut cache_lock = cache.lock();
+        let dtb_arc: Arc<[u8]> = Arc::from(dtb_data.clone());
+        cache_lock.insert(crate_config.base.id, dtb_arc);
+    }
+
+    dtb_data
 }
 
 /// 节点处理动作枚举
