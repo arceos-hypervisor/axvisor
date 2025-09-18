@@ -9,7 +9,7 @@ use axvm::{
 };
 use memory_addr::MemoryAddr;
 
-use crate::vmm::{VM, images::ImageLoader, vm_list::push_vm};
+use crate::vmm::{fdt::parse_passthrough_devices_address, images::ImageLoader, vm_list::push_vm, VM};
 
 // 添加用于存储生成的DTB的全局静态变量
 use alloc::collections::BTreeMap;
@@ -272,6 +272,7 @@ pub fn init_guest_vms() {
         // Overlay VM config with the given DTB.
         if let Some(dtb_arc) = get_vm_dtb_arc(&vm_config) {
             let dtb = dtb_arc.as_ref();
+            parse_passthrough_devices_address(&mut vm_config, dtb);
             parse_vm_dtb(&mut vm_config, dtb);
         } else {
             warn!(
