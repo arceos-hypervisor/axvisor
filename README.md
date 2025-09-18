@@ -71,6 +71,8 @@ Since configuring the guest is a complex process, AxVisor chooses to use TOML fi
 
 In addition, you can use the [axvmconfig](https://github.com/arceos-hypervisor/axvmconfig) tool to generate a custom configuration file. For detailed information, refer to the [axvmconfig](https://arceos-hypervisor.github.io/axvmconfig/axvmconfig/index.html) documentation.
 
+The configuration file naming format is `<os>-<arch>-board_or_cpu-smpx`, where `<os>` is the guest system name, `<arch>` is the architecture, `board_or_cpu` is the hardware development board or CPU name (concatenating different strings with `_`), and `smpx` indicates the number of CPUs allocated to the guest, with `x` being the specific value. Each component is concatenated with `-` to form the complete name.
+
 ## Load and run from file system
 
 Loading from the filesystem refers to the method where the AxVisor image, Linux guest image, and its device tree are independently deployed in the filesystem on the storage. After AxVisor starts, it loads the guest image and its device tree from the filesystem to boot the guest.

@@ -67,9 +67,11 @@ cargo install cargo-binutils
 
 ## 配置文件
 
-由于客户机配置是一个复杂的过程，AxVisor 选择使用 toml 文件来管理客户机的配置，其中包括虚拟机 ID、虚拟机名称、虚拟机类型、CPU 核心数量、内存大小、虚拟设备和直通设备等。在源码的 `./config/vms` 目录下是一些客户机配置的示例模板。
+由于客户机配置是一个复杂的过程，AxVisor 选择使用 toml 文件来管理客户机的配置，其中包括虚拟机 ID、虚拟机名称、虚拟机类型、CPU 核心数量、内存大小、虚拟设备和直通设备等。在源码的 `./config/vms` 目录下是一些客户机配置的示例模板.
 
 此外，也可以使用 [axvmconfig](https://github.com/arceos-hypervisor/axvmconfig) 工具来生成一个自定义配置文件。详细介绍参见 [axvmconfig](https://arceos-hypervisor.github.io/axvmconfig/axvmconfig/index.html)。
+
+配置文件命名格式为 `<os>-<arch>-board_or_cpu-smpx`，其中，`<os>` 是客户机系统名字，`<arch>` 是架构，`board_or_cpu` 硬件开发板或者 CPU 的名字（以 `_` 拼接不同字符串），`smpx` 是指分配客户机的 CPU 数量 `x` 为具体数值，各项之间以 `-` 拼接为整体。
 
 ## 从文件系统加载运行
 
