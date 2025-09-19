@@ -44,7 +44,6 @@ pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt, crate_config: &AxVM
     info!("Found {} host CPU nodes", &host_cpus.len());
 
     let phys_cpu_ids = crate_config.base.phys_cpu_ids.as_ref().expect("ERROR: phys_cpu_ids not found in config.toml");
-    debug!("phys_cpu_ids: {:?}", phys_cpu_ids);
 
     // 收集所有CPU节点信息到Vec中，避免多次使用迭代器
     let cpu_nodes_info: Vec<_> = host_cpus
@@ -61,7 +60,7 @@ pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt, crate_config: &AxVM
             }
         })
         .collect();
-    debug!("cpu_nodes_info: {:?}", cpu_nodes_info);
+    info!("cpu_nodes_info: {:?}", cpu_nodes_info);
     // 创建从phys_cpu_id到物理CPU索引的映射
     // 收集所有唯一的CPU地址，保持设备树中的出现顺序
     let mut unique_cpu_addresses = Vec::new();
@@ -114,24 +113,20 @@ pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt, crate_config: &AxVM
 
     vm_cfg.phys_cpu_ls_mut().set_guest_cpu_sets(new_phys_cpu_sets);
 
-    let vcpu_mappings = vm_cfg.phys_cpu_ls_mut().get_vcpu_affinities_pcpu_ids();
-    info!("vcpu_mappings: {:?}", vcpu_mappings);
+    debug!("vcpu_mappings: {:?}", vm_cfg.phys_cpu_ls_mut().get_vcpu_affinities_pcpu_ids());
 }
 
 pub fn parse_passthrough_devices_address(vm_cfg: &mut AxVMConfig, dtb: &[u8]) { 
     let fdt = Fdt::from_bytes(dtb)
         .expect("Failed to parse DTB image, perhaps the DTB is invalid or corrupted");
 
-    info!("before clear, all: {:?}", vm_cfg.pass_through_devices());
     // 清空现有的直通设备配置
     vm_cfg.clear_pass_through_devices();
-
-    info!("after clear, all: {:?}", vm_cfg.pass_through_devices());
 
     // 遍历所有设备树节点
     for node in fdt.all_nodes() {
         // 跳过根节点
-        if node.name() == "/" {
+        if node.name() == "/" || node.name().starts_with("memory") {
             continue;
         }
         
@@ -219,6 +214,94 @@ pub fn parse_passthrough_devices_address(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
             }
         }
     }
-    info!("All passthrough devices: {:#x?}", vm_cfg.pass_through_devices());
+    trace!("All passthrough devices: {:#x?}", vm_cfg.pass_through_devices());
     info!("Finished parsing passthrough devices, total: {}", vm_cfg.pass_through_devices().len());
+}
+
+pub fn parse_vm_interrupt(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
+
+    let fdt = Fdt::from_bytes(dtb)
+        .expect("Failed to parse DTB image, perhaps the DTB is invalid or corrupted");
+
+    for node in fdt.all_nodes() {
+        trace!("DTB node: {:?}", node.name());
+        let name = node.name();
+        if name.starts_with("memory") {
+            continue;
+        }
+
+        // Skip the interrupt controller, as we will use vGIC
+        // TODO: filter with compatible property and parse its phandle from DT; maybe needs a second pass?
+        const GIC_PHANDLE: usize = 1;
+        if name.starts_with("interrupt-controller")
+            || name.starts_with("intc")
+            || name.starts_with("its")
+        {
+            debug!("skipping node {} to use vGIC", name);
+            continue;
+        }
+
+        // Collect all GIC_SPI interrupts and add them to vGIC
+        if let Some(interrupts) = node.interrupts() {
+            // skip non-GIC interrupt
+            if let Some(parent) = node.interrupt_parent() {
+                trace!("node: {}, intr parent: {}", name, parent.node.name());
+                if let Some(phandle) = parent.node.phandle() {
+                    if phandle.as_usize() != GIC_PHANDLE {
+                        warn!(
+                            "node: {}, intr parent: {}, phandle: 0x{:x} is not GIC!",
+                            name,
+                            parent.node.name(),
+                            phandle.as_usize()
+                        );
+                    }
+                } else {
+                    warn!(
+                        "node: {}, intr parent: {} no phandle!",
+                        name,
+                        parent.node.name(),
+                    );
+                }
+            } else {
+                trace!("node: {} no interrupt parent!", name);
+            }
+
+            for interrupt in interrupts {
+                // <GIC_SPI/GIC_PPI, IRQn, trigger_mode>
+                for (k, v) in interrupt.enumerate() {
+                    match k {
+                        0 => {
+                            if v == 0 {
+                                trace!("node: {}, GIC_SPI", name);
+                            } else {
+                                warn!(
+                                    "node: {}, intr type: {}, not GIC_SPI, not supported!",
+                                    name, v
+                                );
+                                break;
+                            }
+                        }
+                        1 => {
+                            trace!("node: {}, interrupt id: 0x{:x}", name, v);
+                            vm_cfg.add_pass_through_spi(v);
+                        }
+                        2 => {
+                            trace!("node: {}, interrupt mode: 0x{:x}", name, v);
+                        }
+                        _ => {
+                            warn!("unknown interrupt property {}:0x{:x}", k, v)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    vm_cfg.add_pass_through_device(axvm::config::PassThroughDeviceConfig {
+        name: "Fake Node".to_string(),
+        base_gpa: 0x0,
+        base_hpa: 0x0,
+        length: 0x20_0000,
+        irq_id: 0,
+    });
 }

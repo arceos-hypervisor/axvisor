@@ -254,7 +254,7 @@ fn add_memory_node(new_memory: &[VMMemoryRegion], new_fdt: &mut FdtWriter) {
         new_value.push((size >> 32) as u32);
         new_value.push((size & 0xFFFFFFFF) as u32);
     }
-    info!("new_value: {:#x?}", new_value);
+    trace!("new_value: {:x?}", new_value);
     new_fdt
         .property_array_u32("reg", new_value.as_ref())
         .unwrap();

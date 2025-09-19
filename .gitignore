@@ -16,6 +16,7 @@ actual.out
 qemu.log
 rusty-tags.vi
 
+/axvmconfig
 # Python virtual environment
 venv/
 __pycache__/

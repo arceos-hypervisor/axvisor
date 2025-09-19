@@ -9,7 +9,9 @@ use axvm::{
 };
 use memory_addr::MemoryAddr;
 
-use crate::vmm::{fdt::parse_passthrough_devices_address, images::ImageLoader, vm_list::push_vm, VM};
+use crate::vmm::{
+    VM, fdt::{parse_passthrough_devices_address, parse_vm_interrupt}, images::ImageLoader, vm_list::push_vm,
+};
 
 // 添加用于存储生成的DTB的全局静态变量
 use alloc::collections::BTreeMap;
@@ -44,11 +46,11 @@ pub fn get_vm_dtb(vm_cfg: &AxVMConfig) -> Option<&'static [u8]> {
     let vm_imags = config::get_memory_images()
         .iter()
         .find(|&v| v.id == vm_cfg.id())?;
-    
+
     if let Some(dtb) = vm_imags.dtb {
         return Some(dtb);
     }
-    
+
     None
 }
 
@@ -58,12 +60,12 @@ pub fn get_vm_dtb_arc(vm_cfg: &AxVMConfig) -> Option<Arc<[u8]>> {
     let vm_imags = config::get_memory_images()
         .iter()
         .find(|&v| v.id == vm_cfg.id())?;
-    
+
     if let Some(dtb) = vm_imags.dtb {
         // 将&'static [u8]转换为Arc<[u8]>
         return Some(Arc::from(dtb));
     }
-    
+
     // 如果内存镜像中没有DTB，则尝试从生成的DTB缓存中获取
     if let Some(cache) = GENERATED_DTB_CACHE.get() {
         let cache_lock = cache.lock();
@@ -72,160 +74,14 @@ pub fn get_vm_dtb_arc(vm_cfg: &AxVMConfig) -> Option<Arc<[u8]>> {
             return Some(dtb.clone());
         }
     }
-    
+
     None
-}
-
-pub fn parse_vm_dtb(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
-    use fdt_parser::{Fdt, Status};
-
-    let fdt = Fdt::from_bytes(dtb)
-        .expect("Failed to parse DTB image, perhaps the DTB is invalid or corrupted");
-
-    for reserved in fdt.reserved_memory() {
-        warn!("Find reserved memory: {:?}", reserved.name());
-    }
-
-    for mem_reserved in fdt.memory_reservation_block() {
-        warn!("Find memory reservation block: {:?}", mem_reserved);
-    }
-
-    for node in fdt.all_nodes() {
-        trace!("DTB node: {:?}", node.name());
-        let name = node.name();
-        if name.starts_with("memory") {
-            // Skip the memory node, as we handle memory regions separately.
-            continue;
-        }
-
-        if let Some(status) = node.status()
-            && status == Status::Disabled
-        {
-            // Skip disabled nodes
-            trace!("DTB node: {} is disabled", name);
-            // continue;
-        }
-
-        // Skip the interrupt controller, as we will use vGIC
-        // TODO: filter with compatible property and parse its phandle from DT; maybe needs a second pass?
-        const GIC_PHANDLE: usize = 1;
-        if name.starts_with("interrupt-controller")
-            || name.starts_with("intc")
-            || name.starts_with("its")
-        {
-            info!("skipping node {} to use vGIC", name);
-            continue;
-        }
-
-        // Collect all GIC_SPI interrupts and add them to vGIC
-        if let Some(interrupts) = node.interrupts() {
-            // TODO: skip non-GIC interrupt
-            if let Some(parent) = node.interrupt_parent() {
-                trace!("node: {}, intr parent: {}", name, parent.node.name());
-                if let Some(phandle) = parent.node.phandle() {
-                    if phandle.as_usize() != GIC_PHANDLE {
-                        warn!(
-                            "node: {}, intr parent: {}, phandle: 0x{:x} is not GIC!",
-                            name,
-                            parent.node.name(),
-                            phandle.as_usize()
-                        );
-                    }
-                } else {
-                    warn!(
-                        "node: {}, intr parent: {} no phandle!",
-                        name,
-                        parent.node.name(),
-                    );
-                }
-            } else {
-                warn!("node: {} no interrupt parent!", name);
-            }
-
-            trace!("node: {} interrupts:", name);
-
-            for interrupt in interrupts {
-                // <GIC_SPI/GIC_PPI, IRQn, trigger_mode>
-                for (k, v) in interrupt.enumerate() {
-                    match k {
-                        0 => {
-                            if v == 0 {
-                                trace!("node: {}, GIC_SPI", name);
-                            } else {
-                                warn!(
-                                    "node: {}, intr type: {}, not GIC_SPI, not supported!",
-                                    name, v
-                                );
-                                break;
-                            }
-                        }
-                        1 => {
-                            trace!("node: {}, interrupt id: 0x{:x}", name, v);
-                            vm_cfg.add_pass_through_spi(v);
-                        }
-                        2 => {
-                            trace!("node: {}, interrupt mode: 0x{:x}", name, v);
-                        }
-                        _ => {
-                            warn!("unknown interrupt property {}:0x{:x}", k, v)
-                        }
-                    }
-                }
-            }
-        }
-
-        if let Some(regs) = node.reg() {
-            for reg in regs {
-                if reg.address < 0x1000 {
-                    // Skip registers with address less than 0x10000.
-                    trace!(
-                        "Skipping DTB node {} with register address {:#x} < 0x10000",
-                        node.name(),
-                        reg.address
-                    );
-                    continue;
-                }
-
-                if let Some(size) = reg.size {
-                    let start = reg.address as usize;
-                    // let end = start + size;
-                    // if vm_cfg.contains_memory_range(&(start..end)) {
-                    //     trace!(
-                    //         "Skipping DTB node {} with register address {:#x} and size {:#x} as it overlaps with existing memory regions",
-                    //         node.name(),
-                    //         reg.address,
-                    //         size
-                    //     );
-                    //     continue;
-                    // }
-
-                    let pt_dev = PassThroughDeviceConfig {
-                        name: node.name().to_string(),
-                        base_gpa: start,
-                        base_hpa: start,
-                        length: size as _,
-                        irq_id: 0,
-                    };
-                    trace!("Adding {:x?}", pt_dev);
-                    vm_cfg.add_pass_through_device(pt_dev);
-                }
-            }
-        }
-    }
-
-    vm_cfg.add_pass_through_device(PassThroughDeviceConfig {
-        name: "Fake Node".to_string(),
-        base_gpa: 0x0,
-        base_hpa: 0x0,
-        length: 0x20_0000,
-        irq_id: 0,
-    });
 }
 
 pub fn init_guest_vms() {
     // 初始化DTB缓存
     GENERATED_DTB_CACHE.init_once(Mutex::new(BTreeMap::new()));
-    
+
     let gvm_raw_configs = config::static_vm_configs();
 
     for raw_cfg_str in gvm_raw_configs {
@@ -242,7 +98,7 @@ pub fn init_guest_vms() {
         let mut vm_config = AxVMConfig::from(vm_create_config.clone());
 
         // info!("vm_create_config: {:#?}", vm_create_config);
-        // info!("before parse_vm_dtb, crate VM[{}] with config: {:#?}", vm_config.id(), vm_config);
+        // info!("before parse_vm_interrupt, crate VM[{}] with config: {:#?}", vm_config.id(), vm_config);
 
         // let bootarg: usize = unsafe { std::os::arceos::modules::axhal::get_bootarg() };
         // if bootarg != 0 {
@@ -254,17 +110,16 @@ pub fn init_guest_vms() {
             // crate::vmm::fdt::parse_vm_fdt(&mut vm_config, dtb);
             //test
             let bootarg = dtb.as_ptr() as usize;
-            crate::vmm::fdt::print_fdt(bootarg);
             crate::vmm::fdt::parse_fdt(bootarg, &mut vm_config, &vm_create_config);
             //test
-
-
         } else {
-            info!("VM[{}] DTB not found, generating based on the configuration file.", vm_config.id());
+            info!(
+                "VM[{}] DTB not found, generating based on the configuration file.",
+                vm_config.id()
+            );
 
             let bootarg: usize = std::os::arceos::modules::axhal::get_bootarg();
             if bootarg != 0 {
-                crate::vmm::fdt::print_fdt(bootarg);
                 crate::vmm::fdt::parse_fdt(bootarg, &mut vm_config, &vm_create_config);
             }
         }
@@ -273,7 +128,7 @@ pub fn init_guest_vms() {
         if let Some(dtb_arc) = get_vm_dtb_arc(&vm_config) {
             let dtb = dtb_arc.as_ref();
             parse_passthrough_devices_address(&mut vm_config, dtb);
-            parse_vm_dtb(&mut vm_config, dtb);
+            parse_vm_interrupt(&mut vm_config, dtb);
         } else {
             warn!(
                 "VM[{}] DTB not found in memory, skipping...",
@@ -281,7 +136,7 @@ pub fn init_guest_vms() {
             );
         }
 
-        // info!("after parse_vm_dtb, crate VM[{}] with config: {:#?}", vm_config.id(), vm_config);
+        // info!("after parse_vm_interrupt, crate VM[{}] with config: {:#?}", vm_config.id(), vm_config);
         info!("Creating VM[{}] {:?}", vm_config.id(), vm_config.name());
 
         // Create VM.
