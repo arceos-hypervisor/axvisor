@@ -101,10 +101,62 @@ pub fn find_all_passthrough_devices(vm_cfg: &mut AxVMConfig, fdt: &Fdt) -> Vec<S
         dependency_device_names.len()
     );
 
+    // Phase 3: Find all excluded devices and remove them from the list
+    // Convert Vec<Vec<String>> to Vec<String>
+    let excluded_device_path: Vec<String> = vm_cfg
+        .excluded_devices()
+        .iter()
+        .flatten()
+        .cloned()
+        .collect();
+    let mut all_excludes_devices = excluded_device_path.clone();
+    let mut process_excludeds: BTreeSet<String> =
+        excluded_device_path.iter().cloned().collect();
+
+    for device_path in &excluded_device_path {
+        // Get all descendant node paths for this device
+        let descendant_paths = get_descendant_nodes_by_path(&node_cache, device_path);
+        info!(
+            "Found {} descendant paths for {}",
+            descendant_paths.len(),
+            device_path
+        );
+
+        for descendant_path in descendant_paths {
+            if !process_excludeds.contains(&descendant_path) {
+                trace!(
+                    "Found descendant device: {}",
+                    descendant_path
+                );
+                process_excludeds.insert(descendant_path.clone());
+
+                all_excludes_devices.push(descendant_path.clone());
+            } else {
+                trace!("Device already exists: {}", descendant_path);
+            }
+        }
+    }
+    info!("Found excluded devices: {:?}", all_excludes_devices);
+
     // Merge all device name lists
     let mut all_device_names = initial_device_names.clone();
     all_device_names.extend(additional_device_names);
     all_device_names.extend(dependency_device_names);
+
+    // Remove excluded devices from the final list
+    if !all_excludes_devices.is_empty() {
+        info!("Removing {} excluded devices from the list", all_excludes_devices.len());
+        let excluded_set: BTreeSet<String> = all_excludes_devices.into_iter().collect();
+        
+        // Filter out excluded devices
+        all_device_names.retain(|device_name| {
+            let should_keep = !excluded_set.contains(device_name);
+            if !should_keep {
+                info!("Excluding device: {}", device_name);
+            }
+            should_keep
+        });
+    }
 
     let final_device_count = all_device_names.len();
     info!(

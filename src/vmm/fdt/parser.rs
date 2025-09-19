@@ -36,7 +36,6 @@ pub fn setup_guest_fdt_from_vmm(fdt_bytes: &[u8], vm_cfg: &mut AxVMConfig, crate
         .map_err(|e| format!("Failed to parse FDT: {:#?}", e))
         .expect("Failed to parse FDT");
 
-    set_phys_cpu_sets(vm_cfg, &fdt, crate_config);
     // Call the modified function and get the returned device name list
     let passthrough_device_names = super::device::find_all_passthrough_devices(vm_cfg, &fdt);
 
