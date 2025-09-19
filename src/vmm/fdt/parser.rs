@@ -1,8 +1,8 @@
 //! FDT parsing and processing functionality.
-use alloc::string::ToString;
-use alloc::vec::Vec;
+
+use alloc::{string::ToString, vec::Vec};
 use axvm::config::{AxVMConfig, AxVMCrateConfig, PassThroughDeviceConfig};
-use fdt_parser::{Fdt, FdtHeader, PciSpace, PciRange};
+use fdt_parser::{Fdt, FdtHeader, PciRange, PciSpace};
 
 pub fn parse_fdt(fdt_addr: usize, vm_cfg: &mut AxVMConfig, crate_config: &AxVMCrateConfig) {
     const FDT_VALID_MAGIC: u32 = 0xd00d_feed;
@@ -30,12 +30,11 @@ pub fn parse_fdt(fdt_addr: usize, vm_cfg: &mut AxVMConfig, crate_config: &AxVMCr
         .expect("Failed to parse FDT");
 
     set_phys_cpu_sets(vm_cfg, &fdt, crate_config);
-    // 调用修改后的函数并获取返回的设备名称列表
+    // Call the modified function and get the returned device name list
     let passthrough_device_names = super::device::find_all_passthrough_devices(vm_cfg, &fdt);
 
     let _ =
         super::create::crate_guest_fdt_with_cache(&fdt, &passthrough_device_names, crate_config);
-    // 注意：这里我们不再需要将设备添加到VM配置中，因为函数已经返回了设备名称列表
 }
 
 pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt, crate_config: &AxVMCrateConfig) {
@@ -43,13 +42,9 @@ pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt, crate_config: &AxVM
     let host_cpus: Vec<_> = fdt.find_nodes("/cpus/cpu").collect();
     info!("Found {} host CPU nodes", &host_cpus.len());
 
-    let phys_cpu_ids = crate_config
-        .base
-        .phys_cpu_ids
-        .as_ref()
-        .expect("ERROR: phys_cpu_ids not found in config.toml");
+    let phys_cpu_ids = crate_config.base.phys_cpu_ids.as_ref().expect("ERROR: phys_cpu_ids not found in config.toml");
 
-    // 收集所有CPU节点信息到Vec中，避免多次使用迭代器
+    // Collect all CPU node information into Vec to avoid using iterators multiple times
     let cpu_nodes_info: Vec<_> = host_cpus
         .iter()
         .filter_map(|cpu_node| {
@@ -65,8 +60,8 @@ pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt, crate_config: &AxVM
         })
         .collect();
     info!("cpu_nodes_info: {:?}", cpu_nodes_info);
-    // 创建从phys_cpu_id到物理CPU索引的映射
-    // 收集所有唯一的CPU地址，保持设备树中的出现顺序
+    // Create mapping from phys_cpu_id to physical CPU index
+    // Collect all unique CPU addresses, maintaining the order of appearance in the device tree
     let mut unique_cpu_addresses = Vec::new();
     for (_, cpu_address) in &cpu_nodes_info {
         if !unique_cpu_addresses.contains(cpu_address) {
@@ -76,52 +71,46 @@ pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt, crate_config: &AxVM
         }
     }
 
-    // 为设备树中的每个CPU地址分配索引，并打印详细信息
+    // Assign index to each CPU address in the device tree and print detailed information
     for (index, &cpu_address) in unique_cpu_addresses.iter().enumerate() {
-        // 找到所有使用这个地址的CPU节点
+        // Find all CPU nodes using this address
         for (cpu_name, node_address) in &cpu_nodes_info {
             if *node_address == cpu_address {
                 debug!(
                     "  CPU node: {}, address: 0x{:x}, assigned index: {}",
                     cpu_name, cpu_address, index
                 );
-                break; // 每个地址只打印一次
+                break; // Print each address only once
             }
         }
     }
 
-    // 根据vcpu_mappings中的phys_cpu_ids计算phys_cpu_sets
+    // Calculate phys_cpu_sets based on phys_cpu_ids in vcpu_mappings
     let mut new_phys_cpu_sets = Vec::new();
     for phys_cpu_id in phys_cpu_ids {
-        // 在unique_cpu_addresses中查找phys_cpu_id对应的索引
+        // Find the index corresponding to phys_cpu_id in unique_cpu_addresses
         if let Some(cpu_index) = unique_cpu_addresses
             .iter()
             .position(|&addr| addr == *phys_cpu_id)
         {
-            let cpu_mask = 1usize << cpu_index; // 将索引转换为掩码位
+            let cpu_mask = 1usize << cpu_index; // Convert index to mask bit
             new_phys_cpu_sets.push(cpu_mask);
             debug!(
                 "vCPU {} with phys_cpu_id 0x{:x} mapped to CPU index {} (mask: 0x{:x})",
-                vm_cfg.id(),
-                phys_cpu_id,
-                cpu_index,
-                cpu_mask
+                vm_cfg.id(), phys_cpu_id, cpu_index, cpu_mask
             );
         } else {
             error!(
                 "vCPU {} with phys_cpu_id 0x{:x} not found in device tree!",
-                vm_cfg.id(),
-                phys_cpu_id
+                vm_cfg.id(), phys_cpu_id
             );
         }
     }
 
-    // 更新VM配置中的phys_cpu_sets（如果VM配置支持设置的话）
+    // Update phys_cpu_sets in VM configuration (if VM configuration supports setting)
     info!("Calculated phys_cpu_sets: {:?}", new_phys_cpu_sets);
 
-    vm_cfg
-        .phys_cpu_ls_mut()
-        .set_guest_cpu_sets(new_phys_cpu_sets);
+    vm_cfg.phys_cpu_ls_mut().set_guest_cpu_sets(new_phys_cpu_sets);
 
     debug!(
         "vcpu_mappings: {:?}",
@@ -129,7 +118,7 @@ pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt, crate_config: &AxVM
     );
 }
 
-/// 为设备添加地址映射配置
+/// Add address mapping configuration for a device
 fn add_device_address_config(
     vm_cfg: &mut AxVMConfig,
     node_name: &str,
@@ -138,12 +127,12 @@ fn add_device_address_config(
     index: usize,
     prefix: Option<&str>,
 ) {
-    // 只处理有地址信息的设备
+    // Only process devices with address information
     if size == 0 {
         return;
     }
 
-    // 为每个地址段创建一个设备配置
+    // Create a device configuration for each address segment
     let device_name = if index == 0 {
         match prefix {
             Some(p) => format!("{}-{}", node_name, p),
@@ -156,7 +145,7 @@ fn add_device_address_config(
         }
     };
 
-    // 添加新的设备配置
+    // Add new device configuration
     let pt_dev = axvm::config::PassThroughDeviceConfig {
         name: device_name,
         base_gpa: base_address,
@@ -167,7 +156,7 @@ fn add_device_address_config(
     vm_cfg.add_pass_through_device(pt_dev);
 }
 
-/// 为PCIe设备添加ranges属性配置
+/// Add ranges property configuration for PCIe devices
 fn add_pci_ranges_config(
     vm_cfg: &mut AxVMConfig,
     node_name: &str,
@@ -177,12 +166,12 @@ fn add_pci_ranges_config(
     let base_address = range.cpu_address as usize;
     let size = range.size as usize;
 
-    // 只处理有地址信息的设备
+    // Only process devices with address information
     if size == 0 {
         return;
     }
 
-    // 为每个地址段创建一个设备配置
+    // Create a device configuration for each address segment
     let prefix = match range.space {
         PciSpace::Configuration => "config",
         PciSpace::IO => "io",
@@ -196,7 +185,7 @@ fn add_pci_ranges_config(
         format!("{}-{}-region{}", node_name, prefix, index)
     };
 
-    // 添加新的设备配置
+    // Add new device configuration
     let pt_dev = axvm::config::PassThroughDeviceConfig {
         name: device_name,
         base_gpa: base_address,
@@ -216,21 +205,21 @@ pub fn parse_passthrough_devices_address(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
     let fdt = Fdt::from_bytes(dtb)
         .expect("Failed to parse DTB image, perhaps the DTB is invalid or corrupted");
 
-    // 清空现有的直通设备配置
+    // Clear existing passthrough device configurations
     vm_cfg.clear_pass_through_devices();
 
-    // 遍历所有设备树节点
+    // Traverse all device tree nodes
     for node in fdt.all_nodes() {
-        // 跳过根节点
+        // Skip root node
         if node.name() == "/" || node.name().starts_with("memory") {
             continue;
         }
 
         let node_name = node.name().to_string();
 
-        // 检查是否为PCIe设备节点
+        // Check if it's a PCIe device node
         if node_name.starts_with("pcie@") || node_name.contains("pci") {
-            // 处理PCIe设备的ranges属性
+            // Process PCIe device's ranges property
             if let Some(pci) = node.clone().into_pci() {
                 if let Ok(ranges) = pci.ranges() {
                     for (index, range) in ranges.enumerate() {
@@ -239,7 +228,7 @@ pub fn parse_passthrough_devices_address(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
                 }
             }
             
-            // 处理PCIe设备的reg属性（ECAM空间）
+            // Process PCIe device's reg property (ECAM space)
             if let Some(mut reg_iter) = node.reg() {
                 let mut index = 0;
                 while let Some(reg) = reg_iter.next() {
@@ -251,12 +240,12 @@ pub fn parse_passthrough_devices_address(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
                 }
             }
         } else {
-            // 获取设备的reg属性（处理普通设备）
+            // Get device's reg property (process regular devices)
             if let Some(mut reg_iter) = node.reg() {
-                // 处理设备的所有地址段
+                // Process all address segments of the device
                 let mut index = 0;
                 while let Some(reg) = reg_iter.next() {
-                    // 获取设备的地址和大小信息
+                    // Get device's address and size information
                     let base_address = reg.address as usize;
                     let size = reg.size.unwrap_or(0) as usize;
 
@@ -270,7 +259,7 @@ pub fn parse_passthrough_devices_address(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
         "All passthrough devices: {:#x?}",
         vm_cfg.pass_through_devices()
     );
-    info!(
+    debug!(
         "Finished parsing passthrough devices, total: {}",
         vm_cfg.pass_through_devices().len()
     );

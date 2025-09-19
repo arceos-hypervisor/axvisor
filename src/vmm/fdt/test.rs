@@ -28,30 +28,30 @@ pub fn print_fdt(fdt_addr: usize) {
         .map_err(|e| format!("Failed to parse FDT: {:#?}", e))
         .expect("Failed to parse FDT");
 
-    // 统计节点数量和层级分布
+    // Statistics of node count and level distribution
     let mut node_count = 0;
     let mut level_counts = alloc::collections::BTreeMap::new();
     let mut max_level = 0;
 
-    info!("=== FDT节点信息统计 ===");
+    info!("=== FDT Node Information Statistics ===");
 
-    // 一次性遍历所有节点进行统计（遵循优化策略）
+    // Traverse all nodes once for statistics (following optimization strategy)
     for node in fdt.all_nodes() {
         node_count += 1;
 
-        // 按层级统计节点数量
+        // Count nodes by level
         *level_counts.entry(node.level).or_insert(0) += 1;
 
-        // 记录最大层级
+        // Record maximum level
         if node.level > max_level {
             max_level = node.level;
         }
 
-        // 统计属性数量
+        // Count property numbers
         let node_properties_count = node.propertys().count();
 
         trace!(
-            "节点[{}]: {} (层级: {}, 属性: {})",
+            "Node[{}]: {} (Level: {}, Properties: {})",
             node_count,
             node.name(),
             node.level,
@@ -59,19 +59,19 @@ pub fn print_fdt(fdt_addr: usize) {
         );
 
         for prop in node.propertys() {
-            trace!("属性: {}, 节点: {:x?}", prop.name, prop.raw_value());
+            trace!("Properties: {}, Node: {:x?}", prop.name, prop.raw_value());
         }
     }
 
-    info!("=== FDT统计结果 ===");
-    info!("总节点数量: {}", node_count);
-    info!("FDT总大小: {} 字节", fdt_header.total_size());
-    info!("最大层级深度: {}", max_level);
+    info!("=== FDT Statistics Results ===");
+    info!("Total node count: {}", node_count);
+    info!("FDT total size: {} bytes", fdt_header.total_size());
+    info!("Maximum level depth: {}", max_level);
 
-    info!("各层级节点分布:");
+    info!("Node distribution by level:");
     for (level, count) in level_counts {
         let percentage = (count as f32 / node_count as f32) * 100.0;
-        info!("  层级 {}: {} 个节点 ({:.1}%)", level, count, percentage);
+        info!("  Level {}: {} nodes ({:.1}%)", level, count, percentage);
     }
 }
 
@@ -82,30 +82,30 @@ pub fn print_guest_fdt(fdt_bytes: &[u8]) {
     let fdt = Fdt::from_bytes(fdt_bytes)
         .map_err(|e| format!("Failed to parse FDT: {:#?}", e))
         .expect("Failed to parse FDT");
-    // 统计节点数量和层级分布
+    // Statistics of node count and level distribution
     let mut node_count = 0;
     let mut level_counts = alloc::collections::BTreeMap::new();
     let mut max_level = 0;
 
-    info!("=== FDT节点信息统计 ===");
+    info!("=== FDT Node Information Statistics ===");
 
-    // 一次性遍历所有节点进行统计（遵循优化策略）
+    // Traverse all nodes once for statistics (following optimization strategy)
     for node in fdt.all_nodes() {
         node_count += 1;
 
-        // 按层级统计节点数量
+        // Count nodes by level
         *level_counts.entry(node.level).or_insert(0) += 1;
 
-        // 记录最大层级
+        // Record maximum level
         if node.level > max_level {
             max_level = node.level;
         }
 
-        // 统计属性数量
+        // Count property numbers
         let node_properties_count = node.propertys().count();
 
         trace!(
-            "节点[{}]: {} (层级: {}, 属性: {})",
+            "Node[{}]: {} (Level: {}, Properties: {})",
             node_count,
             node.name(),
             node.level,
@@ -113,17 +113,17 @@ pub fn print_guest_fdt(fdt_bytes: &[u8]) {
         );
 
         for prop in node.propertys() {
-            trace!("属性: {}, 节点: {:x?}", prop.name, prop.raw_value());
+            trace!("Properties: {}, Node: {:x?}", prop.name, prop.raw_value());
         }
     }
 
-    info!("=== FDT统计结果 ===");
-    info!("总节点数量: {}", node_count);
-    info!("最大层级深度: {}", max_level);
+    info!("=== FDT Statistics Results ===");
+    info!("Total node count: {}", node_count);
+    info!("Maximum level depth: {}", max_level);
 
-    info!("各层级节点分布:");
+    info!("Node distribution by level:");
     for (level, count) in level_counts {
         let percentage = (count as f32 / node_count as f32) * 100.0;
-        info!("  层级 {}: {} 个节点 ({:.1}%)", level, count, percentage);
+        info!("  Level {}: {} nodes ({:.1}%)", level, count, percentage);
     }
 }

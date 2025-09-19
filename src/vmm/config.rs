@@ -1,11 +1,8 @@
 use core::alloc::Layout;
-
-use alloc::string::ToString;
-
 use axaddrspace::GuestPhysAddr;
 use axvm::{
     VMMemoryRegion,
-    config::{AxVMConfig, AxVMCrateConfig, PassThroughDeviceConfig, VmMemMappingType},
+    config::{AxVMConfig, AxVMCrateConfig, VmMemMappingType},
 };
 use memory_addr::MemoryAddr;
 
