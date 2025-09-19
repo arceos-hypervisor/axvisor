@@ -87,10 +87,7 @@ pub fn crate_guest_fdt(fdt: &Fdt, passthrough_device_names: &Vec<String>, crate_
     assert_eq!(previous_node_level , 0);
 
     let guest_fdt_bytes = fdt_writer.finish().unwrap();
-
-    print_guest_fdt(guest_fdt_bytes.as_slice());
     
-    // 返回生成的DTB数据，让调用者决定如何使用
     guest_fdt_bytes
 }
 

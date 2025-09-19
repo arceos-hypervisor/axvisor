@@ -1,9 +1,8 @@
 //! FDT parsing and processing functionality.
-use alloc::vec::Vec;
 use alloc::string::ToString;
-use fdt_parser::{Fdt, FdtHeader, PciSpace};
-use axvm::config::{AxVMConfig, AxVMCrateConfig};
-
+use alloc::vec::Vec;
+use axvm::config::{AxVMConfig, AxVMCrateConfig, PassThroughDeviceConfig};
+use fdt_parser::{Fdt, FdtHeader, PciSpace, PciRange};
 
 pub fn parse_fdt(fdt_addr: usize, vm_cfg: &mut AxVMConfig, crate_config: &AxVMCrateConfig) {
     const FDT_VALID_MAGIC: u32 = 0xd00d_feed;
@@ -34,7 +33,8 @@ pub fn parse_fdt(fdt_addr: usize, vm_cfg: &mut AxVMConfig, crate_config: &AxVMCr
     // 调用修改后的函数并获取返回的设备名称列表
     let passthrough_device_names = super::device::find_all_passthrough_devices(vm_cfg, &fdt);
 
-    let _ = super::create::crate_guest_fdt_with_cache(&fdt, &passthrough_device_names, crate_config);
+    let _ =
+        super::create::crate_guest_fdt_with_cache(&fdt, &passthrough_device_names, crate_config);
     // 注意：这里我们不再需要将设备添加到VM配置中，因为函数已经返回了设备名称列表
 }
 
@@ -43,7 +43,11 @@ pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt, crate_config: &AxVM
     let host_cpus: Vec<_> = fdt.find_nodes("/cpus/cpu").collect();
     info!("Found {} host CPU nodes", &host_cpus.len());
 
-    let phys_cpu_ids = crate_config.base.phys_cpu_ids.as_ref().expect("ERROR: phys_cpu_ids not found in config.toml");
+    let phys_cpu_ids = crate_config
+        .base
+        .phys_cpu_ids
+        .as_ref()
+        .expect("ERROR: phys_cpu_ids not found in config.toml");
 
     // 收集所有CPU节点信息到Vec中，避免多次使用迭代器
     let cpu_nodes_info: Vec<_> = host_cpus
@@ -98,12 +102,16 @@ pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt, crate_config: &AxVM
             new_phys_cpu_sets.push(cpu_mask);
             debug!(
                 "vCPU {} with phys_cpu_id 0x{:x} mapped to CPU index {} (mask: 0x{:x})",
-                vm_cfg.id(), phys_cpu_id, cpu_index, cpu_mask
+                vm_cfg.id(),
+                phys_cpu_id,
+                cpu_index,
+                cpu_mask
             );
         } else {
             error!(
                 "vCPU {} with phys_cpu_id 0x{:x} not found in device tree!",
-                vm_cfg.id(), phys_cpu_id
+                vm_cfg.id(),
+                phys_cpu_id
             );
         }
     }
@@ -111,12 +119,100 @@ pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt, crate_config: &AxVM
     // 更新VM配置中的phys_cpu_sets（如果VM配置支持设置的话）
     info!("Calculated phys_cpu_sets: {:?}", new_phys_cpu_sets);
 
-    vm_cfg.phys_cpu_ls_mut().set_guest_cpu_sets(new_phys_cpu_sets);
+    vm_cfg
+        .phys_cpu_ls_mut()
+        .set_guest_cpu_sets(new_phys_cpu_sets);
 
-    debug!("vcpu_mappings: {:?}", vm_cfg.phys_cpu_ls_mut().get_vcpu_affinities_pcpu_ids());
+    debug!(
+        "vcpu_mappings: {:?}",
+        vm_cfg.phys_cpu_ls_mut().get_vcpu_affinities_pcpu_ids()
+    );
 }
 
-pub fn parse_passthrough_devices_address(vm_cfg: &mut AxVMConfig, dtb: &[u8]) { 
+/// 为设备添加地址映射配置
+fn add_device_address_config(
+    vm_cfg: &mut AxVMConfig,
+    node_name: &str,
+    base_address: usize,
+    size: usize,
+    index: usize,
+    prefix: Option<&str>,
+) {
+    // 只处理有地址信息的设备
+    if size == 0 {
+        return;
+    }
+
+    // 为每个地址段创建一个设备配置
+    let device_name = if index == 0 {
+        match prefix {
+            Some(p) => format!("{}-{}", node_name, p),
+            None => node_name.to_string(),
+        }
+    } else {
+        match prefix {
+            Some(p) => format!("{}-{}-region{}", node_name, p, index),
+            None => format!("{}-region{}", node_name, index),
+        }
+    };
+
+    // 添加新的设备配置
+    let pt_dev = axvm::config::PassThroughDeviceConfig {
+        name: device_name,
+        base_gpa: base_address,
+        base_hpa: base_address,
+        length: size,
+        irq_id: 0,
+    };
+    vm_cfg.add_pass_through_device(pt_dev);
+}
+
+/// 为PCIe设备添加ranges属性配置
+fn add_pci_ranges_config(
+    vm_cfg: &mut AxVMConfig,
+    node_name: &str,
+    range: &PciRange,
+    index: usize,
+) {
+    let base_address = range.cpu_address as usize;
+    let size = range.size as usize;
+
+    // 只处理有地址信息的设备
+    if size == 0 {
+        return;
+    }
+
+    // 为每个地址段创建一个设备配置
+    let prefix = match range.space {
+        PciSpace::Configuration => "config",
+        PciSpace::IO => "io",
+        PciSpace::Memory32 => "mem32",
+        PciSpace::Memory64 => "mem64",
+    };
+
+    let device_name = if index == 0 {
+        format!("{}-{}", node_name, prefix)
+    } else {
+        format!("{}-{}-region{}", node_name, prefix, index)
+    };
+
+    // 添加新的设备配置
+    let pt_dev = axvm::config::PassThroughDeviceConfig {
+        name: device_name,
+        base_gpa: base_address,
+        base_hpa: base_address,
+        length: size,
+        irq_id: 0,
+    };
+    vm_cfg.add_pass_through_device(pt_dev);
+
+    trace!(
+        "Added PCIe passthrough device {}: base=0x{:x}, size=0x{:x}, space={:?}",
+        node_name, base_address, size, range.space
+    );
+}
+
+pub fn parse_passthrough_devices_address(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
     let fdt = Fdt::from_bytes(dtb)
         .expect("Failed to parse DTB image, perhaps the DTB is invalid or corrupted");
 
@@ -129,51 +225,29 @@ pub fn parse_passthrough_devices_address(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
         if node.name() == "/" || node.name().starts_with("memory") {
             continue;
         }
-        
+
         let node_name = node.name().to_string();
-        
+
         // 检查是否为PCIe设备节点
         if node_name.starts_with("pcie@") || node_name.contains("pci") {
             // 处理PCIe设备的ranges属性
-            if let Some(pci) = node.into_pci() {
+            if let Some(pci) = node.clone().into_pci() {
                 if let Ok(ranges) = pci.ranges() {
                     for (index, range) in ranges.enumerate() {
-                        let base_address = range.cpu_address as usize;
-                        let size = range.size as usize;
-                        
-                        // 只处理有地址信息的设备
-                        if size > 0 {
-                            // 为每个地址段创建一个设备配置
-                            let device_name = if index == 0 {
-                                format!("{}-{}", node_name, match range.space {
-                                    PciSpace::Configuration => "config",
-                                    PciSpace::IO => "io",
-                                    PciSpace::Memory32 => "mem32",
-                                    PciSpace::Memory64 => "mem64",
-                                })
-                            } else {
-                                format!("{}-{}-region{}", node_name, match range.space {
-                                    PciSpace::Configuration => "config",
-                                    PciSpace::IO => "io",
-                                    PciSpace::Memory32 => "mem32",
-                                    PciSpace::Memory64 => "mem64",
-                                }, index)
-                            };
-                            
-                            // 添加新的设备配置
-                            let pt_dev = axvm::config::PassThroughDeviceConfig {
-                                name: device_name,
-                                base_gpa: base_address,
-                                base_hpa: base_address,
-                                length: size,
-                                irq_id: 0,
-                            };
-                            vm_cfg.add_pass_through_device(pt_dev);
-                            
-                            trace!("Added PCIe passthrough device {}: base=0x{:x}, size=0x{:x}, space={:?}", 
-                                node_name, base_address, size, range.space);
-                        }
+                        add_pci_ranges_config(vm_cfg, &node_name, &range, index);
                     }
+                }
+            }
+            
+            // 处理PCIe设备的reg属性（ECAM空间）
+            if let Some(mut reg_iter) = node.reg() {
+                let mut index = 0;
+                while let Some(reg) = reg_iter.next() {
+                    let base_address = reg.address as usize;
+                    let size = reg.size.unwrap_or(0) as usize;
+
+                    add_device_address_config(vm_cfg, &node_name, base_address, size, index, Some("ecam"));
+                    index += 1;
                 }
             }
         } else {
@@ -185,65 +259,47 @@ pub fn parse_passthrough_devices_address(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
                     // 获取设备的地址和大小信息
                     let base_address = reg.address as usize;
                     let size = reg.size.unwrap_or(0) as usize;
-                    
-                    // 只处理有地址信息的设备
-                    if size > 0 {
-                        // 为每个地址段创建一个设备配置
-                        // 如果设备有多个地址段，使用索引来区分
-                        let device_name = if index == 0 {
-                            node_name.clone()
-                        } else {
-                            format!("{}-region{}", node_name, index)
-                        };
-                        
-                        // 添加新的设备配置
-                        let pt_dev = axvm::config::PassThroughDeviceConfig {
-                            name: device_name,
-                            base_gpa: base_address,
-                            base_hpa: base_address,
-                            length: size,
-                            irq_id: 0,
-                        };
-                        vm_cfg.add_pass_through_device(pt_dev);
-                        
-                        trace!("Added passthrough device {}: base=0x{:x}, size=0x{:x}", node_name, base_address, size);
-                    }
-                    
+
+                    add_device_address_config(vm_cfg, &node_name, base_address, size, index, None);
                     index += 1;
                 }
             }
         }
     }
-    trace!("All passthrough devices: {:#x?}", vm_cfg.pass_through_devices());
-    info!("Finished parsing passthrough devices, total: {}", vm_cfg.pass_through_devices().len());
+    trace!(
+        "All passthrough devices: {:#x?}",
+        vm_cfg.pass_through_devices()
+    );
+    info!(
+        "Finished parsing passthrough devices, total: {}",
+        vm_cfg.pass_through_devices().len()
+    );
 }
 
 pub fn parse_vm_interrupt(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
-
+    const GIC_PHANDLE: usize = 1;
     let fdt = Fdt::from_bytes(dtb)
         .expect("Failed to parse DTB image, perhaps the DTB is invalid or corrupted");
 
     for node in fdt.all_nodes() {
-        trace!("DTB node: {:?}", node.name());
         let name = node.name();
+        
         if name.starts_with("memory") {
             continue;
-        }
-
+        } 
         // Skip the interrupt controller, as we will use vGIC
         // TODO: filter with compatible property and parse its phandle from DT; maybe needs a second pass?
-        const GIC_PHANDLE: usize = 1;
-        if name.starts_with("interrupt-controller")
+        else if name.starts_with("interrupt-controller")
             || name.starts_with("intc")
             || name.starts_with("its")
         {
-            debug!("skipping node {} to use vGIC", name);
+            info!("skipping node {} to use vGIC", name);
             continue;
         }
 
         // Collect all GIC_SPI interrupts and add them to vGIC
         if let Some(interrupts) = node.interrupts() {
-            // skip non-GIC interrupt
+            // TODO: skip non-GIC interrupt
             if let Some(parent) = node.interrupt_parent() {
                 trace!("node: {}, intr parent: {}", name, parent.node.name());
                 if let Some(phandle) = parent.node.phandle() {
@@ -263,7 +319,7 @@ pub fn parse_vm_interrupt(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
                     );
                 }
             } else {
-                trace!("node: {} no interrupt parent!", name);
+                warn!("node: {} no interrupt parent!", name);
             }
 
             for interrupt in interrupts {
@@ -297,7 +353,7 @@ pub fn parse_vm_interrupt(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
         }
     }
 
-    vm_cfg.add_pass_through_device(axvm::config::PassThroughDeviceConfig {
+    vm_cfg.add_pass_through_device(PassThroughDeviceConfig {
         name: "Fake Node".to_string(),
         base_gpa: 0x0,
         base_hpa: 0x0,
