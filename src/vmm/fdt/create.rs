@@ -85,27 +85,16 @@ pub fn crate_guest_fdt(fdt: &Fdt, passthrough_device_names: &Vec<String>, crate_
     guest_fdt_bytes
 }
 
-/// Generate guest FDT and cache the result
-/// 
-/// # Parameters
-/// * `fdt` - Source FDT data
-/// * `passthrough_device_names` - Passthrough device name list
-/// * `crate_config` - VM creation configuration
-/// 
+/// Generate guest FDT cache the result
 /// # Return Value
 /// Returns the generated DTB data and stores it in the global cache
-pub fn crate_guest_fdt_with_cache(fdt: &Fdt, passthrough_device_names: &Vec<String>, crate_config: &AxVMCrateConfig) -> Vec<u8> {
-    // Generate DTB data
-    let dtb_data = crate_guest_fdt(fdt, passthrough_device_names, crate_config);
-    
+pub fn crate_guest_fdt_with_cache(dtb_data: Vec<u8>, crate_config: &AxVMCrateConfig) {
     // Store data in global cache
     if let Some(cache) = crate::vmm::config::GENERATED_DTB_CACHE.get() {
         let mut cache_lock = cache.lock();
-        let dtb_arc: Arc<[u8]> = Arc::from(dtb_data.clone());
+        let dtb_arc: Arc<[u8]> = Arc::from(dtb_data);
         cache_lock.insert(crate_config.base.id, dtb_arc);
     }
-
-    dtb_data
 }
 
 /// Node processing action enumeration
@@ -301,4 +290,48 @@ pub fn update_fdt(dest_addr: GuestPhysAddr, fdt_src: NonNull<u8>, dtb_size: usiz
     let new_fdt_bytes = new_fdt.finish().unwrap();
     // Load the updated FDT into VM
     load_vm_image_from_memory(&new_fdt_bytes, dest_addr, vm.clone()).expect("Failed to load VM images");
+}
+
+pub fn update_cpu_node(fdt: &Fdt, crate_config: &AxVMCrateConfig) -> Vec<u8>{ 
+    let mut new_fdt = FdtWriter::new().unwrap();
+    let mut previous_node_level = 0;
+    let mut node_stack: Vec<FdtWriterNode> = Vec::new();
+    let phys_cpu_ids = crate_config.base.phys_cpu_ids.clone().expect("ERROR: phys_cpu_ids is None");
+
+    let all_nodes: Vec<Node> = fdt.all_nodes().collect();
+
+    for (index, node) in all_nodes.iter().enumerate() {
+        let node_path = super::build_node_path(&all_nodes, index);
+
+        if node.name() == "/" {
+            node_stack.push(new_fdt.begin_node("").unwrap());
+        } else if node_path.starts_with("/cpus") {
+            let need = need_cpu_node(&phys_cpu_ids, node, &node_path);
+            if need {
+                handle_node_level_change(&mut new_fdt, &mut node_stack, node.level, previous_node_level);
+                node_stack.push(new_fdt.begin_node(node.name()).unwrap());
+            } else {
+                continue;
+            }
+        } else {
+            handle_node_level_change(&mut new_fdt, &mut node_stack, node.level, previous_node_level);
+            node_stack.push(new_fdt.begin_node(node.name()).unwrap());
+        }
+
+        previous_node_level = node.level;
+
+        for prop in node.propertys() {
+            new_fdt.property(prop.name, prop.raw_value()).unwrap();
+        }
+    }
+
+    while let Some(node) = node_stack.pop() {
+        previous_node_level -= 1;
+        new_fdt.end_node(node).unwrap();
+    }
+    assert_eq!(previous_node_level , 0);
+
+    let guest_fdt_bytes = new_fdt.finish().unwrap();
+
+    guest_fdt_bytes
 }

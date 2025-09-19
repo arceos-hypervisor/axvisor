@@ -4,10 +4,11 @@ use axvm::{
     VMMemoryRegion,
     config::{AxVMConfig, AxVMCrateConfig, VmMemMappingType},
 };
+use fdt_parser::Fdt;
 use memory_addr::MemoryAddr;
 
 use crate::vmm::{
-    VM, fdt::{parse_passthrough_devices_address, parse_vm_interrupt}, images::ImageLoader, vm_list::push_vm,
+    fdt::*, images::ImageLoader, vm_list::push_vm, VM
 };
 
 // 添加用于存储生成的DTB的全局静态变量
@@ -39,7 +40,7 @@ pub mod config {
     include!(concat!(env!("OUT_DIR"), "/vm_configs.rs"));
 }
 
-pub fn get_vm_dtb(vm_cfg: &AxVMConfig) -> Option<&'static [u8]> {
+pub fn get_developer_provided_dtb(vm_cfg: &AxVMConfig) -> Option<&'static [u8]> {
     let vm_imags = config::get_memory_images()
         .iter()
         .find(|&v| v.id == vm_cfg.id())?;
@@ -51,32 +52,17 @@ pub fn get_vm_dtb(vm_cfg: &AxVMConfig) -> Option<&'static [u8]> {
     None
 }
 
-/// 获取VM的DTB数据（返回Arc<[u8]>，支持缓存数据）
 pub fn get_vm_dtb_arc(vm_cfg: &AxVMConfig) -> Option<Arc<[u8]>> {
-    // 首先尝试返回静态DTB数据
-    let vm_imags = config::get_memory_images()
-        .iter()
-        .find(|&v| v.id == vm_cfg.id())?;
-
-    if let Some(dtb) = vm_imags.dtb {
-        // 将&'static [u8]转换为Arc<[u8]>
-        return Some(Arc::from(dtb));
-    }
-
-    // 如果内存镜像中没有DTB，则尝试从生成的DTB缓存中获取
     if let Some(cache) = GENERATED_DTB_CACHE.get() {
         let cache_lock = cache.lock();
         if let Some(dtb) = cache_lock.get(&vm_cfg.id()) {
-            // 返回缓存中的Arc引用
             return Some(dtb.clone());
         }
     }
-
     None
 }
 
 pub fn init_guest_vms() {
-    // 初始化DTB缓存
     GENERATED_DTB_CACHE.init_once(Mutex::new(BTreeMap::new()));
 
     let gvm_raw_configs = config::static_vm_configs();
@@ -94,31 +80,21 @@ pub fn init_guest_vms() {
 
         let mut vm_config = AxVMConfig::from(vm_create_config.clone());
 
-        // info!("vm_create_config: {:#?}", vm_create_config);
-        // info!("before parse_vm_interrupt, crate VM[{}] with config: {:#?}", vm_config.id(), vm_config);
+        let host_fdt_bytes = get_host_fdt();
+        let host_fdt = Fdt::from_bytes(host_fdt_bytes)
+            .map_err(|e| format!("Failed to parse FDT: {:#?}", e))
+            .expect("Failed to parse FDT");
+        set_phys_cpu_sets(&mut vm_config, &host_fdt, &vm_create_config);
 
-        // let bootarg: usize = unsafe { std::os::arceos::modules::axhal::get_bootarg() };
-        // if bootarg != 0 {
-        //     crate::vmm::fdt::parse_fdt(bootarg, &mut vm_config);
-        // }
-        if let Some(dtb) = get_vm_dtb(&vm_config) {
+        if let Some(dtb) = get_developer_provided_dtb(&vm_config) {
             info!("VM[{}] found DTB , parsing...", vm_config.id());
-
-            // crate::vmm::fdt::parse_vm_fdt(&mut vm_config, dtb);
-            //test
-            let bootarg = dtb.as_ptr() as usize;
-            crate::vmm::fdt::parse_fdt(bootarg, &mut vm_config, &vm_create_config);
-            //test
+            update_provided_fdt(dtb, &vm_create_config);
         } else {
             info!(
                 "VM[{}] DTB not found, generating based on the configuration file.",
                 vm_config.id()
             );
-
-            let bootarg: usize = std::os::arceos::modules::axhal::get_bootarg();
-            if bootarg != 0 {
-                crate::vmm::fdt::parse_fdt(bootarg, &mut vm_config, &vm_create_config);
-            }
+            setup_guest_fdt_from_vmm(host_fdt_bytes, &mut vm_config, &vm_create_config);
         }
 
         // Overlay VM config with the given DTB.
@@ -127,7 +103,7 @@ pub fn init_guest_vms() {
             parse_passthrough_devices_address(&mut vm_config, dtb);
             parse_vm_interrupt(&mut vm_config, dtb);
         } else {
-            warn!(
+            error!(
                 "VM[{}] DTB not found in memory, skipping...",
                 vm_config.id()
             );

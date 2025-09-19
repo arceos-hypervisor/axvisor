@@ -9,7 +9,7 @@ mod create;
 mod test;
 
 // Re-export public functions
-pub use parser::{parse_fdt, parse_passthrough_devices_address, parse_vm_interrupt};
+pub use parser::*;
 // pub use test::print_fdt;
 pub use device::{build_node_path};
-pub use create::update_fdt;
+pub use create::*;

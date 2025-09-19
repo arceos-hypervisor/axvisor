@@ -4,10 +4,13 @@ use alloc::{string::ToString, vec::Vec};
 use axvm::config::{AxVMConfig, AxVMCrateConfig, PassThroughDeviceConfig};
 use fdt_parser::{Fdt, FdtHeader, PciRange, PciSpace};
 
-pub fn parse_fdt(fdt_addr: usize, vm_cfg: &mut AxVMConfig, crate_config: &AxVMCrateConfig) {
+use crate::vmm::fdt::create::update_cpu_node;
+
+pub fn get_host_fdt() -> &'static [u8] {
     const FDT_VALID_MAGIC: u32 = 0xd00d_feed;
+    let bootarg: usize = std::os::arceos::modules::axhal::get_bootarg();
     let header = unsafe {
-        core::slice::from_raw_parts(fdt_addr as *const u8, core::mem::size_of::<FdtHeader>())
+        core::slice::from_raw_parts(bootarg as *const u8, core::mem::size_of::<FdtHeader>())
     };
     let fdt_header = FdtHeader::from_bytes(header)
         .map_err(|e| format!("Failed to parse FDT header: {:#?}", e))
@@ -19,11 +22,15 @@ pub fn parse_fdt(fdt_addr: usize, vm_cfg: &mut AxVMConfig, crate_config: &AxVMCr
             FDT_VALID_MAGIC,
             fdt_header.magic.get()
         );
-        return;
     }
 
     let fdt_bytes =
-        unsafe { core::slice::from_raw_parts(fdt_addr as *const u8, fdt_header.total_size()) };
+        unsafe { core::slice::from_raw_parts(bootarg as *const u8, fdt_header.total_size()) };
+
+    fdt_bytes
+}
+
+pub fn setup_guest_fdt_from_vmm(fdt_bytes: &[u8], vm_cfg: &mut AxVMConfig, crate_config: &AxVMCrateConfig) {
 
     let fdt = Fdt::from_bytes(fdt_bytes)
         .map_err(|e| format!("Failed to parse FDT: {:#?}", e))
@@ -33,8 +40,8 @@ pub fn parse_fdt(fdt_addr: usize, vm_cfg: &mut AxVMConfig, crate_config: &AxVMCr
     // Call the modified function and get the returned device name list
     let passthrough_device_names = super::device::find_all_passthrough_devices(vm_cfg, &fdt);
 
-    let _ =
-        super::create::crate_guest_fdt_with_cache(&fdt, &passthrough_device_names, crate_config);
+    let dtb_data = super::create::crate_guest_fdt(&fdt, &passthrough_device_names, crate_config);
+    super::create::crate_guest_fdt_with_cache(dtb_data, crate_config);
 }
 
 pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt, crate_config: &AxVMCrateConfig) {
@@ -349,4 +356,11 @@ pub fn parse_vm_interrupt(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
         length: 0x20_0000,
         irq_id: 0,
     });
+}
+
+pub fn update_provided_fdt(dtb: &[u8], crate_config: &AxVMCrateConfig) { 
+    let fdt = Fdt::from_bytes(dtb)
+        .expect("Failed to parse DTB image, perhaps the DTB is invalid or corrupted");
+    let dtb_data = update_cpu_node(&fdt, crate_config);
+    super::create::crate_guest_fdt_with_cache(dtb_data, crate_config);
 }
