@@ -135,9 +135,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.99"
+version = "1.0.100"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0674a1ddeecb70197781e945de4b3b8ffb61fa939a5597bcf48503737663100"
+checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
 
 [[package]]
 name = "arceos_api"
@@ -649,8 +649,8 @@ dependencies = [
 
 [[package]]
 name = "axplat-aarch64-dyn"
-version = "0.1.3"
-source = "git+https://github.com/arceos-hypervisor/axplat-aarch64-dyn?tag=v0.1.3#c41d78e5126af665c5eae2dd10bdc69706c52476"
+version = "0.1.4"
+source = "git+https://github.com/arceos-hypervisor/axplat-aarch64-dyn?tag=v0.1.4#45af6f32e9a0c1886c695b846070885fcb2972ab"
 dependencies = [
  "aarch64-cpu",
  "aarch64-cpu-ext",
@@ -1473,7 +1473,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2558,9 +2558,9 @@ dependencies = [
 
 [[package]]
 name = "pie-boot-loader-aarch64"
-version = "0.3.0"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07ed92f520e82ae76047cf8af83aca112375a132705069d0e89ea66e631d8bd7"
+checksum = "8c4b60675a82ad42624f8150a0088660a40f36ffc3107827a7520e24ca7eee74"
 dependencies = [
  "aarch64-cpu",
  "aarch64-cpu-ext",
@@ -3072,14 +3072,14 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
 name = "rustls"
-version = "0.23.31"
+version = "0.23.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0ebcbd2f03de0fc1122ad9bb24b127a5a6cd51d72604a3f3c50ac459762b6cc"
+checksum = "cd3c25631629d034ce7cd9940adc9d45762d46de2b0f57193c4443b92c6d4d40"
 dependencies = [
  "once_cell",
  "rustls-pki-types",
@@ -3378,9 +3378,9 @@ dependencies = [
 
 [[package]]
 name = "somehal"
-version = "0.4.0"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df679b7b8ddd53e4cb30502bd6a18372376e13a3cc8ed1713c158c6aa72ec57a"
+checksum = "6475d6e1581129d2dfa1976cc58bfdc27c969cedf3dbf98317944e776c37763c"
 dependencies = [
  "aarch64-cpu",
  "aarch64-cpu-ext",
@@ -3580,7 +3580,7 @@ dependencies = [
  "getrandom 0.3.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4491,9 +4491,9 @@ dependencies = [
 
 [[package]]
 name = "xattr"
-version = "1.5.1"
+version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af3a19837351dc82ba89f8a125e22a3c475f05aba604acc023d62b2739ae2909"
+checksum = "32e45ad4206f6d2479085147f02bc2ef834ac85886624a23575ae137c8aa8156"
 dependencies = [
  "libc",
  "rustix",
