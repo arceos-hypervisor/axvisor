@@ -104,7 +104,7 @@ pub fn print_guest_fdt(fdt_bytes: &[u8]) {
         // Count property numbers
         let node_properties_count = node.propertys().count();
 
-        trace!(
+        info!(
             "Node[{}]: {} (Level: {}, Properties: {})",
             node_count,
             node.name(),

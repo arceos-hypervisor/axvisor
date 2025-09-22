@@ -13,7 +13,7 @@ use axvm::{
 use fdt_parser::{Fdt, Node};
 use vm_fdt::{FdtWriter, FdtWriterNode};
 
-use crate::vmm::{images::load_vm_image_from_memory, VMRef};
+use crate::vmm::{fdt::test::{print_fdt, print_guest_fdt}, images::load_vm_image_from_memory, VMRef};
 
 /// Generate guest FDT and return DTB data
 /// 
@@ -287,44 +287,71 @@ pub fn update_fdt(dest_addr: GuestPhysAddr, fdt_src: NonNull<u8>, dtb_size: usiz
     }
     
     assert_eq!(previous_node_level, 0);
+
+    info!("Updating FDT memory successfully");
+
     let new_fdt_bytes = new_fdt.finish().unwrap();
+
+    print_guest_fdt(new_fdt_bytes.as_slice());
+
     // Load the updated FDT into VM
     load_vm_image_from_memory(&new_fdt_bytes, dest_addr, vm.clone()).expect("Failed to load VM images");
 }
 
-pub fn update_cpu_node(fdt: &Fdt, crate_config: &AxVMCrateConfig) -> Vec<u8>{ 
+pub fn update_cpu_node(fdt: &Fdt, host_fdt: &Fdt, crate_config: &AxVMCrateConfig) -> Vec<u8>{ 
     let mut new_fdt = FdtWriter::new().unwrap();
     let mut previous_node_level = 0;
     let mut node_stack: Vec<FdtWriterNode> = Vec::new();
     let phys_cpu_ids = crate_config.base.phys_cpu_ids.clone().expect("ERROR: phys_cpu_ids is None");
 
-    let all_nodes: Vec<Node> = fdt.all_nodes().collect();
-
-    for (index, node) in all_nodes.iter().enumerate() {
-        let node_path = super::build_node_path(&all_nodes, index);
+    // Collect all nodes from both FDTs
+    let fdt_all_nodes: Vec<Node> = fdt.all_nodes().collect();
+    let host_fdt_all_nodes: Vec<Node> = host_fdt.all_nodes().collect();
+    
+    for (index, node) in fdt_all_nodes.iter().enumerate() {
+        let node_path = super::build_node_path(&fdt_all_nodes, index);
 
         if node.name() == "/" {
             node_stack.push(new_fdt.begin_node("").unwrap());
         } else if node_path.starts_with("/cpus") {
-            let need = need_cpu_node(&phys_cpu_ids, node, &node_path);
-            if need {
-                handle_node_level_change(&mut new_fdt, &mut node_stack, node.level, previous_node_level);
-                node_stack.push(new_fdt.begin_node(node.name()).unwrap());
-            } else {
-                continue;
-            }
+            // Skip CPU nodes from fdt, we'll process them from host_fdt later
+            continue;
         } else {
+            // For all other nodes, include them from fdt as-is without filtering
             handle_node_level_change(&mut new_fdt, &mut node_stack, node.level, previous_node_level);
             node_stack.push(new_fdt.begin_node(node.name()).unwrap());
         }
 
         previous_node_level = node.level;
 
+        // Copy all properties of the node (for non-CPU nodes)
         for prop in node.propertys() {
             new_fdt.property(prop.name, prop.raw_value()).unwrap();
         }
     }
+    
+    // Process all CPU nodes from host_fdt
+    for (index, node) in host_fdt_all_nodes.iter().enumerate() {
+        let node_path = super::build_node_path(&host_fdt_all_nodes, index);
 
+        if node_path.starts_with("/cpus") {
+            // For CPU nodes, apply filtering based on host_fdt nodes
+            let need = need_cpu_node(&phys_cpu_ids, node, &node_path);
+            if need {
+                handle_node_level_change(&mut new_fdt, &mut node_stack, node.level, previous_node_level);
+                node_stack.push(new_fdt.begin_node(node.name()).unwrap());
+                
+                // Copy properties from host CPU node
+                for prop in node.propertys() {
+                    new_fdt.property(prop.name, prop.raw_value()).unwrap();
+                }
+                
+                previous_node_level = node.level;
+            }
+        }
+    }
+
+    // End all unclosed nodes
     while let Some(node) = node_stack.pop() {
         previous_node_level -= 1;
         new_fdt.end_node(node).unwrap();

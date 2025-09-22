@@ -272,7 +272,7 @@ mod fs {
                 dtb_addr,
                 Byte::from(dtb_size)
             );
-            updated_fdt(
+            update_fdt(
                 dtb_addr,
                 NonNull::new(dtb_buffer.as_mut_ptr()).unwrap(),
                 dtb_size,
@@ -307,7 +307,7 @@ mod fs {
         Ok(())
     }
 
-    fn open_image_file(file_name: &str) -> AxResult<(File, usize)> {
+    pub fn open_image_file(file_name: &str) -> AxResult<(File, usize)> {
         let file = File::open(file_name).map_err(|err| {
             ax_err_type!(
                 NotFound,
@@ -332,3 +332,6 @@ mod fs {
         Ok((file, file_size))
     }
 }
+
+#[cfg(feature = "fs")]
+pub use fs::open_image_file;

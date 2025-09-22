@@ -11,13 +11,12 @@ use crate::vmm::{
     fdt::*, images::ImageLoader, vm_list::push_vm, VM
 };
 
-// 添加用于存储生成的DTB的全局静态变量
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 use lazyinit::LazyInit;
 use spin::Mutex;
 
-// 用于存储生成的DTB数据的全局缓存
 pub static GENERATED_DTB_CACHE: LazyInit<Mutex<BTreeMap<usize, Arc<[u8]>>>> = LazyInit::new();
 
 #[allow(clippy::module_inception)]
@@ -40,15 +39,41 @@ pub mod config {
     include!(concat!(env!("OUT_DIR"), "/vm_configs.rs"));
 }
 
-pub fn get_developer_provided_dtb(vm_cfg: &AxVMConfig) -> Option<&'static [u8]> {
-    let vm_imags = config::get_memory_images()
-        .iter()
-        .find(|&v| v.id == vm_cfg.id())?;
+pub fn get_developer_provided_dtb(vm_cfg: &AxVMConfig, crate_config: &AxVMCrateConfig) -> Option<Vec<u8>> {
+    match crate_config.kernel.image_location.as_deref() {
+        Some("memory") => {
+            let vm_imags = config::get_memory_images()
+                .iter()
+                .find(|&v| v.id == vm_cfg.id())?;
 
-    if let Some(dtb) = vm_imags.dtb {
-        return Some(dtb);
+            if let Some(dtb) = vm_imags.dtb {
+                return Some(dtb.to_vec());
+            }
+        },
+        #[cfg(feature = "fs")]
+        Some("fs") => {
+            use std::io::{BufReader, Read};
+            use axerrno::ax_err_type;
+            if let Some(dtb_path) = &crate_config.kernel.dtb_path {
+                let (dtb_file, dtb_size) = crate::vmm::images::open_image_file(&dtb_path).unwrap();
+                info!("DTB file in fs, size: {:x}", dtb_size);
+
+                let mut file = BufReader::new(dtb_file);
+                let mut dtb_buffer = vec![0; dtb_size];
+
+                file.read_exact(&mut dtb_buffer).map_err(|err| {
+                    ax_err_type!(
+                        Io,
+                        format!("Failed in reading from file {}, err {:?}", dtb_path, err)
+                    )
+                }).unwrap();
+                return Some(dtb_buffer);
+            }
+        },
+        _ => unimplemented!(
+            "Check your \"image_location\" in config.toml, \"memory\" and \"fs\" are supported,\n."
+        ),
     }
-
     None
 }
 
@@ -86,9 +111,9 @@ pub fn init_guest_vms() {
             .expect("Failed to parse FDT");
         set_phys_cpu_sets(&mut vm_config, &host_fdt, &vm_create_config);
 
-        if let Some(dtb) = get_developer_provided_dtb(&vm_config) {
+        if let Some(provided_dtb) = get_developer_provided_dtb(&vm_config, &vm_create_config) {
             info!("VM[{}] found DTB , parsing...", vm_config.id());
-            update_provided_fdt(dtb, &vm_create_config);
+            update_provided_fdt(&provided_dtb, host_fdt_bytes, &vm_create_config);
         } else {
             info!(
                 "VM[{}] DTB not found, generating based on the configuration file.",

@@ -357,9 +357,11 @@ pub fn parse_vm_interrupt(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
     });
 }
 
-pub fn update_provided_fdt(dtb: &[u8], crate_config: &AxVMCrateConfig) { 
-    let fdt = Fdt::from_bytes(dtb)
+pub fn update_provided_fdt(provided_dtb: &[u8], host_dtb: &[u8], crate_config: &AxVMCrateConfig) { 
+    let provided_fdt = Fdt::from_bytes(provided_dtb)
         .expect("Failed to parse DTB image, perhaps the DTB is invalid or corrupted");
-    let dtb_data = update_cpu_node(&fdt, crate_config);
-    super::create::crate_guest_fdt_with_cache(dtb_data, crate_config);
+    let host_fdt = Fdt::from_bytes(host_dtb)
+        .expect("Failed to parse DTB image, perhaps the DTB is invalid or corrupted");
+    let provided_dtb_data = update_cpu_node(&provided_fdt, &host_fdt, crate_config);
+    super::create::crate_guest_fdt_with_cache(provided_dtb_data, crate_config);
 }
