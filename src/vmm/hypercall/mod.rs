@@ -8,13 +8,13 @@ use axvcpu::AxVcpuAccessGuestState;
 
 use equation_defs::{GuestMappingType, InstanceType};
 use equation_defs::{get_pgcache_region_by_instance_id, get_scf_queue_buff_region_by_instance_id};
-use memory_addr::{MemoryAddr, is_aligned};
+use memory_addr::{MemoryAddr, align_up_4k, is_aligned};
 use page_table_multiarch::PageSize;
 
 use crate::libos::def::get_contents_from_shared_pages;
 use crate::libos::instance;
 use crate::libos::npt_mapping::GuestNestedMapping;
-use crate::vmm::{VCpuRef, VMRef};
+use crate::vmm::{VCpuRef, VM, VMRef};
 
 pub struct HyperCall {
     vcpu: VCpuRef,
@@ -70,6 +70,8 @@ impl HyperCall {
         match self.code {
             HyperCallCode::HypervisorDisable => self.hypervisor_disable(),
             HyperCallCode::HyperVisorDebug => self.debug(),
+            HyperCallCode::CreateVM => self.create_vm(self.args[0] as usize),
+            HyperCallCode::BootVM => self.boot_vm(self.args[0] as usize),
             HyperCallCode::HCreateInstance => self.create_instance(
                 self.args[0].into(),
                 self.args[1].into(),
@@ -79,7 +81,8 @@ impl HyperCall {
                 self.args[5] as usize,
             ),
             _ => {
-                unimplemented!()
+                error!("Privileged hypercall {:?} not implemented", self.code);
+                Err(ax_err_type!(InvalidInput, "Hypercall not implemented"))
             }
         }
     }
@@ -102,7 +105,8 @@ impl HyperCall {
                 self.args[4] as usize,
             ),
             _ => {
-                unimplemented!();
+                error!("Unprivileged hypercall {:?} not implemented", self.code);
+                Err(ax_err_type!(InvalidInput, "Hypercall not implemented"))
             }
         }
     }
@@ -133,6 +137,179 @@ impl HyperCall {
         crate::hal::disable_virtualization(self.vcpu.clone(), 0)?;
 
         unreachable!("HypervisorDisable should not reach here");
+    }
+
+    fn create_vm(&self, arg_base_gpa: usize) -> HyperCallResult {
+        use axhvc::AxHVCCreateVMArg;
+        use axvm::config::{AxVMConfig, AxVMCrateConfig};
+        use page_table_multiarch::PagingHandler;
+        use std::os::arceos::modules::axhal::paging::PagingHandlerImpl;
+
+        use crate::vmm::vm_list::push_vm;
+
+        let arg_base_hpa = self
+            .vm
+            .guest_phys_to_host_phys(GuestPhysAddr::from_usize(arg_base_gpa))
+            .ok_or_else(|| {
+                warn!(
+                    "Failed to convert guest physical address {:#x} to host physical address",
+                    arg_base_gpa
+                );
+                ax_err_type!(InvalidData, "Invalid guest physical address")
+            })?
+            .0;
+
+        let arg_base_hva = PagingHandlerImpl::phys_to_virt(arg_base_hpa);
+
+        let vm_create_arg = unsafe { arg_base_hva.as_mut_ptr_of::<AxHVCCreateVMArg>().as_mut() }
+            .ok_or_else(|| {
+                error!(
+                    "Failed to get mutable reference to AxHVCCreateVMArg at HVA {:#x}",
+                    arg_base_hva
+                );
+                ax_err_type!(InvalidData, "Invalid VM create argument")
+            })?;
+
+        info!("Create VM with arg: {:#x?}", vm_create_arg);
+
+        let config_file = self.vm.read_from_guest_of_slice::<u8>(
+            GuestPhysAddr::from_usize(vm_create_arg.cfg_file_gpa as usize),
+            vm_create_arg.cfg_file_size as usize,
+        )?;
+
+        let config_file_str = core::str::from_utf8(&config_file).map_err(|e| {
+            warn!("Failed to parse VM config file as UTF-8: {:?}", e);
+            ax_err_type!(InvalidData, "Invalid VM config file")
+        })?;
+
+        let vm_create_config =
+            AxVMCrateConfig::from_toml(config_file_str).expect("Failed to resolve VM config");
+
+        info!("VM Create Config: {:#x?}", vm_create_config);
+
+        let vm_config = AxVMConfig::from(vm_create_config.clone());
+
+        info!("Creating VM [{}] {:#x?}", vm_config.id(), vm_config);
+
+        let vm = VM::new(vm_config).expect("Failed to create VM");
+        push_vm(vm.clone());
+
+        info!(
+            "VM[{}] created success, setup EPT mapping for image loading",
+            vm.id()
+        );
+
+        // Setup EPT mapping for loading kernel, bios and ramdisk.
+        let kernel_image_gpa_base =
+            GuestPhysAddr::from_usize(vm_create_config.kernel.kernel_load_addr as usize);
+        let kernel_load_hpa_pairs = vm.translate_guest_memory_range(
+            kernel_image_gpa_base,
+            vm_create_arg.kernel_image_size as usize,
+        )?;
+
+        let host_kernel_img_load_gpa_base = GuestPhysAddr::from(kernel_load_hpa_pairs[0].0);
+        let mut gpa_base = host_kernel_img_load_gpa_base;
+        for (hpa_base, size) in &kernel_load_hpa_pairs {
+            warn!(
+                "Mapping kernel image region: gpa {:#x} -> hpa {:#x}, size {:#x}",
+                gpa_base.as_usize(),
+                hpa_base.as_usize(),
+                *size
+            );
+            self.vm.map_region(
+                gpa_base,
+                *hpa_base,
+                align_up_4k(*size),
+                MappingFlags::READ | MappingFlags::WRITE,
+                true, // Allow huge pages
+            )?;
+            gpa_base = gpa_base.add(*size);
+        }
+
+        let host_bios_img_load_gpa_base =
+            if let Some(bios_load_addr) = vm_create_config.kernel.bios_load_addr {
+                let bios_load_gpa_base = GuestPhysAddr::from_usize(bios_load_addr);
+                let bios_load_hpa_pairs = vm.translate_guest_memory_range(
+                    bios_load_gpa_base,
+                    vm_create_arg.bios_image_size as usize,
+                )?;
+
+                if bios_load_hpa_pairs.is_empty() {
+                    return ax_err!(InvalidInput, "No BIOS image mapping found");
+                }
+
+                let host_bios_img_load_gpa_base = GuestPhysAddr::from(bios_load_hpa_pairs[0].0);
+                let mut gpa_base = host_bios_img_load_gpa_base;
+                for (hpa_base, size) in &bios_load_hpa_pairs {
+                    warn!(
+                        "Mapping bios image region: gpa {:#x} -> hpa {:#x}, size {:#x}",
+                        gpa_base.as_usize(),
+                        hpa_base.as_usize(),
+                        *size
+                    );
+                    self.vm.map_region(
+                        gpa_base,
+                        *hpa_base,
+                        align_up_4k(*size),
+                        MappingFlags::READ | MappingFlags::WRITE,
+                        true, // Allow huge pages
+                    )?;
+                    gpa_base = gpa_base.add(*size);
+                }
+                host_bios_img_load_gpa_base
+            } else {
+                GuestPhysAddr::from_usize(0)
+            };
+
+        let host_ramdisk_img_load_gpa_base = if let Some(ramdisk_load_addr) =
+            vm_create_config.kernel.ramdisk_load_addr
+        {
+            let ramdisk_load_gpa_base = GuestPhysAddr::from_usize(ramdisk_load_addr);
+
+            let ramdisk_load_hpa_pairs = vm.translate_guest_memory_range(
+                ramdisk_load_gpa_base,
+                vm_create_arg.ramdisk_image_size as usize,
+            )?;
+
+            let host_ramdisk_img_load_gpa_base = GuestPhysAddr::from(ramdisk_load_hpa_pairs[0].0);
+            let mut gpa_base = host_ramdisk_img_load_gpa_base;
+            for (hpa_base, size) in &ramdisk_load_hpa_pairs {
+                warn!(
+                    "Mapping ramdisk image region: gpa {:#x} -> hpa {:#x}, size {:#x}",
+                    gpa_base.as_usize(),
+                    hpa_base.as_usize(),
+                    *size
+                );
+                self.vm.map_region(
+                    GuestPhysAddr::from_usize(hpa_base.as_usize()),
+                    *hpa_base,
+                    align_up_4k(*size),
+                    MappingFlags::READ | MappingFlags::WRITE,
+                    true, // Allow huge pages
+                )?;
+                gpa_base = gpa_base.add(*size);
+            }
+            host_ramdisk_img_load_gpa_base
+        } else {
+            GuestPhysAddr::from_usize(0)
+        };
+
+        vm_create_arg.vm_id = vm.id() as u64;
+        vm_create_arg.kernel_load_gpa = host_kernel_img_load_gpa_base.as_usize() as u64;
+        vm_create_arg.bios_load_gpa = host_bios_img_load_gpa_base.as_usize() as u64;
+        vm_create_arg.ramdisk_load_gpa = host_ramdisk_img_load_gpa_base.as_usize() as u64;
+
+        warn!("VM Create Arg after setup: {:#x?}", vm_create_arg);
+
+        info!("VM[{}] created success", vm.id());
+
+        Ok(vm.id())
+    }
+
+    fn boot_vm(&self, vm_id: usize) -> HyperCallResult {
+        crate::vmm::boot_vm(vm_id)?;
+
+        Ok(0)
     }
 
     fn debug(&self) -> HyperCallResult {

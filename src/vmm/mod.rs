@@ -14,6 +14,8 @@ use std::os::arceos::api::task::{self, AxWaitQueueHandle};
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering;
 
+use axerrno::{AxResult, ax_err_type};
+
 use crate::hal::{AxVCpuHalImpl, AxVMHalImpl};
 
 #[cfg(feature = "irq")]
@@ -59,6 +61,28 @@ pub fn start() {
 
     // Do not exit until all VMs are stopped.
     task::ax_wait_queue_wait_until(&VMM, || RUNNING_VM_COUNT.load(Ordering::Acquire) == 0, None);
+}
+
+pub fn boot_vm(vm_id: usize) -> AxResult {
+    let vm = vm_list::get_vm_by_id(vm_id).ok_or_else(|| {
+        warn!("VM with ID {} not found", vm_id);
+        ax_err_type!(InvalidInput, "VM not found")
+    })?;
+
+    // First, setup VCPUs for the VM.
+    vcpus::setup_vm_cpu(vm.clone());
+
+    info!("Booting VM [{}]", vm.id());
+
+    vm.boot()
+        .inspect(|_| {
+            vcpus::boot_vm_cpu(&vm);
+            RUNNING_VM_COUNT.fetch_add(1, Ordering::Release);
+            info!("VM[{}] boot success", vm.id());
+        })
+        .inspect_err(|err| {
+            warn!("VM[{}] boot failed, error {:?}", vm.id(), err);
+        })
 }
 
 use std::os::arceos::modules::axtask;
