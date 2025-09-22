@@ -4,7 +4,7 @@ name = "axplat-aarch64-generic"
 version = "0.1.0"
 
 [dependencies]
-axplat-aarch64-dyn = {git = "https://github.com/arceos-hypervisor/axplat-aarch64-dyn", tag = "v0.1.5", features = ["irq", "smp", "hv"]}
+axplat-aarch64-dyn = {git = "https://github.com/arceos-hypervisor/axplat-aarch64-dyn", tag = "v0.1.6", features = ["irq", "smp", "hv"]}
 
 [build-dependencies]
 serde = {version = "1.0", features = ["derive"]}
