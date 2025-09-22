@@ -47,6 +47,7 @@ pub fn get_developer_provided_dtb(vm_cfg: &AxVMConfig, crate_config: &AxVMCrateC
                 .find(|&v| v.id == vm_cfg.id())?;
 
             if let Some(dtb) = vm_imags.dtb {
+                info!("DTB file in memory, size: {:x}", dtb.len());
                 return Some(dtb.to_vec());
             }
         },

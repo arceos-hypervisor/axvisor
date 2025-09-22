@@ -191,7 +191,6 @@ mod fs {
     use std::{fs::File, vec::Vec};
     use axerrno::{AxResult, ax_err, ax_err_type};
     use crate::hal::CacheOp;
-    use std::io::{BufReader, Read};
     use super::*;
 
     pub fn kernal_read(config: &AxVMCrateConfig, read_size: usize) -> AxResult<Vec<u8>> {
@@ -251,34 +250,23 @@ mod fs {
             }
         };
         // Load DTB image if needed.
-        if let Some(dtb_path) = &loader.config.kernel.dtb_path {
-            let (dtb_file, dtb_size) = open_image_file(dtb_path)?;
-            info!("DTB file size {}", dtb_size);
-
-            let mut file = BufReader::new(dtb_file);
-            let mut dtb_buffer = vec![0; dtb_size];
-
-            file.read_exact(&mut dtb_buffer).map_err(|err| {
-                ax_err_type!(
-                    Io,
-                    format!("Failed in reading from file {}, err {:?}", dtb_path, err)
-                )
-            })?;
-
-            let dtb_addr = loader.dtb_load_gpa.unwrap();
-
-            info!(
+        let vm_config = axvm::config::AxVMConfig::from(loader.config.clone());
+        if let Some(dtb_arc) = get_vm_dtb_arc(&vm_config) {
+            let dtb_slice: &[u8] = &*dtb_arc;
+            debug!(
                 "DTB buffer addr: {:x}, size: {:#}",
-                dtb_addr,
-                Byte::from(dtb_size)
+                loader.dtb_load_gpa.unwrap(),
+                Byte::from(dtb_slice.len())
             );
+
             update_fdt(
-                dtb_addr,
-                NonNull::new(dtb_buffer.as_mut_ptr()).unwrap(),
-                dtb_size,
+                loader.dtb_load_gpa.unwrap(),
+                NonNull::new(dtb_slice.as_ptr() as *mut u8).unwrap(),
+                dtb_slice.len(),
                 loader.vm.clone(),
             );
-        };
+        }
+
         Ok(())
     }
 
