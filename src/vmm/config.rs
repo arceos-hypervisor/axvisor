@@ -22,6 +22,7 @@ pub static GENERATED_DTB_CACHE: LazyInit<Mutex<BTreeMap<usize, Arc<[u8]>>>> = La
 #[allow(clippy::module_inception)]
 pub mod config {
     use alloc::vec::Vec;
+    use alloc::string::String;
 
     /// Default static VM configs. Used when no VM config is provided.
     #[allow(dead_code)]
@@ -34,6 +35,39 @@ pub mod config {
             #[cfg(target_arch = "riscv64")]
             core::include_str!("../../configs/vms/nimbos-riscv64-qemu-smp1.toml"),
         ]
+    }
+
+    /// Read VM configs from filesystem
+    #[cfg(feature = "fs")]
+    pub fn filesystem_vm_configs() -> Vec<String> {
+        use axstd::fs;
+        
+        // Try to read config files from a predefined directory
+        let config_dir = "configs/vms";
+        let mut configs = Vec::new();
+        
+        if let Ok(entries) = fs::read_dir(config_dir) {
+            for entry in entries {
+                if let Ok(entry) = entry {
+                    let path = entry.path();
+                    // Check if the file has a .toml extension
+                    let path_str = path.as_str();
+                    if path_str.ends_with(".toml") {
+                        if let Ok(content) = fs::read_to_string(path_str) {
+                            configs.push(content);
+                        }
+                    }
+                }
+            }
+        }
+        
+        configs
+    }
+    
+    /// Fallback function for when "fs" feature is not enabled
+    #[cfg(not(feature = "fs"))]
+    pub fn filesystem_vm_configs() -> Vec<String> {
+        Vec::new()
     }
 
     include!(concat!(env!("OUT_DIR"), "/vm_configs.rs"));
@@ -91,11 +125,19 @@ pub fn get_vm_dtb_arc(vm_cfg: &AxVMConfig) -> Option<Arc<[u8]>> {
 pub fn init_guest_vms() {
     GENERATED_DTB_CACHE.init_once(Mutex::new(BTreeMap::new()));
 
-    let gvm_raw_configs = config::static_vm_configs();
+    // First try to get configs from filesystem if fs feature is enabled
+    let mut gvm_raw_configs = config::filesystem_vm_configs();
+    
+    // If no filesystem configs found, fallback to static configs
+    if gvm_raw_configs.is_empty() {
+        let static_configs = config::static_vm_configs();
+        // Convert static configs to String type
+        gvm_raw_configs.extend(static_configs.into_iter().map(|s| s.into()));
+    }
 
     for raw_cfg_str in gvm_raw_configs {
         let vm_create_config =
-            AxVMCrateConfig::from_toml(raw_cfg_str).expect("Failed to resolve VM config");
+            AxVMCrateConfig::from_toml(&raw_cfg_str).expect("Failed to resolve VM config");
 
         if let Some(linux) = super::images::get_image_header(&vm_create_config) {
             debug!(
