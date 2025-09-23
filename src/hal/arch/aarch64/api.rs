@@ -9,7 +9,7 @@ mod arch_api_impl {
     }
 
     extern fn read_vgicd_typer() -> u32 {
-        let mut gic = rdrive::get_one::<rdrive::driver::Intc>()
+        let mut gic = rdrive::get_one::<rdif_intc::Intc>()
             .expect("Failed to get GIC driver")
             .lock()
             .unwrap();
@@ -27,7 +27,7 @@ mod arch_api_impl {
     extern fn read_vgicd_iidr() -> u32 {
         // use axstd::os::arceos::modules::axhal::irq::MyVgic;
         // MyVgic::get_gicd().lock().get_iidr()
-        let mut gic = rdrive::get_one::<rdrive::driver::Intc>()
+        let mut gic = rdrive::get_one::<rdif_intc::Intc>()
             .expect("Failed to get GIC driver")
             .lock()
             .unwrap();
@@ -44,7 +44,7 @@ mod arch_api_impl {
     }
 
     extern fn get_host_gicd_base() -> memory_addr::PhysAddr {
-        let mut gic = rdrive::get_one::<rdrive::driver::Intc>()
+        let mut gic = rdrive::get_one::<rdif_intc::Intc>()
             .expect("Failed to get GIC driver")
             .lock()
             .unwrap();
@@ -62,7 +62,7 @@ mod arch_api_impl {
     }
 
     extern fn get_host_gicr_base() -> memory_addr::PhysAddr {
-        let mut gic = rdrive::get_one::<rdrive::driver::Intc>()
+        let mut gic = rdrive::get_one::<rdif_intc::Intc>()
             .expect("Failed to get GIC driver")
             .lock()
             .unwrap();

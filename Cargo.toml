@@ -28,7 +28,7 @@ spin = "0.9"
 timer_list = "0.1.0"
 
 # System dependent modules provided by ArceOS.
-axstd = {git = "https://github.com/arceos-hypervisor/arceos.git", branch = "hypervisor", features = [
+axstd = {git = "https://github.com/arceos-hypervisor/arceos.git", branch = "hv-merge", features = [
   "alloc-level-1",
   "paging",
   "irq",
@@ -52,7 +52,8 @@ memory_addr = "0.4"
 page_table_entry = {version = "0.5", features = ["arm-el2"]}
 page_table_multiarch = "0.5"
 percpu = {version = "0.2", features = ["arm-el2"]}
-rdrive = "0.16"
+rdrive = "0.18"
+rdif-intc = "0.12"
 
 vm-fdt = {git = "https://github.com/bullhh/vm-fdt.git", default-features = false, features = ["alloc"]}
 

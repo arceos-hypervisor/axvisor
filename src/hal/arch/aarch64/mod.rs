@@ -6,7 +6,7 @@ pub mod cache;
 pub fn inject_interrupt(irq: usize) {
     debug!("Injecting virtual interrupt: {}", irq);
 
-    let mut gic = rdrive::get_one::<rdrive::driver::Intc>()
+    let mut gic = rdrive::get_one::<rdif_intc::Intc>()
         .expect("Failed to get GIC driver")
         .lock()
         .unwrap();
