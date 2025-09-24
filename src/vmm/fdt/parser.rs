@@ -56,6 +56,7 @@ pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt, crate_config: &AxVM
         .filter_map(|cpu_node| {
             if let Some(mut cpu_reg) = cpu_node.reg() {
                 if let Some(r) = cpu_reg.next() {
+                    info!("CPU node: {}, phys_cpu_id: 0x{:x}", cpu_node.name(), r.address);
                     Some((cpu_node.name().to_string(), r.address as usize))
                 } else {
                     None
@@ -65,7 +66,6 @@ pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt, crate_config: &AxVM
             }
         })
         .collect();
-    info!("cpu_nodes_info: {:?}", cpu_nodes_info);
     // Create mapping from phys_cpu_id to physical CPU index
     // Collect all unique CPU addresses, maintaining the order of appearance in the device tree
     let mut unique_cpu_addresses = Vec::new();
@@ -299,7 +299,7 @@ pub fn parse_vm_interrupt(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
                 trace!("node: {}, intr parent: {}", name, parent.node.name());
                 if let Some(phandle) = parent.node.phandle() {
                     if phandle.as_usize() != GIC_PHANDLE {
-                        warn!(
+                        debug!(
                             "node: {}, intr parent: {}, phandle: 0x{:x} is not GIC!",
                             name,
                             parent.node.name(),
@@ -325,7 +325,7 @@ pub fn parse_vm_interrupt(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
                             if v == 0 {
                                 trace!("node: {}, GIC_SPI", name);
                             } else {
-                                warn!(
+                                debug!(
                                     "node: {}, intr type: {}, not GIC_SPI, not supported!",
                                     name, v
                                 );

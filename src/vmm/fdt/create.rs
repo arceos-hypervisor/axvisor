@@ -236,6 +236,7 @@ fn add_memory_node(new_memory: &[VMMemoryRegion], new_fdt: &mut FdtWriter) {
         new_value.push((size >> 32) as u32);
         new_value.push((size & 0xFFFFFFFF) as u32);
     }
+    info!("Adding memory node with value: 0x{:x?}", new_value);
     new_fdt
         .property_array_u32("reg", new_value.as_ref())
         .unwrap();
@@ -279,7 +280,7 @@ pub fn update_fdt(dest_addr: GuestPhysAddr, fdt_src: NonNull<u8>, dtb_size: usiz
         // add memory node
         if previous_node_level == 1 {
             let memory_regions = vm.memory_regions();
-            info!("Adding memory node with regions: {:?}", memory_regions);
+            debug!("Adding memory node with regions: {:?}", memory_regions);
             let memory_node = new_fdt.begin_node("memory").unwrap();
             add_memory_node(&memory_regions, &mut new_fdt);
             new_fdt.end_node(memory_node).unwrap();

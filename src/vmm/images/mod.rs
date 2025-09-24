@@ -94,7 +94,7 @@ impl ImageLoader {
     /// Load VM images from memory
     /// into the guest VM's memory space based on the VM configuration.
     fn load_vm_images_from_memory(&self) -> AxResult {
-        info!("Loading VM[{}] images from memory", self.config.base.id);
+        trace!("Loading VM[{}] images from memory", self.config.base.id);
 
         let vm_imags = config::get_memory_images()
             .iter()
