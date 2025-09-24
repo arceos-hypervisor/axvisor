@@ -56,3 +56,9 @@
 	path = deps/jailhouse-equation
 	url = https://github.com/EquationOS/jailhouse-equation.git
 	branch = equation
+[submodule "crates/axdevice"]
+	path = crates/axdevice
+	url = https://github.com/arceos-hypervisor/axdevice.git
+[submodule "crates/axvirtpci"]
+	path = crates/axvirtpci
+	url = https://github.com/arceos-hypervisor/axvirtpci.git
