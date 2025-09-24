@@ -8,7 +8,7 @@ use axvcpu::AxVcpuAccessGuestState;
 
 use equation_defs::{GuestMappingType, InstanceType};
 use equation_defs::{get_pgcache_region_by_instance_id, get_scf_queue_buff_region_by_instance_id};
-use memory_addr::{MemoryAddr, align_up_4k, is_aligned};
+use memory_addr::{MemoryAddr, is_aligned};
 use page_table_multiarch::PageSize;
 
 use crate::libos::def::get_contents_from_shared_pages;
@@ -210,16 +210,20 @@ impl HyperCall {
         let host_kernel_img_load_gpa_base = GuestPhysAddr::from(kernel_load_hpa_pairs[0].0);
         let mut gpa_base = host_kernel_img_load_gpa_base;
         for (hpa_base, size) in &kernel_load_hpa_pairs {
+            let gpa_base_aligned = gpa_base.align_down_4k();
+            let hpa_base_aligned = hpa_base.align_down_4k();
+            let gpa_end = gpa_base.add(*size);
+
+            let gpa_end_aligned = gpa_end.align_up_4k();
+            let aligned_size = gpa_end_aligned.as_usize() - gpa_base_aligned.as_usize();
             warn!(
-                "Mapping kernel image region: gpa {:#x} -> hpa {:#x}, size {:#x}",
-                gpa_base.as_usize(),
-                hpa_base.as_usize(),
-                *size
+                "Mapping kernel image region: gpa {:?} -> hpa {:?}, size {:#x}",
+                gpa_base_aligned, hpa_base_aligned, aligned_size
             );
             self.vm.map_region(
-                gpa_base,
-                *hpa_base,
-                align_up_4k(*size),
+                gpa_base_aligned,
+                hpa_base_aligned,
+                aligned_size,
                 MappingFlags::READ | MappingFlags::WRITE,
                 true, // Allow huge pages
             )?;
@@ -242,15 +246,26 @@ impl HyperCall {
                 let mut gpa_base = host_bios_img_load_gpa_base;
                 for (hpa_base, size) in &bios_load_hpa_pairs {
                     warn!(
-                        "Mapping bios image region: gpa {:#x} -> hpa {:#x}, size {:#x}",
-                        gpa_base.as_usize(),
-                        hpa_base.as_usize(),
-                        *size
+                        "Mapping bios image region: gpa {:?} -> hpa {:?}, size {:#x}",
+                        gpa_base, hpa_base, *size
+                    );
+
+                    let gpa_base_aligned = gpa_base.align_down_4k();
+                    let hpa_base_aligned = hpa_base.align_down_4k();
+
+                    let gpa_end = gpa_base.add(*size);
+
+                    let gpa_end_aligned = gpa_end.align_up_4k();
+                    let aligned_size = gpa_end_aligned.as_usize() - gpa_base_aligned.as_usize();
+
+                    warn!(
+                        "Mapping bios image region aligned: gpa {:?} -> hpa {:?}, size {:#x}",
+                        gpa_base_aligned, hpa_base_aligned, aligned_size
                     );
                     self.vm.map_region(
-                        gpa_base,
-                        *hpa_base,
-                        align_up_4k(*size),
+                        gpa_base_aligned,
+                        hpa_base_aligned,
+                        aligned_size,
                         MappingFlags::READ | MappingFlags::WRITE,
                         true, // Allow huge pages
                     )?;
@@ -274,16 +289,20 @@ impl HyperCall {
             let host_ramdisk_img_load_gpa_base = GuestPhysAddr::from(ramdisk_load_hpa_pairs[0].0);
             let mut gpa_base = host_ramdisk_img_load_gpa_base;
             for (hpa_base, size) in &ramdisk_load_hpa_pairs {
+                let gpa_base_aligned = gpa_base.align_down_4k();
+                let hpa_base_aligned = hpa_base.align_down_4k();
+                let gpa_end = gpa_base.add(*size);
+
+                let gpa_end_aligned = gpa_end.align_up_4k();
+                let aligned_size = gpa_end_aligned.as_usize() - gpa_base_aligned.as_usize();
                 warn!(
-                    "Mapping ramdisk image region: gpa {:#x} -> hpa {:#x}, size {:#x}",
-                    gpa_base.as_usize(),
-                    hpa_base.as_usize(),
-                    *size
+                    "Mapping ramdisk image region: gpa {:?} -> hpa {:?}, size {:#x}",
+                    gpa_base_aligned, hpa_base_aligned, aligned_size
                 );
                 self.vm.map_region(
-                    GuestPhysAddr::from_usize(hpa_base.as_usize()),
-                    *hpa_base,
-                    align_up_4k(*size),
+                    gpa_base_aligned,
+                    hpa_base_aligned,
+                    aligned_size,
                     MappingFlags::READ | MappingFlags::WRITE,
                     true, // Allow huge pages
                 )?;
