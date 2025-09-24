@@ -142,10 +142,10 @@ checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
 [[package]]
 name = "arceos_api"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hv-merge#98164ee48043fc0b6df70784a80d8d1695bec955"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor#f2a2ec32011065116946ede94ed5ea11697230bc"
 dependencies = [
  "axalloc",
- "axconfig 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?branch=hv-merge)",
+ "axconfig 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor)",
  "axdriver",
  "axerrno",
  "axfeat",
@@ -303,7 +303,7 @@ dependencies = [
 [[package]]
 name = "axalloc"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hv-merge#98164ee48043fc0b6df70784a80d8d1695bec955"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor#f2a2ec32011065116946ede94ed5ea11697230bc"
 dependencies = [
  "allocator",
  "axerrno",
@@ -316,7 +316,7 @@ dependencies = [
 [[package]]
 name = "axconfig"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hv-merge#98164ee48043fc0b6df70784a80d8d1695bec955"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor#f2a2ec32011065116946ede94ed5ea11697230bc"
 dependencies = [
  "axconfig-macros",
 ]
@@ -408,11 +408,11 @@ dependencies = [
 [[package]]
 name = "axdriver"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hv-merge#98164ee48043fc0b6df70784a80d8d1695bec955"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor#f2a2ec32011065116946ede94ed5ea11697230bc"
 dependencies = [
  "arm-gic-driver",
  "axalloc",
- "axconfig 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?branch=hv-merge)",
+ "axconfig 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor)",
  "axdriver_base",
  "axdriver_block",
  "axdriver_pci",
@@ -476,7 +476,7 @@ dependencies = [
 [[package]]
 name = "axfeat"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hv-merge#98164ee48043fc0b6df70784a80d8d1695bec955"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor#f2a2ec32011065116946ede94ed5ea11697230bc"
 dependencies = [
  "axalloc",
  "axdriver",
@@ -492,7 +492,7 @@ dependencies = [
 [[package]]
 name = "axfs"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hv-merge#98164ee48043fc0b6df70784a80d8d1695bec955"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor#f2a2ec32011065116946ede94ed5ea11697230bc"
 dependencies = [
  "axdriver",
  "axdriver_block",
@@ -546,11 +546,11 @@ dependencies = [
 [[package]]
 name = "axhal"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hv-merge#98164ee48043fc0b6df70784a80d8d1695bec955"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor#f2a2ec32011065116946ede94ed5ea11697230bc"
 dependencies = [
  "aarch64-cpu",
  "axalloc",
- "axconfig 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?branch=hv-merge)",
+ "axconfig 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor)",
  "axcpu",
  "axlog",
  "axplat 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -590,7 +590,7 @@ dependencies = [
 [[package]]
 name = "axlog"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hv-merge#98164ee48043fc0b6df70784a80d8d1695bec955"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor#f2a2ec32011065116946ede94ed5ea11697230bc"
 dependencies = [
  "cfg-if",
  "crate_interface",
@@ -601,10 +601,10 @@ dependencies = [
 [[package]]
 name = "axmm"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hv-merge#98164ee48043fc0b6df70784a80d8d1695bec955"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor#f2a2ec32011065116946ede94ed5ea11697230bc"
 dependencies = [
  "axalloc",
- "axconfig 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?branch=hv-merge)",
+ "axconfig 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor)",
  "axerrno",
  "axhal",
  "kspin",
@@ -617,7 +617,7 @@ dependencies = [
 [[package]]
 name = "axns"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hv-merge#98164ee48043fc0b6df70784a80d8d1695bec955"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor#f2a2ec32011065116946ede94ed5ea11697230bc"
 dependencies = [
  "crate_interface",
  "lazyinit",
@@ -832,10 +832,10 @@ dependencies = [
 [[package]]
 name = "axruntime"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hv-merge#98164ee48043fc0b6df70784a80d8d1695bec955"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor#f2a2ec32011065116946ede94ed5ea11697230bc"
 dependencies = [
  "axalloc",
- "axconfig 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?branch=hv-merge)",
+ "axconfig 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor)",
  "axdriver",
  "axerrno",
  "axfs",
@@ -862,7 +862,7 @@ dependencies = [
 [[package]]
 name = "axstd"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hv-merge#98164ee48043fc0b6df70784a80d8d1695bec955"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor#f2a2ec32011065116946ede94ed5ea11697230bc"
 dependencies = [
  "arceos_api",
  "axerrno",
@@ -875,7 +875,7 @@ dependencies = [
 [[package]]
 name = "axsync"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hv-merge#98164ee48043fc0b6df70784a80d8d1695bec955"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor#f2a2ec32011065116946ede94ed5ea11697230bc"
 dependencies = [
  "axtask",
  "kspin",
@@ -885,9 +885,9 @@ dependencies = [
 [[package]]
 name = "axtask"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hv-merge#98164ee48043fc0b6df70784a80d8d1695bec955"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor#f2a2ec32011065116946ede94ed5ea11697230bc"
 dependencies = [
- "axconfig 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?branch=hv-merge)",
+ "axconfig 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor)",
  "axhal",
  "axsched",
  "cfg-if",
@@ -2202,9 +2202,9 @@ checksum = "17f03abfebdaaf0fad16790237a0348baf84886d3ade460db13bae59e614a180"
 
 [[package]]
 name = "libc"
-version = "0.2.175"
+version = "0.2.176"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a82ae493e598baaea5209805c49bbf2ea7de956d50d7da0da1164f9c6d28543"
+checksum = "58f929b4d672ea937a23a1ab494143d968337a5f47e56d0815df1e0890ddf174"
 
 [[package]]
 name = "libredox"
