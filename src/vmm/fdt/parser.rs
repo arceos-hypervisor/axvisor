@@ -30,8 +30,11 @@ pub fn get_host_fdt() -> &'static [u8] {
     fdt_bytes
 }
 
-pub fn setup_guest_fdt_from_vmm(fdt_bytes: &[u8], vm_cfg: &mut AxVMConfig, crate_config: &AxVMCrateConfig) {
-
+pub fn setup_guest_fdt_from_vmm(
+    fdt_bytes: &[u8],
+    vm_cfg: &mut AxVMConfig,
+    crate_config: &AxVMCrateConfig,
+) {
     let fdt = Fdt::from_bytes(fdt_bytes)
         .map_err(|e| format!("Failed to parse FDT: {:#?}", e))
         .expect("Failed to parse FDT");
@@ -48,7 +51,11 @@ pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt, crate_config: &AxVM
     let host_cpus: Vec<_> = fdt.find_nodes("/cpus/cpu").collect();
     info!("Found {} host CPU nodes", &host_cpus.len());
 
-    let phys_cpu_ids = crate_config.base.phys_cpu_ids.as_ref().expect("ERROR: phys_cpu_ids not found in config.toml");
+    let phys_cpu_ids = crate_config
+        .base
+        .phys_cpu_ids
+        .as_ref()
+        .expect("ERROR: phys_cpu_ids not found in config.toml");
 
     // Collect all CPU node information into Vec to avoid using iterators multiple times
     let cpu_nodes_info: Vec<_> = host_cpus
@@ -56,7 +63,11 @@ pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt, crate_config: &AxVM
         .filter_map(|cpu_node| {
             if let Some(mut cpu_reg) = cpu_node.reg() {
                 if let Some(r) = cpu_reg.next() {
-                    info!("CPU node: {}, phys_cpu_id: 0x{:x}", cpu_node.name(), r.address);
+                    info!(
+                        "CPU node: {}, phys_cpu_id: 0x{:x}",
+                        cpu_node.name(),
+                        r.address
+                    );
                     Some((cpu_node.name().to_string(), r.address as usize))
                 } else {
                     None
@@ -103,12 +114,16 @@ pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt, crate_config: &AxVM
             new_phys_cpu_sets.push(cpu_mask);
             debug!(
                 "vCPU {} with phys_cpu_id 0x{:x} mapped to CPU index {} (mask: 0x{:x})",
-                vm_cfg.id(), phys_cpu_id, cpu_index, cpu_mask
+                vm_cfg.id(),
+                phys_cpu_id,
+                cpu_index,
+                cpu_mask
             );
         } else {
             error!(
                 "vCPU {} with phys_cpu_id 0x{:x} not found in device tree!",
-                vm_cfg.id(), phys_cpu_id
+                vm_cfg.id(),
+                phys_cpu_id
             );
         }
     }
@@ -116,7 +131,9 @@ pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt, crate_config: &AxVM
     // Update phys_cpu_sets in VM configuration (if VM configuration supports setting)
     info!("Calculated phys_cpu_sets: {:?}", new_phys_cpu_sets);
 
-    vm_cfg.phys_cpu_ls_mut().set_guest_cpu_sets(new_phys_cpu_sets);
+    vm_cfg
+        .phys_cpu_ls_mut()
+        .set_guest_cpu_sets(new_phys_cpu_sets);
 
     debug!(
         "vcpu_mappings: {:?}",
@@ -163,12 +180,7 @@ fn add_device_address_config(
 }
 
 /// Add ranges property configuration for PCIe devices
-fn add_pci_ranges_config(
-    vm_cfg: &mut AxVMConfig,
-    node_name: &str,
-    range: &PciRange,
-    index: usize,
-) {
+fn add_pci_ranges_config(vm_cfg: &mut AxVMConfig, node_name: &str, range: &PciRange, index: usize) {
     let base_address = range.cpu_address as usize;
     let size = range.size as usize;
 
@@ -233,7 +245,7 @@ pub fn parse_passthrough_devices_address(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
                     }
                 }
             }
-            
+
             // Process PCIe device's reg property (ECAM space)
             if let Some(mut reg_iter) = node.reg() {
                 let mut index = 0;
@@ -241,7 +253,14 @@ pub fn parse_passthrough_devices_address(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
                     let base_address = reg.address as usize;
                     let size = reg.size.unwrap_or(0) as usize;
 
-                    add_device_address_config(vm_cfg, &node_name, base_address, size, index, Some("ecam"));
+                    add_device_address_config(
+                        vm_cfg,
+                        &node_name,
+                        base_address,
+                        size,
+                        index,
+                        Some("ecam"),
+                    );
                     index += 1;
                 }
             }
@@ -278,10 +297,10 @@ pub fn parse_vm_interrupt(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
 
     for node in fdt.all_nodes() {
         let name = node.name();
-        
+
         if name.starts_with("memory") {
             continue;
-        } 
+        }
         // Skip the interrupt controller, as we will use vGIC
         // TODO: filter with compatible property and parse its phandle from DT; maybe needs a second pass?
         else if name.starts_with("interrupt-controller")
@@ -357,7 +376,7 @@ pub fn parse_vm_interrupt(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
     });
 }
 
-pub fn update_provided_fdt(provided_dtb: &[u8], host_dtb: &[u8], crate_config: &AxVMCrateConfig) { 
+pub fn update_provided_fdt(provided_dtb: &[u8], host_dtb: &[u8], crate_config: &AxVMCrateConfig) {
     let provided_fdt = Fdt::from_bytes(provided_dtb)
         .expect("Failed to parse DTB image, perhaps the DTB is invalid or corrupted");
     let host_fdt = Fdt::from_bytes(host_dtb)

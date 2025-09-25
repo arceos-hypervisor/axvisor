@@ -3,13 +3,13 @@
 //! This module provides functionality for parsing and processing device tree blobs,
 //! including CPU configuration, passthrough device detection, and FDT generation.
 
+mod create;
 mod device;
 mod parser;
-mod create;
 mod test;
 
 // Re-export public functions
 pub use parser::*;
 // pub use test::print_fdt;
-pub use device::{build_node_path};
 pub use create::*;
+pub use device::build_node_path;

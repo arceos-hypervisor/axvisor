@@ -5,8 +5,8 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
+use axvm::config::AxVMConfig;
 use fdt_parser::{Fdt, Node};
-use axvm::config::{AxVMConfig};
 
 /// Return the collection of all passthrough devices in the configuration file and newly added devices found
 pub fn find_all_passthrough_devices(vm_cfg: &mut AxVMConfig, fdt: &Fdt) -> Vec<String> {
@@ -14,7 +14,7 @@ pub fn find_all_passthrough_devices(vm_cfg: &mut AxVMConfig, fdt: &Fdt) -> Vec<S
 
     // Pre-build node cache, store all nodes by path to improve lookup performance
     let node_cache: BTreeMap<String, Vec<Node>> = build_optimized_node_cache(fdt);
-    
+
     // Get the list of configured device names
     let initial_device_names: Vec<String> = vm_cfg
         .pass_through_devices()
@@ -43,10 +43,7 @@ pub fn find_all_passthrough_devices(vm_cfg: &mut AxVMConfig, fdt: &Fdt) -> Vec<S
 
         for descendant_path in descendant_paths {
             if !configured_device_names.contains(&descendant_path) {
-                trace!(
-                    "Found descendant device: {}",
-                    descendant_path
-                );
+                trace!("Found descendant device: {}", descendant_path);
                 configured_device_names.insert(descendant_path.clone());
 
                 additional_device_names.push(descendant_path.clone());
@@ -82,7 +79,11 @@ pub fn find_all_passthrough_devices(vm_cfg: &mut AxVMConfig, fdt: &Fdt) -> Vec<S
 
         // Find direct dependencies of the current device
         let dependencies = find_device_dependencies(&device_node_path, &phandle_map, &node_cache);
-        trace!("Found {} dependencies: {:?}", dependencies.len(), dependencies);
+        trace!(
+            "Found {} dependencies: {:?}",
+            dependencies.len(),
+            dependencies
+        );
         for dep_node_name in dependencies {
             // Check if dependency is already in configuration
             if !configured_device_names.contains(&dep_node_name) {
@@ -110,8 +111,7 @@ pub fn find_all_passthrough_devices(vm_cfg: &mut AxVMConfig, fdt: &Fdt) -> Vec<S
         .cloned()
         .collect();
     let mut all_excludes_devices = excluded_device_path.clone();
-    let mut process_excludeds: BTreeSet<String> =
-        excluded_device_path.iter().cloned().collect();
+    let mut process_excludeds: BTreeSet<String> = excluded_device_path.iter().cloned().collect();
 
     for device_path in &excluded_device_path {
         // Get all descendant node paths for this device
@@ -124,10 +124,7 @@ pub fn find_all_passthrough_devices(vm_cfg: &mut AxVMConfig, fdt: &Fdt) -> Vec<S
 
         for descendant_path in descendant_paths {
             if !process_excludeds.contains(&descendant_path) {
-                trace!(
-                    "Found descendant device: {}",
-                    descendant_path
-                );
+                trace!("Found descendant device: {}", descendant_path);
                 process_excludeds.insert(descendant_path.clone());
 
                 all_excludes_devices.push(descendant_path.clone());
@@ -145,9 +142,12 @@ pub fn find_all_passthrough_devices(vm_cfg: &mut AxVMConfig, fdt: &Fdt) -> Vec<S
 
     // Remove excluded devices from the final list
     if !all_excludes_devices.is_empty() {
-        info!("Removing {} excluded devices from the list", all_excludes_devices.len());
+        info!(
+            "Removing {} excluded devices from the list",
+            all_excludes_devices.len()
+        );
         let excluded_set: BTreeSet<String> = all_excludes_devices.into_iter().collect();
-        
+
         // Filter out excluded devices
         all_device_names.retain(|device_name| {
             let should_keep = !excluded_set.contains(device_name);
@@ -167,7 +167,7 @@ pub fn find_all_passthrough_devices(vm_cfg: &mut AxVMConfig, fdt: &Fdt) -> Vec<S
         final_device_count,
         final_device_count - initial_device_count
     );
-    
+
     // Print final device list
     for (i, device_name) in all_device_names.iter().enumerate() {
         trace!("Final passthrough device[{}]: {}", i, device_name);
@@ -184,7 +184,7 @@ pub fn build_node_path(all_nodes: &Vec<Node>, target_index: usize) -> String {
     for i in 0..=target_index {
         let node = &all_nodes[i];
         let level = node.level;
-        
+
         if level == 1 {
             path_stack.clear();
             if node.name() != "/" {
@@ -197,7 +197,7 @@ pub fn build_node_path(all_nodes: &Vec<Node>, target_index: usize) -> String {
             path_stack.push(node.name().to_string());
         }
     }
-    
+
     // Build the full path of the current node
     if path_stack.is_empty() || (path_stack.len() == 1 && path_stack[0] == "/") {
         "/".to_string()
@@ -210,9 +210,9 @@ pub fn build_node_path(all_nodes: &Vec<Node>, target_index: usize) -> String {
 /// Use level relationships to directly build paths, avoiding path conflicts for nodes with the same name
 pub fn build_optimized_node_cache<'a>(fdt: &'a Fdt) -> BTreeMap<String, Vec<Node<'a>>> {
     let mut node_cache: BTreeMap<String, Vec<Node<'a>>> = BTreeMap::new();
-    
+
     let all_nodes: Vec<Node> = fdt.all_nodes().collect();
-    
+
     for (index, node) in all_nodes.iter().enumerate() {
         let node_path = build_node_path(&all_nodes, index);
         if let Some(existing_nodes) = node_cache.get(&node_path) {
@@ -226,8 +226,11 @@ pub fn build_optimized_node_cache<'a>(fdt: &'a Fdt) -> BTreeMap<String, Vec<Node
                 );
             }
         }
-        
-        trace!("Adding node to cache: {} (level: {}, index: {})", node_path, node.level, index);
+
+        trace!(
+            "Adding node to cache: {} (level: {}, index: {})",
+            node_path, node.level, index
+        );
         node_cache
             .entry(node_path)
             .or_insert_with(Vec::new)
@@ -248,10 +251,10 @@ fn build_phandle_map(fdt: &Fdt) -> BTreeMap<u32, (String, BTreeMap<String, u32>)
     let mut phandle_map = BTreeMap::new();
 
     let all_nodes: Vec<Node> = fdt.all_nodes().collect();
-    
+
     for (index, node) in all_nodes.iter().enumerate() {
         let node_path = build_node_path(&all_nodes, index);
-        
+
         // Collect node properties
         let mut phandle = None;
         let mut cells_map = BTreeMap::new();
@@ -463,7 +466,7 @@ impl DevicePropertyClassifier {
 fn find_device_dependencies(
     device_node_path: &str,
     phandle_map: &BTreeMap<u32, (String, BTreeMap<String, u32>)>,
-    node_cache: &BTreeMap<String, Vec<Node>>,  // Add node_cache parameter
+    node_cache: &BTreeMap<String, Vec<Node>>, // Add node_cache parameter
 ) -> Vec<String> {
     let mut dependencies = Vec::new();
 
@@ -474,7 +477,8 @@ fn find_device_dependencies(
             for prop in node.propertys() {
                 // Determine if it's a phandle property that needs to be processed
                 if DevicePropertyClassifier::is_phandle_property(prop.name) {
-                    let mut prop_deps = parse_phandle_property(prop.raw_value(), prop.name, phandle_map);
+                    let mut prop_deps =
+                        parse_phandle_property(prop.raw_value(), prop.name, phandle_map);
                     dependencies.append(&mut prop_deps);
                 }
             }
@@ -486,16 +490,19 @@ fn find_device_dependencies(
 
 /// Get all descendant nodes based on parent node path (including child nodes, grandchild nodes, etc.)
 /// Find all descendant nodes by looking up nodes with parent node path as prefix in node_cache
-fn get_descendant_nodes_by_path<'a>(node_cache: &'a BTreeMap<String, Vec<Node<'a>>>, parent_path: &str) -> Vec<String> {
+fn get_descendant_nodes_by_path<'a>(
+    node_cache: &'a BTreeMap<String, Vec<Node<'a>>>,
+    parent_path: &str,
+) -> Vec<String> {
     let mut descendant_paths = Vec::new();
-    
+
     // Special handling if parent path is root path
     let search_prefix = if parent_path == "/" {
         "/".to_string()
     } else {
         parent_path.to_string() + "/"
     };
-    
+
     // Traverse node_cache, find all nodes with parent path as prefix
     for (path, _nodes) in node_cache {
         // Check if path has parent path as prefix (and is not the parent path itself)
@@ -504,7 +511,6 @@ fn get_descendant_nodes_by_path<'a>(node_cache: &'a BTreeMap<String, Vec<Node<'a
             descendant_paths.push(path.clone());
         }
     }
-    
+
     descendant_paths
 }
-

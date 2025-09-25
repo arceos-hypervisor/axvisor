@@ -6,63 +6,82 @@ use alloc::{
 use core::ptr::NonNull;
 
 use axaddrspace::GuestPhysAddr;
-use axvm::{
-    config::AxVMCrateConfig,
-    VMMemoryRegion,
-};
+use axvm::{VMMemoryRegion, config::AxVMCrateConfig};
 use fdt_parser::{Fdt, Node};
 use vm_fdt::{FdtWriter, FdtWriterNode};
 
-use crate::vmm::{fdt::test::{print_fdt, print_guest_fdt}, images::load_vm_image_from_memory, VMRef};
+use crate::vmm::{
+    VMRef,
+    fdt::test::{print_fdt, print_guest_fdt},
+    images::load_vm_image_from_memory,
+};
 
 /// Generate guest FDT and return DTB data
-/// 
+///
 /// # Parameters
 /// * `fdt` - Source FDT data
 /// * `passthrough_device_names` - Passthrough device name list
 /// * `crate_config` - VM creation configuration
-/// 
+///
 /// # Return Value
 /// Returns the generated DTB data
-pub fn crate_guest_fdt(fdt: &Fdt, passthrough_device_names: &Vec<String>, crate_config: &AxVMCrateConfig) -> Vec<u8> {
+pub fn crate_guest_fdt(
+    fdt: &Fdt,
+    passthrough_device_names: &Vec<String>,
+    crate_config: &AxVMCrateConfig,
+) -> Vec<u8> {
     let mut fdt_writer = FdtWriter::new().unwrap();
     // Track the level of the previously processed node for level change handling
     let mut previous_node_level = 0;
     // Maintain a stack of FDT nodes to correctly start and end nodes
     let mut node_stack: Vec<FdtWriterNode> = Vec::new();
-    let phys_cpu_ids = crate_config.base.phys_cpu_ids.clone().expect("ERROR: phys_cpu_ids is None");
+    let phys_cpu_ids = crate_config
+        .base
+        .phys_cpu_ids
+        .clone()
+        .expect("ERROR: phys_cpu_ids is None");
 
     let all_nodes: Vec<Node> = fdt.all_nodes().collect();
 
     for (index, node) in all_nodes.iter().enumerate() {
         let node_path = super::build_node_path(&all_nodes, index);
-        let node_action = determine_node_action(
-            node,
-            &node_path,
-            passthrough_device_names,
-        );
+        let node_action = determine_node_action(node, &node_path, passthrough_device_names);
 
         match node_action {
             NodeAction::RootNode => {
                 node_stack.push(fdt_writer.begin_node("").unwrap());
-            },
+            }
             NodeAction::CpuNode => {
                 let need = need_cpu_node(&phys_cpu_ids, node, &node_path);
                 if need {
-                    handle_node_level_change(&mut fdt_writer, &mut node_stack, node.level, previous_node_level);
+                    handle_node_level_change(
+                        &mut fdt_writer,
+                        &mut node_stack,
+                        node.level,
+                        previous_node_level,
+                    );
                     node_stack.push(fdt_writer.begin_node(node.name()).unwrap());
                 } else {
                     continue;
                 }
-            },
+            }
             NodeAction::Skip => {
                 continue;
-            },
+            }
             _ => {
-                trace!("Found exact passthrough device node: {}, path: {}", node.name(), node_path);
-                handle_node_level_change(&mut fdt_writer, &mut node_stack, node.level, previous_node_level);
+                trace!(
+                    "Found exact passthrough device node: {}, path: {}",
+                    node.name(),
+                    node_path
+                );
+                handle_node_level_change(
+                    &mut fdt_writer,
+                    &mut node_stack,
+                    node.level,
+                    previous_node_level,
+                );
                 node_stack.push(fdt_writer.begin_node(node.name()).unwrap());
-            },
+            }
         }
 
         previous_node_level = node.level;
@@ -78,7 +97,7 @@ pub fn crate_guest_fdt(fdt: &Fdt, passthrough_device_names: &Vec<String>, crate_
         previous_node_level -= 1;
         fdt_writer.end_node(node).unwrap();
     }
-    assert_eq!(previous_node_level , 0);
+    assert_eq!(previous_node_level, 0);
 
     let guest_fdt_bytes = fdt_writer.finish().unwrap();
 
@@ -125,16 +144,16 @@ fn determine_node_action(
     } else if node.name().starts_with("memory") {
         // Skip memory nodes, will add them later
         return NodeAction::Skip;
-    } else if node_path.starts_with("/cpus"){
+    } else if node_path.starts_with("/cpus") {
         return NodeAction::CpuNode;
     } else if passthrough_device_names.contains(&node_path.to_string()) {
         // Fully matched passthrough device node
         return NodeAction::IncludeAsPassthroughDevice;
-    } 
+    }
     // Check if the node is a descendant of a passthrough device (by path inclusion and level validation)
     else if is_descendant_of_passthrough_device(node_path, node.level, passthrough_device_names) {
         return NodeAction::IncludeAsChildNode;
-    } 
+    }
     // Check if the node is an ancestor of a passthrough device (by path inclusion and level validation)
     else if is_ancestor_of_passthrough_device(node_path, passthrough_device_names) {
         return NodeAction::IncludeAsAncestorNode;
@@ -146,17 +165,22 @@ fn determine_node_action(
 /// Determine if node is a descendant of passthrough device
 /// When node path contains a path from passthrough_device_names and is longer than it, it is its descendant node
 /// Also use node_level as validation condition
-fn is_descendant_of_passthrough_device(node_path: &str, node_level: usize, passthrough_device_names: &Vec<String>) -> bool {
+fn is_descendant_of_passthrough_device(
+    node_path: &str,
+    node_level: usize,
+    passthrough_device_names: &Vec<String>,
+) -> bool {
     for passthrough_path in passthrough_device_names {
         // Check if the current node is a descendant of a passthrough device
         if node_path.starts_with(passthrough_path) && node_path.len() > passthrough_path.len() {
             // Ensure it is a true descendant path (separated by /)
-            if passthrough_path == "/" || node_path.chars().nth(passthrough_path.len()) == Some('/') {
+            if passthrough_path == "/" || node_path.chars().nth(passthrough_path.len()) == Some('/')
+            {
                 // Use level relationship for validation: the level of a descendant node should be higher than its parent
                 // Note: The level of the root node is 1, its direct child node level is 2, and so on
                 let expected_parent_level = passthrough_path.matches('/').count();
                 let current_node_level = node_level;
-                
+
                 // If passthrough_path is the root node "/", then its child node level should be 2
                 // Otherwise, the child node level should be higher than the parent node level
                 if passthrough_path == "/" && current_node_level >= 2 {
@@ -187,7 +211,10 @@ fn handle_node_level_change(
 }
 
 /// Determine if node is an ancestor of passthrough device
-fn is_ancestor_of_passthrough_device(node_path: &str, passthrough_device_names: &Vec<String>) -> bool {
+fn is_ancestor_of_passthrough_device(
+    node_path: &str,
+    passthrough_device_names: &Vec<String>,
+) -> bool {
     for passthrough_path in passthrough_device_names {
         // Check if the current node is an ancestor of a passthrough device
         if passthrough_path.starts_with(&node_path) && passthrough_path.len() > node_path.len() {
@@ -202,22 +229,34 @@ fn is_ancestor_of_passthrough_device(node_path: &str, passthrough_device_names: 
 }
 
 /// Determine if CPU node is needed
-fn need_cpu_node(phys_cpu_ids: &Vec<usize>, node: &Node, node_path: &str) -> bool{ 
+fn need_cpu_node(phys_cpu_ids: &Vec<usize>, node: &Node, node_path: &str) -> bool {
     let mut should_include_node = false;
-    
+
     if !node_path.starts_with("/cpus/cpu@") {
         should_include_node = true;
     } else {
         if let Some(mut cpu_reg) = node.reg() {
             if let Some(reg_entry) = cpu_reg.next() {
                 let cpu_address = reg_entry.address as usize;
-                debug!("Checking CPU node {} with address 0x{:x}", node.name(), cpu_address);
+                debug!(
+                    "Checking CPU node {} with address 0x{:x}",
+                    node.name(),
+                    cpu_address
+                );
                 // Check if this CPU address is in the configured phys_cpu_ids
                 if phys_cpu_ids.contains(&cpu_address) {
                     should_include_node = true;
-                    debug!("CPU node {} with address 0x{:x} is in phys_cpu_ids, including in guest FDT", node.name(), cpu_address);
+                    debug!(
+                        "CPU node {} with address 0x{:x} is in phys_cpu_ids, including in guest FDT",
+                        node.name(),
+                        cpu_address
+                    );
                 } else {
-                    debug!("CPU node {} with address 0x{:x} is NOT in phys_cpu_ids, skipping", node.name(), cpu_address);
+                    debug!(
+                        "CPU node {} with address 0x{:x} is NOT in phys_cpu_ids, skipping",
+                        node.name(),
+                        cpu_address
+                    );
                 }
             }
         }
@@ -260,7 +299,12 @@ pub fn update_fdt(dest_addr: GuestPhysAddr, fdt_src: NonNull<u8>, dtb_size: usiz
             // Skip memory nodes, will add them later
             continue;
         } else {
-            handle_node_level_change(&mut new_fdt, &mut node_stack, node.level, previous_node_level);
+            handle_node_level_change(
+                &mut new_fdt,
+                &mut node_stack,
+                node.level,
+                previous_node_level,
+            );
             // Start new node
             node_stack.push(new_fdt.begin_node(node.name()).unwrap());
         }
@@ -286,7 +330,7 @@ pub fn update_fdt(dest_addr: GuestPhysAddr, fdt_src: NonNull<u8>, dtb_size: usiz
             new_fdt.end_node(memory_node).unwrap();
         }
     }
-    
+
     assert_eq!(previous_node_level, 0);
 
     info!("Updating FDT memory successfully");
@@ -296,19 +340,24 @@ pub fn update_fdt(dest_addr: GuestPhysAddr, fdt_src: NonNull<u8>, dtb_size: usiz
     // print_guest_fdt(new_fdt_bytes.as_slice());
 
     // Load the updated FDT into VM
-    load_vm_image_from_memory(&new_fdt_bytes, dest_addr, vm.clone()).expect("Failed to load VM images");
+    load_vm_image_from_memory(&new_fdt_bytes, dest_addr, vm.clone())
+        .expect("Failed to load VM images");
 }
 
-pub fn update_cpu_node(fdt: &Fdt, host_fdt: &Fdt, crate_config: &AxVMCrateConfig) -> Vec<u8>{ 
+pub fn update_cpu_node(fdt: &Fdt, host_fdt: &Fdt, crate_config: &AxVMCrateConfig) -> Vec<u8> {
     let mut new_fdt = FdtWriter::new().unwrap();
     let mut previous_node_level = 0;
     let mut node_stack: Vec<FdtWriterNode> = Vec::new();
-    let phys_cpu_ids = crate_config.base.phys_cpu_ids.clone().expect("ERROR: phys_cpu_ids is None");
+    let phys_cpu_ids = crate_config
+        .base
+        .phys_cpu_ids
+        .clone()
+        .expect("ERROR: phys_cpu_ids is None");
 
     // Collect all nodes from both FDTs
     let fdt_all_nodes: Vec<Node> = fdt.all_nodes().collect();
     let host_fdt_all_nodes: Vec<Node> = host_fdt.all_nodes().collect();
-    
+
     for (index, node) in fdt_all_nodes.iter().enumerate() {
         let node_path = super::build_node_path(&fdt_all_nodes, index);
 
@@ -319,7 +368,12 @@ pub fn update_cpu_node(fdt: &Fdt, host_fdt: &Fdt, crate_config: &AxVMCrateConfig
             continue;
         } else {
             // For all other nodes, include them from fdt as-is without filtering
-            handle_node_level_change(&mut new_fdt, &mut node_stack, node.level, previous_node_level);
+            handle_node_level_change(
+                &mut new_fdt,
+                &mut node_stack,
+                node.level,
+                previous_node_level,
+            );
             node_stack.push(new_fdt.begin_node(node.name()).unwrap());
         }
 
@@ -330,7 +384,7 @@ pub fn update_cpu_node(fdt: &Fdt, host_fdt: &Fdt, crate_config: &AxVMCrateConfig
             new_fdt.property(prop.name, prop.raw_value()).unwrap();
         }
     }
-    
+
     // Process all CPU nodes from host_fdt
     for (index, node) in host_fdt_all_nodes.iter().enumerate() {
         let node_path = super::build_node_path(&host_fdt_all_nodes, index);
@@ -339,14 +393,19 @@ pub fn update_cpu_node(fdt: &Fdt, host_fdt: &Fdt, crate_config: &AxVMCrateConfig
             // For CPU nodes, apply filtering based on host_fdt nodes
             let need = need_cpu_node(&phys_cpu_ids, node, &node_path);
             if need {
-                handle_node_level_change(&mut new_fdt, &mut node_stack, node.level, previous_node_level);
+                handle_node_level_change(
+                    &mut new_fdt,
+                    &mut node_stack,
+                    node.level,
+                    previous_node_level,
+                );
                 node_stack.push(new_fdt.begin_node(node.name()).unwrap());
-                
+
                 // Copy properties from host CPU node
                 for prop in node.propertys() {
                     new_fdt.property(prop.name, prop.raw_value()).unwrap();
                 }
-                
+
                 previous_node_level = node.level;
             }
         }
@@ -357,7 +416,7 @@ pub fn update_cpu_node(fdt: &Fdt, host_fdt: &Fdt, crate_config: &AxVMCrateConfig
         previous_node_level -= 1;
         new_fdt.end_node(node).unwrap();
     }
-    assert_eq!(previous_node_level , 0);
+    assert_eq!(previous_node_level, 0);
 
     let guest_fdt_bytes = new_fdt.finish().unwrap();
 

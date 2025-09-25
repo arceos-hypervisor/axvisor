@@ -1,15 +1,13 @@
-use core::alloc::Layout;
 use axaddrspace::GuestPhysAddr;
 use axvm::{
     VMMemoryRegion,
     config::{AxVMConfig, AxVMCrateConfig, VmMemMappingType},
 };
+use core::alloc::Layout;
 use fdt_parser::Fdt;
 use memory_addr::MemoryAddr;
 
-use crate::vmm::{
-    fdt::*, images::ImageLoader, vm_list::push_vm, VM
-};
+use crate::vmm::{VM, fdt::*, images::ImageLoader, vm_list::push_vm};
 
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
@@ -21,8 +19,8 @@ pub static GENERATED_DTB_CACHE: LazyInit<Mutex<BTreeMap<usize, Arc<[u8]>>>> = La
 
 #[allow(clippy::module_inception)]
 pub mod config {
-    use alloc::vec::Vec;
     use alloc::string::String;
+    use alloc::vec::Vec;
 
     /// Default static VM configs. Used when no VM config is provided.
     #[allow(dead_code)]
@@ -41,11 +39,11 @@ pub mod config {
     #[cfg(feature = "fs")]
     pub fn filesystem_vm_configs() -> Vec<String> {
         use axstd::fs;
-        
+
         // Try to read config files from a predefined directory
         let config_dir = "configs/vms";
         let mut configs = Vec::new();
-        
+
         if let Ok(entries) = fs::read_dir(config_dir) {
             for entry in entries {
                 if let Ok(entry) = entry {
@@ -60,10 +58,10 @@ pub mod config {
                 }
             }
         }
-        
+
         configs
     }
-    
+
     /// Fallback function for when "fs" feature is not enabled
     #[cfg(not(feature = "fs"))]
     pub fn filesystem_vm_configs() -> Vec<String> {
@@ -73,7 +71,10 @@ pub mod config {
     include!(concat!(env!("OUT_DIR"), "/vm_configs.rs"));
 }
 
-pub fn get_developer_provided_dtb(vm_cfg: &AxVMConfig, crate_config: &AxVMCrateConfig) -> Option<Vec<u8>> {
+pub fn get_developer_provided_dtb(
+    vm_cfg: &AxVMConfig,
+    crate_config: &AxVMCrateConfig,
+) -> Option<Vec<u8>> {
     match crate_config.kernel.image_location.as_deref() {
         Some("memory") => {
             let vm_imags = config::get_memory_images()
@@ -84,11 +85,11 @@ pub fn get_developer_provided_dtb(vm_cfg: &AxVMConfig, crate_config: &AxVMCrateC
                 info!("DTB file in memory, size: 0x{:x}", dtb.len());
                 return Some(dtb.to_vec());
             }
-        },
+        }
         #[cfg(feature = "fs")]
         Some("fs") => {
-            use std::io::{BufReader, Read};
             use axerrno::ax_err_type;
+            use std::io::{BufReader, Read};
             if let Some(dtb_path) = &crate_config.kernel.dtb_path {
                 let (dtb_file, dtb_size) = crate::vmm::images::open_image_file(&dtb_path).unwrap();
                 info!("DTB file in fs, size: 0x{:x}", dtb_size);
@@ -96,15 +97,17 @@ pub fn get_developer_provided_dtb(vm_cfg: &AxVMConfig, crate_config: &AxVMCrateC
                 let mut file = BufReader::new(dtb_file);
                 let mut dtb_buffer = vec![0; dtb_size];
 
-                file.read_exact(&mut dtb_buffer).map_err(|err| {
-                    ax_err_type!(
-                        Io,
-                        format!("Failed in reading from file {}, err {:?}", dtb_path, err)
-                    )
-                }).unwrap();
+                file.read_exact(&mut dtb_buffer)
+                    .map_err(|err| {
+                        ax_err_type!(
+                            Io,
+                            format!("Failed in reading from file {}, err {:?}", dtb_path, err)
+                        )
+                    })
+                    .unwrap();
                 return Some(dtb_buffer);
             }
-        },
+        }
         _ => unimplemented!(
             "Check your \"image_location\" in config.toml, \"memory\" and \"fs\" are supported,\n."
         ),
@@ -127,7 +130,7 @@ pub fn init_guest_vms() {
 
     // First try to get configs from filesystem if fs feature is enabled
     let mut gvm_raw_configs = config::filesystem_vm_configs();
-    
+
     // If no filesystem configs found, fallback to static configs
     if gvm_raw_configs.is_empty() {
         let static_configs = config::static_vm_configs();
