@@ -34,7 +34,6 @@ axstd = {git = "https://github.com/arceos-hypervisor/arceos.git", tag = "hv-0.3.
   "alloc-level-1",
   "paging",
   "irq",
-  "fs",
   "multitask",
   "smp", # "page-alloc-64g",
   "myplat",
