@@ -40,7 +40,7 @@
 [submodule "deps/axvisor-tools"]
 	path = deps/axvisor-tools
 	url = https://github.com/arceos-hypervisor/axvisor-tools.git
-	branch = boot_junction
+	branch = boot_linux
 [submodule "deps/jailhouse-equation"]
 	path = deps/jailhouse-equation
 	url = https://github.com/EquationOS/jailhouse-equation.git
