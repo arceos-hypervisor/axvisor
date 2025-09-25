@@ -1,5 +1,5 @@
 # linux kernel version
-KVER ?= $(shell uname -r)
+KVER ?= 6.8.0-59-generic
 KDIR = /lib/modules/$(KVER)/build
 NPROC ?= $(shell nproc)
 
@@ -7,13 +7,6 @@ BUILD_DIR = $(CURDIR)/build
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-# shim
-SHIM_DIR = $(CURDIR)/deps/shim
-SHIM_BIN = $(SHIM_DIR)/shim.bin
-
-shim:
-	$(info Building shim)
-	$(MAKE) PLATFORM=axvisor -C $(SHIM_DIR)
 # axcli
 AXCLI_DIR = $(CURDIR)/deps/axvisor-tools/axcli
 AXCLI_BIN = $(AXCLI_DIR)/target/release/axcli
@@ -46,6 +39,7 @@ guest_script: $(BUILD_DIR)
 	cp $(CURDIR)/scripts/vmm/guest/* $(BUILD_DIR)/
 
 # put them up
-deps: shim axcli eqdriver jailhouse guest_script
+# deps: axcli eqdriver jailhouse guest_script
+deps: axcli
 
-.PHONY: shim axcli eqdriver jailhouse guest_script deps
+.PHONY: axcli eqdriver jailhouse guest_script deps

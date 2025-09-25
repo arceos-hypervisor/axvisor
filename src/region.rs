@@ -24,8 +24,10 @@ impl<H: PagingHandler> core::fmt::Debug for HostPhysicalRegion<H> {
     }
 }
 
+#[allow(unused)]
 pub(crate) type HostPhysicalRegionRef<H> = Arc<HostPhysicalRegion<H>>;
 
+#[allow(unused)]
 impl<H: PagingHandler> HostPhysicalRegion<H> {
     pub fn allocate(size: usize, align_pow2: Option<usize>) -> AxResult<Self> {
         let size_aligned = align_up_4k(size);

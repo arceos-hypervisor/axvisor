@@ -7,12 +7,6 @@ cd scripts
 
 ### Build
 
-* build shim
-
-```bash
-cd deps/shim
-make  LOG=debug
-```
 
 * build axcli
 

@@ -18,7 +18,6 @@ use axerrno::{AxResult, ax_err_type};
 use axvcpu::{AxArchVCpu, AxVCpuHal};
 use axvm::{AxVMHal, AxVMPerCpu};
 
-use crate::libos;
 use crate::vmm::VCpuRef;
 use crate::vmm::config::descrease_instance_cpus;
 use crate::vmm::config::{get_instance_cpus, get_reserved_cpus};
@@ -74,7 +73,7 @@ impl axaddrspace::EPTTranslator for EPTTranslatorImpl {
         match &axtask::current().task_ext().ext {
             TaskExtType::VM(vm) => vm.guest_phys_to_host_phys(gpa),
             // Todo: get current instance ID.
-            TaskExtType::LibOS => libos::gpa_to_hpa(gpa),
+            TaskExtType::LibOS => unimplemented!(),
         }
     }
 }
@@ -168,9 +167,9 @@ pub(crate) fn disable_virtualization_on_remaining_cores() -> AxResult {
     // Disable Equtaion Instance on remaining cores.
     info!("Disabling Equation Instance on remaining {reserved_cpus} cores...");
     for cpu_id in reserved_cpus..SMP {
-        if libos::percpu::cpu_is_running(cpu_id) {
-            axhal::shutdown_secondary_cpu(cpu_id);
-        }
+        // if libos::percpu::cpu_is_running(cpu_id) {
+        axhal::shutdown_secondary_cpu(cpu_id);
+        // }
     }
 
     // Disable virtualization on remaining cores.

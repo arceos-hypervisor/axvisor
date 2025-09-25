@@ -1,19 +1,11 @@
-use alloc::collections::BTreeMap;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use axaddrspace::{GuestPhysAddr, GuestVirtAddr, GuestVirtAddrRange, MappingFlags};
+use axaddrspace::{GuestPhysAddr, MappingFlags};
 use axerrno::{AxResult, ax_err, ax_err_type};
 use axhvc::{HyperCallCode, HyperCallResult};
 use axvcpu::AxVcpuAccessGuestState;
+use memory_addr::MemoryAddr;
 
-use equation_defs::{GuestMappingType, InstanceType};
-use equation_defs::{get_pgcache_region_by_instance_id, get_scf_queue_buff_region_by_instance_id};
-use memory_addr::{MemoryAddr, is_aligned};
-use page_table_multiarch::PageSize;
-
-use crate::libos::def::get_contents_from_shared_pages;
-use crate::libos::instance;
-use crate::libos::npt_mapping::GuestNestedMapping;
 use crate::vmm::{VCpuRef, VM, VMRef};
 
 pub struct HyperCall {
@@ -72,14 +64,6 @@ impl HyperCall {
             HyperCallCode::HyperVisorDebug => self.debug(),
             HyperCallCode::CreateVM => self.create_vm(self.args[0] as usize),
             HyperCallCode::BootVM => self.boot_vm(self.args[0] as usize),
-            HyperCallCode::HCreateInstance => self.create_instance(
-                self.args[0].into(),
-                self.args[1].into(),
-                self.args[2] as usize,
-                self.args[3] as usize,
-                self.args[4] as usize,
-                self.args[5] as usize,
-            ),
             _ => {
                 error!("Privileged hypercall {:?} not implemented", self.code);
                 Err(ax_err_type!(InvalidInput, "Hypercall not implemented"))
@@ -90,13 +74,6 @@ impl HyperCall {
     fn execute_unprivileged(&self) -> HyperCallResult {
         match self.code {
             HyperCallCode::HDebug => self.debug(),
-            HyperCallCode::HInitShim => self.init_shim(),
-            HyperCallCode::HSetupInstance => self.setup_instance(
-                self.args[0] as usize,
-                self.args[1] as usize,
-                self.args[2] as usize,
-                self.args[3] as usize,
-            ),
             HyperCallCode::HIVCSHMAt => self.ivc_shm_at(
                 self.args[0] as usize,
                 self.args[1] as u32,
@@ -338,135 +315,8 @@ impl HyperCall {
 
         Ok(HyperCallCode::HDebug as usize)
     }
-
-    fn init_shim(&self) -> HyperCallResult {
-        instance::init_shim()?;
-        Ok(0)
-    }
-
-    fn create_instance(
-        &self,
-        instance_type: InstanceType,
-        mapping_type: GuestMappingType,
-        scf_base_gpa_ptr: usize,
-        scf_size_gpa_ptr: usize,
-        pgcache_base_gpa_ptr: usize,
-        pgcache_size_gpa_ptr: usize,
-    ) -> HyperCallResult {
-        info!(
-            "HCreateInstance type {:?}, mapping type {:?}, pgcache_base_gpa_ptr {:#x}",
-            instance_type, mapping_type, pgcache_base_gpa_ptr
-        );
-        let instance_id = instance::create_instance(instance_type, mapping_type)?;
-        let instance_ref = instance::get_instances_by_id(instance_id).ok_or_else(|| {
-            warn!("Instance with ID {} not found", instance_id);
-            ax_err_type!(InvalidInput, "Instance not found")
-        })?;
-
-        let scf_region_base = get_scf_queue_buff_region_by_instance_id(instance_id);
-        let scf_region_base_gpa = GuestPhysAddr::from_usize(scf_region_base);
-        let (scf_region_base_hpa, scf_region_size) =
-            instance_ref.get_scf_queue_region().ok_or_else(|| {
-                warn!(
-                    "Failed to get SCF queue region for instance {}",
-                    instance_id
-                );
-                ax_err_type!(InvalidInput, "Failed to get SCF queue region")
-            })?;
-        // Map the SCF buffer region to the host Linux.
-        let _ = self
-            .vm
-            .map_region(
-                scf_region_base_gpa,
-                scf_region_base_hpa,
-                scf_region_size,
-                MappingFlags::READ | MappingFlags::WRITE,
-                true, // Allow huge pages
-            )
-            .map_err(|e| {
-                warn!("Failed to map SCF buffer region: {:?}", e);
-                ax_err_type!(InvalidInput, "Failed to map SHM region")
-            });
-        let scf_base_gpa_ptr = GuestPhysAddr::from_usize(scf_base_gpa_ptr);
-        let scf_size_gpa_ptr = GuestPhysAddr::from_usize(scf_size_gpa_ptr);
-        self.vm
-            .write_to_guest_of(scf_base_gpa_ptr, &scf_region_base)?;
-        self.vm
-            .write_to_guest_of(scf_size_gpa_ptr, &scf_region_size)?;
-
-        let pgcache_base = get_pgcache_region_by_instance_id(instance_id);
-
-        let pgcache_base_gpa = GuestPhysAddr::from_usize(pgcache_base);
-        let (pgcache_base_hpa, pgcache_size) =
-            instance_ref.get_page_cache_region().ok_or_else(|| {
-                warn!(
-                    "Failed to get page cache region for instance {}",
-                    instance_id
-                );
-                ax_err_type!(InvalidInput, "Failed to get page cache region")
-            })?;
-        // Map the page cache region to the host Linux.
-        let _ = self
-            .vm
-            .map_region(
-                pgcache_base_gpa,
-                pgcache_base_hpa,
-                pgcache_size,
-                MappingFlags::READ | MappingFlags::WRITE,
-                true, // Allow huge pages
-            )
-            .map_err(|e| {
-                warn!("Failed to map page cache region: {:?}", e);
-                ax_err_type!(InvalidInput, "Failed to map page cache region")
-            });
-
-        info!(
-            "Instance [{instance_id}] host pgcache region at [{:#x}~{:#x}]",
-            pgcache_base,
-            pgcache_base + pgcache_size
-        );
-        let pgcache_base_gpa_ptr = GuestPhysAddr::from_usize(pgcache_base_gpa_ptr);
-        let pgcache_size_gpa_ptr = GuestPhysAddr::from_usize(pgcache_size_gpa_ptr);
-        self.vm
-            .write_to_guest_of(pgcache_base_gpa_ptr, &pgcache_base)?;
-        self.vm
-            .write_to_guest_of(pgcache_size_gpa_ptr, &pgcache_size)?;
-
-        Ok(instance_id)
-    }
-
-    fn setup_instance(
-        &self,
-        instance_id: usize,
-        file_size: usize,
-        shared_pages_base_gva: usize,
-        shared_pages_num: usize,
-    ) -> HyperCallResult {
-        info!(
-            "HSetupInstance instance_id {}, file_size {}, shared_pages_base_gva {:#x}, shared_pages_num {}",
-            instance_id, file_size, shared_pages_base_gva, shared_pages_num
-        );
-
-        let raw_args = get_contents_from_shared_pages(
-            file_size,
-            shared_pages_base_gva,
-            shared_pages_num,
-            &self.vcpu,
-            &self.vm,
-        )?;
-
-        instance::get_instances_by_id(instance_id)
-            .ok_or_else(|| {
-                warn!("Instance with ID {} not found", instance_id);
-                ax_err_type!(InvalidInput, "Instance not found")
-            })?
-            .setup_init_task(&raw_args)?;
-
-        Ok(0)
-    }
 }
 
-use crate::vmm::ivc::{self, IVCChannel, ShmFlags};
 
 /// IVC related hypercalls.
 impl HyperCall {
@@ -480,114 +330,13 @@ impl HyperCall {
     /// the host Linux and a guest instance, so a `instance_id` is required to identify the guest instance.
     fn ivc_shm_at(
         &self,
-        instance_id: usize,
-        shmkey: u32,
-        addr: usize,
-        size: usize,
-        shmflg: usize,
+        _instance_id: usize,
+        _shmkey: u32,
+        _addr: usize,
+        _size: usize,
+        _shmflg: usize,
     ) -> HyperCallResult {
-        info!(
-            "HIVCSHMAt instance_id {}, shmkey {:#x}, host_gva {:#x}, size {:#x}, shmflg {:#x}",
-            instance_id, shmkey, addr, size, shmflg
-        );
-
-        let host_gva = GuestVirtAddr::from_usize(addr);
-        let flags = ShmFlags::from_bits_retain(shmflg);
-
-        // Get alignment from `shmflg`.
-        let alignment = if flags.contains(ShmFlags::SHM_HUGETLB) {
-            if flags.contains(ShmFlags::SHM_HUGE_1GB) {
-                // Huge pages are always 1GB, so we align the size to 1GB.
-                PageSize::Size1G
-            } else if flags.contains(ShmFlags::SHM_HUGE_2MB) {
-                // Huge pages are always 2MB, so we align the size to 2MB.
-                PageSize::Size2M
-            } else {
-                return ax_err!(InvalidInput, "Invalid huge page size for IVC channel");
-            }
-        } else {
-            // Regular pages are 4KB, so we align the size to 4KB.
-            PageSize::Size4K
-        };
-
-        // Check alignment.
-        if !host_gva.is_aligned(alignment as usize) {
-            warn!(
-                "Host GVA {:#x} is not aligned to {:?} for IVC channel",
-                host_gva, alignment
-            );
-            return ax_err!(InvalidInput, "Host GVA is not aligned to page size");
-        }
-
-        let mut npt_mappings = BTreeMap::new();
-
-        let base_gva = GuestVirtAddr::from_usize(addr);
-        let end_gva = GuestVirtAddr::from_usize(addr + size);
-        let mut gva = base_gva;
-
-        while gva < end_gva {
-            let (gpa, _gflags, gpgsize) = self
-                .vcpu
-                .get_arch_vcpu()
-                .guest_page_table_query(gva)
-                .map_err(|err| {
-                    error!(
-                        "Failed to query guest page table for host GVA {:#x}: {:?}",
-                        gva, err
-                    );
-                    ax_err_type!(InvalidInput, "Invalid guest virtual address")
-                })?;
-
-            if !is_aligned(gpa.as_usize(), alignment as usize) {
-                error!(
-                    "Host GVA {:?} map tp {:?} does not match alignment {:?}",
-                    gva, gpa, alignment
-                );
-            }
-            let (hpa, _hflags, hpgsize) =
-                self.vm.guest_phys_to_host_phys(gpa).ok_or_else(|| {
-                    warn!(
-                        "Failed to convert guest physical address {:#x} to host physical address",
-                        gpa
-                    );
-                    ax_err_type!(InvalidData, "Invalid guest physical address")
-                })?;
-
-            let npt_mapping = GuestNestedMapping::new(gva, gpa, gpgsize, hpa, hpgsize);
-            npt_mappings.insert(gva, npt_mapping);
-
-            if gva.add(gpgsize as usize) == end_gva {
-                // The full range is mapped.
-                break;
-            } else if gva.add(gpgsize as usize) > end_gva {
-                error!(
-                    "Host GVA range [{:?}~{:?}] exceeds the mapping range [{:?}~{:?}]",
-                    gva,
-                    gva.add(gpgsize as usize),
-                    base_gva,
-                    end_gva
-                );
-                break;
-            }
-            gva = gva.add(gpgsize as usize);
-        }
-
-        let instance_ref = instance::get_instances_by_id(instance_id).ok_or_else(|| {
-            warn!("Instance with ID {} not found", instance_id);
-            ax_err_type!(InvalidInput, "Instance not found")
-        })?;
-
-        let host_gva_range = GuestVirtAddrRange::from_start_size(base_gva, size);
-
-        // Construct the IVC channel from the host shared memory region.
-        let channel = IVCChannel::construct_from_shm(shmkey, host_gva_range, size, npt_mappings)?;
-        // Insert the IVC channel into the global map.
-        ivc::insert_channel(shmkey, channel, true)?;
-
-        // Sync the shm mapping to the instance.
-        let instance_gpa = instance_ref.init_ivc_shm_sync(shmkey, alignment)?;
-
-        Ok(instance_gpa.as_usize())
+        ax_err!(Unsupported)
     }
 
     // fn ivc_dt(&self, key: u32) -> HyperCallResult {

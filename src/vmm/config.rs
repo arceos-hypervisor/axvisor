@@ -169,7 +169,3 @@ pub fn descrease_instance_cpus() {
 
     INSTANCE_CPUS.fetch_sub(1, Ordering::Release);
 }
-
-pub fn get_instance_cpus_mask() -> AxCpuMask {
-    AxCpuMask::from_raw_bits(unsafe { INSTANCE_CPU_MASK })
-}

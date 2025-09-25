@@ -1,6 +1,6 @@
 [submodule "crates/arceos"]
 	path = crates/arceos
-	url = https://github.com/EquationOS/arceos.git
+	url = https://github.com/arceos-hypervisor/arceos.git
 	branch = equation
 [submodule "crates/allocator"]
 	path = crates/allocator
@@ -25,10 +25,6 @@
 [submodule "crates/bitmaps"]
 	path = crates/bitmaps
 	url = https://github.com/EquationOS/bitmaps.git
-[submodule "crates/equation_defs"]
-	path = crates/equation_defs
-	url = https://github.com/EquationOS/equation_defs.git
-	branch = equation
 [submodule "crates/memory_addr"]
 	path = crates/memory_addr
 	url = https://github.com/arceos-org/memory_addr.git
@@ -41,17 +37,10 @@
 	path = crates/x86_vcpu
 	url = https://github.com/arceos-hypervisor/x86_vcpu.git
 	branch = equation
-[submodule "crates/pi_memory_layout"]
-	path = crates/pi_memory_layout
-	url = https://github.com/EquationOS/pi-memory-layout.git
 [submodule "deps/axvisor-tools"]
 	path = deps/axvisor-tools
 	url = https://github.com/arceos-hypervisor/axvisor-tools.git
 	branch = boot_junction
-[submodule "deps/shim"]
-	path = deps/shim
-	url = https://github.com/EquationOS/shim.git
-	branch = equation
 [submodule "deps/jailhouse-equation"]
 	path = deps/jailhouse-equation
 	url = https://github.com/EquationOS/jailhouse-equation.git

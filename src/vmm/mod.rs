@@ -24,6 +24,7 @@ pub use timer::init_percpu as init_timer_percpu;
 pub type VM = axvm::AxVM<AxVMHalImpl, AxVCpuHalImpl>;
 pub type VMRef = axvm::AxVMRef<AxVMHalImpl, AxVCpuHalImpl>;
 
+#[allow(unused)]
 pub type VCpu = axvm::VCpu<AxVCpuHalImpl>;
 pub type VCpuRef = axvm::AxVCpuRef<AxVCpuHalImpl>;
 
@@ -104,7 +105,7 @@ pub fn vcpu_run() {
             crate::vmm::vcpus::vm_vcpu_run(vm.clone(), curr.task_ext().vcpu.clone());
         }
         TaskExtType::LibOS => {
-            crate::libos::libos_vcpu_run(curr.task_ext().vcpu.clone());
+            unimplemented!()
         }
     };
 }

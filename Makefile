@@ -181,7 +181,7 @@ debug: build
 
 .PHONY: scp_to_qemu
 scp_to_qemu: build
-	$(call scp_qemu)
+	- $(call scp_qemu)
 
 .PHONY: scp_to_hw
 scp_to_hw: build

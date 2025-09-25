@@ -1,8 +1,6 @@
 #![no_std]
 #![no_main]
 
-use std::os::arceos::modules::axlog;
-
 #[macro_use]
 extern crate log;
 #[macro_use]
@@ -15,34 +13,11 @@ mod task_ext;
 mod vmm;
 
 mod region;
-
-mod libos;
-
-const LOGO: &str = r"
- _____                  _   _              ___  ____  
-| ____|__ _ _   _  __ _| |_(_) ___  _ __  / _ \/ ___| 
-|  _| / _` | | | |/ _` | __| |/ _ \| '_ \| | | \___ \ 
-| |__| (_| | |_| | (_| | |_| | (_) | | | | |_| |___) |
-|_____\__, |\__,_|\__,_|\__|_|\___/|_| |_|\___/|____/ 
-         |_|                                              
-             ___   ____ ___   ______
-            |__ \ / __ \__ \ / ____/
-            __/ // / / /_/ //___ \  
-           / __// /_/ / __/____/ /  
-          /____/\____/____/_____/   
-";
-
-fn dump_equation_defs() {
-    info!("EquationDefs");
-
-    equation_defs::dump_addrs();
-}
+mod logo;
 
 #[unsafe(no_mangle)]
 fn main() {
-    axlog::ax_println!("{}", LOGO);
-
-    dump_equation_defs();
+    logo::print_logo();
 
     info!("Starting virtualization...");
 

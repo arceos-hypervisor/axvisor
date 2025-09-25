@@ -1,17 +1,16 @@
 //! Inter-VM communication (IVC) module.
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
-use memory_addr::{MemoryAddr, PAGE_SIZE_4K, align_up_4k};
+use memory_addr::{PAGE_SIZE_4K, align_up_4k};
 
 use std::os::arceos::modules::axhal::paging::PagingHandlerImpl;
 use std::sync::Mutex;
 
-use axaddrspace::{GuestPhysAddr, GuestVirtAddr, GuestVirtAddrRange, HostPhysAddr, MappingFlags};
+use axaddrspace::{GuestPhysAddr, HostPhysAddr, MappingFlags};
 use axerrno::{AxResult, ax_err};
 use bitflags::bitflags;
 use page_table_multiarch::PagingHandler;
 
-use crate::libos::npt_mapping::GuestNestedMapping;
 use crate::region::HostPhysicalRegion;
 
 // https://elixir.bootlin.com/linux/v6.8.10/source/include/uapi/asm-generic/hugetlb_encode.h#L26
@@ -69,6 +68,7 @@ static IVC_CHANNELS: Mutex<BTreeMap<u32, IVCChannel<PagingHandlerImpl>>> =
 /// If the channel already exists and `remove_collision` is false, it will return an error.
 /// If `remove_collision` is true, it will remove the existing channel and insert the new one.
 /// Returns `Ok(())` if the channel is inserted successfully, or an error if it already exists and `remove_collision` is false.
+#[allow(unused)]
 pub fn insert_channel(
     channel_key: u32,
     channel: IVCChannel<PagingHandlerImpl>,
@@ -94,6 +94,7 @@ pub fn insert_channel(
     }
 }
 
+#[allow(unused)]
 pub fn get_channel_region_size(channel_key: u32) -> Option<usize> {
     let channels = IVC_CHANNELS.lock();
     channels
@@ -106,6 +107,7 @@ pub fn contains_channel(channel_key: u32) -> bool {
     IVC_CHANNELS.lock().contains_key(&channel_key)
 }
 
+#[allow(unused)]
 pub fn sync_channel_mapping(
     key: u32,
     subscriber_vm_id: usize,
@@ -161,6 +163,7 @@ pub fn sync_channel_mapping(
 /// if not, it will return an error.
 /// If the channel is successfully subscribed, it will add the subscriber VM ID to the channel and
 /// return the base address and size of the shared region in host physical address.
+#[allow(unused)]
 pub fn subscribe_to_channel(
     key: u32,
     subscriber_vm_id: usize,
@@ -234,12 +237,7 @@ pub fn unsubscribe_from_channel(key: u32, vm_id: usize) -> AxResult<(GuestPhysAd
 
 pub enum IVCRegionType<H: PagingHandler> {
     /// IVC type inherited from host shared memory region.
-    Shm {
-        _shmkey: usize,
-        host_gva_range: GuestVirtAddrRange,
-        size: usize,
-        nested_mappings: BTreeMap<GuestVirtAddr, GuestNestedMapping>,
-    },
+    // Shm {},
     /// IVC type for guest shared memory region.
     IVC { region: HostPhysicalRegion<H> },
 }
@@ -247,7 +245,7 @@ pub enum IVCRegionType<H: PagingHandler> {
 impl<H: PagingHandler> IVCRegionType<H> {
     pub fn size(&self) -> usize {
         match self {
-            IVCRegionType::Shm { size, .. } => *size,
+            // IVCRegionType::Shm { size, .. } => *size,
             IVCRegionType::IVC { region } => region.size(),
         }
     }
@@ -255,62 +253,11 @@ impl<H: PagingHandler> IVCRegionType<H> {
     pub fn ivc_map_linear(
         &self,
         base_gpa: GuestPhysAddr,
-        total_size: usize,
+        _total_size: usize,
         flags: MappingFlags,
         mut ept_mapper: impl FnMut(GuestPhysAddr, HostPhysAddr, usize, MappingFlags, bool) -> AxResult,
     ) -> AxResult {
         match self {
-            IVCRegionType::Shm {
-                host_gva_range,
-                size,
-                nested_mappings,
-                ..
-            } => {
-                if total_size != *size {
-                    return ax_err!(
-                        InvalidInput,
-                        format!(
-                            "IVC SHM size {:#x} does not match total size {:#x}",
-                            size, total_size
-                        )
-                    );
-                }
-
-                let mut mapped_size = 0;
-                for (gva, npt_mapping) in nested_mappings {
-                    if gva != &npt_mapping.gva {
-                        return ax_err!(
-                            InvalidInput,
-                            format!(
-                                "IVC SHM nested mapping GVA {:?} does not match key {:?}",
-                                npt_mapping.gva, gva
-                            )
-                        );
-                    }
-
-                    let gpa_offset = gva.as_usize() - host_gva_range.start.as_usize();
-
-                    ept_mapper(
-                        base_gpa.add(gpa_offset),
-                        npt_mapping.hpa,
-                        npt_mapping.gpgsize as usize,
-                        flags,
-                        true,
-                    )?;
-
-                    mapped_size += npt_mapping.gpgsize as usize;
-                }
-
-                if mapped_size != total_size {
-                    error!(
-                        "IVC SHM mapped size {:#x} does not match total size {:#x}",
-                        mapped_size, total_size
-                    );
-                    return ax_err!(InvalidInput, "mapped_size mismatched in ivc_map_linear");
-                }
-
-                Ok(())
-            }
             IVCRegionType::IVC { region } => {
                 ept_mapper(base_gpa, region.base(), region.size(), flags, true)
             }
@@ -335,7 +282,7 @@ impl<H: PagingHandler> core::fmt::Debug for IVCChannel<H> {
             "IVCChannel[{:#x}], type {} size: {:#x}, subscribers {:x?}",
             self.key,
             match &self.region {
-                IVCRegionType::Shm { .. } => "\"SYSV-SHM\"",
+                // IVCRegionType::Shm { .. } => "\"SYSV-SHM\"",
                 IVCRegionType::IVC { .. } => "\"AXIVC\"",
             },
             self.region.size(),
@@ -349,7 +296,7 @@ impl<H: PagingHandler> Drop for IVCChannel<H> {
         // Free the shared region frame when the channel is dropped.
         debug!("Dropping IVCChannel {:#x}", self.key);
         match self.region {
-            IVCRegionType::Shm { .. } => {}
+            // IVCRegionType::Shm { .. } => {}
             IVCRegionType::IVC { region: _ } => {
                 // Deallocate the host physical region.
             }
@@ -357,6 +304,7 @@ impl<H: PagingHandler> Drop for IVCChannel<H> {
     }
 }
 
+#[allow(unused)]
 impl<H: PagingHandler> IVCChannel<H> {
     #[allow(unused)]
     pub fn allocate(key: u32, size: usize) -> AxResult<Self> {
@@ -366,24 +314,6 @@ impl<H: PagingHandler> IVCChannel<H> {
             key,
             subscriber_vms: BTreeMap::new(),
             region: IVCRegionType::IVC { region },
-        })
-    }
-
-    pub fn construct_from_shm(
-        key: u32,
-        host_gva_range: GuestVirtAddrRange,
-        size: usize,
-        nested_mappings: BTreeMap<GuestVirtAddr, GuestNestedMapping>,
-    ) -> AxResult<Self> {
-        Ok(Self {
-            key,
-            subscriber_vms: BTreeMap::new(),
-            region: IVCRegionType::Shm {
-                _shmkey: key as usize,
-                host_gva_range,
-                size,
-                nested_mappings,
-            },
         })
     }
 
