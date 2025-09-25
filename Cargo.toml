@@ -88,6 +88,12 @@ axaddrspace = { path = "./crates/axaddrspace" }
 [patch."https://github.com/arceos-hypervisor/axhvc.git"]
 axhvc = { path = "./crates/axhvc" }
 
+[patch."https://github.com/arceos-hypervisor/axdevice.git"]
+axdevice = { path = "./crates/axdevice" }
+
+[patch."https://github.com/arceos-hypervisor/axvirtpci.git"]
+axvirtpci = { path = "./crates/axvirtpci" }
+
 [patch."https://github.com/EquationOS/equation_defs.git"]
 equation_defs = { path = "./crates/equation_defs" }
 

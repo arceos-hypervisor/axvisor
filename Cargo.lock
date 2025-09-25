@@ -256,15 +256,16 @@ dependencies = [
 [[package]]
 name = "axdevice"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/axdevice.git#8652ce80b2c53310fb7b0f8ac275f2dfcfbb1338"
 dependencies = [
  "axaddrspace",
  "axdevice_base",
  "axerrno",
+ "axvirtpci",
  "axvmconfig",
  "cfg-if",
  "log",
  "memory_addr",
+ "spin",
 ]
 
 [[package]]
@@ -547,6 +548,21 @@ dependencies = [
  "memory_addr",
  "page_table_multiarch",
  "percpu",
+]
+
+[[package]]
+name = "axvirtpci"
+version = "0.1.0"
+dependencies = [
+ "axerrno",
+ "bit_field",
+ "byteorder",
+ "hashbrown 0.14.5",
+ "lazy_static",
+ "log",
+ "spin",
+ "x86",
+ "x86_64 0.14.13",
 ]
 
 [[package]]
