@@ -317,7 +317,6 @@ impl HyperCall {
     }
 }
 
-
 /// IVC related hypercalls.
 impl HyperCall {
     /// Register a new IVC channel connected with the shm region registed by host Linux.

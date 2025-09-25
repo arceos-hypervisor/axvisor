@@ -12,8 +12,8 @@ mod hal;
 mod task_ext;
 mod vmm;
 
-mod region;
 mod logo;
+mod region;
 
 #[unsafe(no_mangle)]
 fn main() {
