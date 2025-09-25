@@ -59,7 +59,7 @@ pub fn print_fdt(fdt_addr: usize) {
         );
 
         for prop in node.propertys() {
-            trace!("Properties: {}, Node: {:x?}", prop.name, prop.raw_value());
+            trace!("Properties: {}, Raw_value: {:x?}", prop.name, prop.raw_value());
         }
     }
 
@@ -113,7 +113,7 @@ pub fn print_guest_fdt(fdt_bytes: &[u8]) {
         );
 
         for prop in node.propertys() {
-            trace!("Properties: {}, Node: {:x?}", prop.name, prop.raw_value());
+            info!("Properties: {}, Raw_value: {:x?}", prop.name, prop.raw_value());
         }
     }
 

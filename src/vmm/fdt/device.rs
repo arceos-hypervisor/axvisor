@@ -158,6 +158,9 @@ pub fn find_all_passthrough_devices(vm_cfg: &mut AxVMConfig, fdt: &Fdt) -> Vec<S
         });
     }
 
+    // Phase 4: remove root node from the list
+    all_device_names.retain(|device_name| device_name != "/");
+
     let final_device_count = all_device_names.len();
     info!(
         "Passthrough devices analysis completed. Total devices: {} (added: {})",

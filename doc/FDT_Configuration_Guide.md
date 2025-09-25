@@ -46,11 +46,11 @@ AxVisor 会优先使用提供的设备树文件，并根据以下配置更新其
 
 ### 3.2 动态生成设备树
 
-当 [kernel] 部分的 `dtb_path` 为空字符串时：
+当 [kernel] 部分的 `dtb_path` 未添加时：
 
 ```toml
 [kernel]
-dtb_path = ""
+# dtb_path = ""
 ```
 
 AxVisor 会根据配置文件中的参数动态生成客户机设备树：
@@ -196,7 +196,7 @@ entry_point = 0x8020_0000
 image_location = "memory"
 kernel_path = "tmp/Image"
 kernel_load_addr = 0x8020_0000
-dtb_path = ""  # 空字符串表示动态生成设备树
+# dtb_path = ""  # 不使用该字段表示动态生成设备树
 dtb_load_addr = 0x8000_0000
 
 memory_regions = [
@@ -220,8 +220,8 @@ excluded_devices = [
 ## 7. 处理流程
 
 1. **检查 dtb_path**：
-   - 如果 `dtb_path` 非空，则加载并使用预定义的设备树文件，此时 `passthrough_devices` 和 `excluded_devices` 配置将被忽略
-   - 如果 `dtb_path` 为空，则动态生成设备树，此时 `passthrough_devices` 和 `excluded_devices` 配置生效
+   - 如果使用 `dtb_path` 字段，则加载并使用预定义的设备树文件，此时 `passthrough_devices` 和 `excluded_devices` 配置将被忽略
+   - 如果未使用 `dtb_path` 字段，则动态生成设备树，此时 `passthrough_devices` 和 `excluded_devices` 配置生效
 
 2. **CPU 节点处理**：
    - 根据 `phys_cpu_ids` 配置更新或生成 CPU 节点
@@ -240,3 +240,12 @@ excluded_devices = [
 5. **生成最终设备树**：
    - 将处理后的节点组合成完整的设备树
    - 存储在全局缓存中供后续使用
+
+## 8. 特别配置
+1. **qemu 启动参数**：
+```
+  arceos_args = ["BUS=mmio", "BLK=y", "LOG=info", "SMP=4", "MEM=8g",
+                "QEMU_ARGS=\"-machine gic-version=3  -cpu cortex-a72 -append 'root=/dev/vda rw init=/init' \"",
+                "DISK_IMG=\"tmp/qemu/rootfs.img\"",]
+```
+其中当不提供设备树时 `-append 'root=/dev/vda rw init=/init'`参数必须添加，目的是在主机设备树中添加chosen节点的bootargs属性。

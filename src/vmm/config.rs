@@ -81,7 +81,7 @@ pub fn get_developer_provided_dtb(vm_cfg: &AxVMConfig, crate_config: &AxVMCrateC
                 .find(|&v| v.id == vm_cfg.id())?;
 
             if let Some(dtb) = vm_imags.dtb {
-                info!("DTB file in memory, size: {:x}", dtb.len());
+                info!("DTB file in memory, size: 0x{:x}", dtb.len());
                 return Some(dtb.to_vec());
             }
         },
@@ -91,7 +91,7 @@ pub fn get_developer_provided_dtb(vm_cfg: &AxVMConfig, crate_config: &AxVMCrateC
             use axerrno::ax_err_type;
             if let Some(dtb_path) = &crate_config.kernel.dtb_path {
                 let (dtb_file, dtb_size) = crate::vmm::images::open_image_file(&dtb_path).unwrap();
-                info!("DTB file in fs, size: {:x}", dtb_size);
+                info!("DTB file in fs, size: 0x{:x}", dtb_size);
 
                 let mut file = BufReader::new(dtb_file);
                 let mut dtb_buffer = vec![0; dtb_size];
