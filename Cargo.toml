@@ -87,4 +87,4 @@ toml = {version = "0.9"}
 axvcpu = {git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "next"}
 
 [patch.crates-io.axvmconfig]
-path = "./axvmconfig"
+git = "https://github.com/bullhh/axvmconfig.git"
