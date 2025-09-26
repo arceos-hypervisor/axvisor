@@ -11,6 +11,7 @@ use crate::hal::CacheOp;
 use crate::vmm::VMRef;
 use crate::vmm::config::{config, get_vm_dtb_arc};
 
+#[cfg(target_arch = "aarch64")]
 use crate::vmm::fdt::update_fdt;
 
 mod linux;
@@ -113,6 +114,7 @@ impl ImageLoader {
                 Byte::from(dtb_slice.len())
             );
 
+            #[cfg(target_arch = "aarch64")]
             update_fdt(
                 self.dtb_load_gpa.unwrap(),
                 NonNull::new(dtb_slice.as_ptr() as *mut u8).unwrap(),
@@ -259,6 +261,7 @@ mod fs {
                 Byte::from(dtb_slice.len())
             );
 
+            #[cfg(target_arch = "aarch64")]
             update_fdt(
                 loader.dtb_load_gpa.unwrap(),
                 NonNull::new(dtb_slice.as_ptr() as *mut u8).unwrap(),

@@ -7,7 +7,10 @@ use core::alloc::Layout;
 use fdt_parser::Fdt;
 use memory_addr::MemoryAddr;
 
-use crate::vmm::{VM, fdt::*, images::ImageLoader, vm_list::push_vm};
+use crate::vmm::{VM, images::ImageLoader, vm_list::push_vm};
+
+#[cfg(target_arch = "aarch64")]
+use crate::vmm::fdt::*;
 
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
@@ -125,6 +128,39 @@ pub fn get_vm_dtb_arc(vm_cfg: &AxVMConfig) -> Option<Arc<[u8]>> {
     None
 }
 
+/// Handle all FDT-related operations for aarch64 architecture
+#[cfg(target_arch = "aarch64")]
+fn handle_fdt_operations(vm_config: &mut AxVMConfig, vm_create_config: &AxVMCrateConfig) {
+    let host_fdt_bytes = get_host_fdt();
+    let host_fdt = Fdt::from_bytes(host_fdt_bytes)
+        .map_err(|e| format!("Failed to parse FDT: {:#?}", e))
+        .expect("Failed to parse FDT");
+    set_phys_cpu_sets(vm_config, &host_fdt, vm_create_config);
+
+    if let Some(provided_dtb) = get_developer_provided_dtb(vm_config, vm_create_config) {
+        info!("VM[{}] found DTB , parsing...", vm_config.id());
+        update_provided_fdt(&provided_dtb, host_fdt_bytes, vm_create_config);
+    } else {
+        info!(
+            "VM[{}] DTB not found, generating based on the configuration file.",
+            vm_config.id()
+        );
+        setup_guest_fdt_from_vmm(host_fdt_bytes, vm_config, vm_create_config);
+    }
+
+    // Overlay VM config with the given DTB.
+    if let Some(dtb_arc) = get_vm_dtb_arc(vm_config) {
+        let dtb = dtb_arc.as_ref();
+        parse_passthrough_devices_address(vm_config, dtb);
+        parse_vm_interrupt(vm_config, dtb);
+    } else {
+        error!(
+            "VM[{}] DTB not found in memory, skipping...",
+            vm_config.id()
+        );
+    }
+}
+
 pub fn init_guest_vms() {
     GENERATED_DTB_CACHE.init_once(Mutex::new(BTreeMap::new()));
 
@@ -151,34 +187,9 @@ pub fn init_guest_vms() {
 
         let mut vm_config = AxVMConfig::from(vm_create_config.clone());
 
-        let host_fdt_bytes = get_host_fdt();
-        let host_fdt = Fdt::from_bytes(host_fdt_bytes)
-            .map_err(|e| format!("Failed to parse FDT: {:#?}", e))
-            .expect("Failed to parse FDT");
-        set_phys_cpu_sets(&mut vm_config, &host_fdt, &vm_create_config);
-
-        if let Some(provided_dtb) = get_developer_provided_dtb(&vm_config, &vm_create_config) {
-            info!("VM[{}] found DTB , parsing...", vm_config.id());
-            update_provided_fdt(&provided_dtb, host_fdt_bytes, &vm_create_config);
-        } else {
-            info!(
-                "VM[{}] DTB not found, generating based on the configuration file.",
-                vm_config.id()
-            );
-            setup_guest_fdt_from_vmm(host_fdt_bytes, &mut vm_config, &vm_create_config);
-        }
-
-        // Overlay VM config with the given DTB.
-        if let Some(dtb_arc) = get_vm_dtb_arc(&vm_config) {
-            let dtb = dtb_arc.as_ref();
-            parse_passthrough_devices_address(&mut vm_config, dtb);
-            parse_vm_interrupt(&mut vm_config, dtb);
-        } else {
-            error!(
-                "VM[{}] DTB not found in memory, skipping...",
-                vm_config.id()
-            );
-        }
+        // Handle FDT-related operations for aarch64
+        #[cfg(target_arch = "aarch64")]
+        handle_fdt_operations(&mut vm_config, &vm_create_config);
 
         // info!("after parse_vm_interrupt, crate VM[{}] with config: {:#?}", vm_config.id(), vm_config);
         info!("Creating VM[{}] {:?}", vm_config.id(), vm_config.name());
