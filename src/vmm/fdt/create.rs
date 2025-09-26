@@ -12,10 +12,10 @@ use vm_fdt::{FdtWriter, FdtWriterNode};
 
 use crate::vmm::{
     VMRef,
-    fdt::test::{print_fdt, print_guest_fdt},
     images::load_vm_image_from_memory,
 };
 
+// use crate::vmm::fdt::test::{print_fdt, print_guest_fdt};
 /// Generate guest FDT and return DTB data
 ///
 /// # Parameters
