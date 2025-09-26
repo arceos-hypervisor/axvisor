@@ -1,16 +1,16 @@
 #!/bin/bash
 set -x
 
+JH_DIR=~/jailhouse-axvisor
+JH=$JH_DIR/tools/jailhouse
+
 if [ -z "$1" ]; then
     echo "Usage: $0 <parameter>"
     exit 1
 fi
 
-sudo ./jailhouse disable
+sudo $JH enable
 sudo rmmod jailhouse
-sudo rmmod eqdriver
-sudo insmod jailhouse.ko
-sudo insmod eqdriver.ko
+sudo insmod $JH_DIR/driver/jailhouse.ko
 sudo chown $(whoami) /dev/jailhouse
-sudo chown $(whoami) /dev/eqmanager
-sudo ./jailhouse enable "$1"
+sudo $JH enable "$1"

@@ -1,7 +1,7 @@
 [submodule "crates/arceos"]
 	path = crates/arceos
 	url = https://github.com/arceos-hypervisor/arceos.git
-	branch = equation
+	branch = axboot_linux
 [submodule "crates/allocator"]
 	path = crates/allocator
 	url = https://github.com/arceos-org/allocator.git

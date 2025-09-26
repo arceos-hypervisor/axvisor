@@ -9,9 +9,9 @@ sudo apt-get install -y build-essential python3-mako
 sudo mkdir -p /lib/firmware
 sudo ln -sf ~/evm-intel.bin /lib/firmware
 
-# Clone jailhouse-equation, apply patches and build
-# git clone https://github.com/EquationOS/jailhouse-equation
-cd jailhouse-equation
+# Clone jailhouse-axvisor, apply patches and build
+# git clone https://github.com/arceos-hypervisr/axvisor-tools.git
+cd jailhouse-axvisor
 make
 
 # Update grub config file to update kernel cmdline

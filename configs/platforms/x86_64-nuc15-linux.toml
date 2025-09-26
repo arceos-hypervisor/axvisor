@@ -1,7 +1,7 @@
 # Architecture identifier.
 arch = "x86_64" # str
 # Platform identifier.
-platform = "x86_64-x14sbi-linux" # str
+platform = "x86_64-nuc15-linux" # str
 
 #
 # Platform configs

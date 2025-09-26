@@ -258,6 +258,7 @@ const BUILTIN_PLATFORMS: &[&str] = &[
     "x86_64-pc-oslab",
     "x86_64-qemu-q35",
     "x86_64-x14sbi-linux",
+    "x86_64-nuc15-linux",
 ];
 
 fn make_cfg_values(str_list: &[&str]) -> String {

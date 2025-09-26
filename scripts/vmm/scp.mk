@@ -10,5 +10,5 @@ define scp_qemu
 endef
 
 define scp_hw
-	scp $(BUILD_DIR)/axcli $(BUILD_DIR)/evm-intel.bin $(HW_USER)@$(HW_IP):~/
+	scp -r $(BUILD_DIR)/axcli $(BUILD_DIR)/evm-intel.bin deps/axvisor-tools/jailhouse-axvisor scripts/vmm/guest/* $(HW_USER)@$(HW_IP):~/
 endef
