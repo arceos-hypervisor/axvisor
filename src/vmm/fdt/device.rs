@@ -215,7 +215,8 @@ pub fn build_optimized_node_cache<'a>(fdt: &'a Fdt) -> BTreeMap<String, Vec<Node
     for (index, node) in all_nodes.iter().enumerate() {
         let node_path = build_node_path(&all_nodes, index);
         if let Some(existing_nodes) = node_cache.get(&node_path)
-            && !existing_nodes.is_empty() {
+            && !existing_nodes.is_empty()
+        {
             error!(
                 "Duplicate node path found: {} for node '{}' at level {}, existing node: '{}'",
                 node_path,
@@ -229,10 +230,7 @@ pub fn build_optimized_node_cache<'a>(fdt: &'a Fdt) -> BTreeMap<String, Vec<Node
             "Adding node to cache: {} (level: {}, index: {})",
             node_path, node.level, index
         );
-        node_cache
-            .entry(node_path)
-            .or_default()
-            .push(node.clone());
+        node_cache.entry(node_path).or_default().push(node.clone());
     }
 
     debug!(

@@ -236,7 +236,8 @@ pub fn parse_passthrough_devices_address(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
         if node_name.starts_with("pcie@") || node_name.contains("pci") {
             // Process PCIe device's ranges property
             if let Some(pci) = node.clone().into_pci()
-                && let Ok(ranges) = pci.ranges() {
+                && let Ok(ranges) = pci.ranges()
+            {
                 for (index, range) in ranges.enumerate() {
                     add_pci_ranges_config(vm_cfg, &node_name, &range, index);
                 }

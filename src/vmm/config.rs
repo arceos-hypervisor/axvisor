@@ -56,7 +56,9 @@ pub mod config {
                 let path = entry.path();
                 // Check if the file has a .toml extension
                 let path_str = path.as_str();
-                if path_str.ends_with(".toml") && let Ok(content) = fs::read_to_string(path_str) {
+                if path_str.ends_with(".toml")
+                    && let Ok(content) = fs::read_to_string(path_str)
+                {
                     configs.push(content);
                 }
             }

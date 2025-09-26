@@ -206,10 +206,7 @@ fn handle_node_level_change(
 }
 
 /// Determine if node is an ancestor of passthrough device
-fn is_ancestor_of_passthrough_device(
-    node_path: &str,
-    passthrough_device_names: &[String],
-) -> bool {
+fn is_ancestor_of_passthrough_device(node_path: &str, passthrough_device_names: &[String]) -> bool {
     for passthrough_path in passthrough_device_names {
         // Check if the current node is an ancestor of a passthrough device
         if passthrough_path.starts_with(node_path) && passthrough_path.len() > node_path.len() {
@@ -230,7 +227,8 @@ fn need_cpu_node(phys_cpu_ids: &[usize], node: &Node, node_path: &str) -> bool {
     if !node_path.starts_with("/cpus/cpu@") {
         should_include_node = true;
     } else if let Some(mut cpu_reg) = node.reg()
-        && let Some(reg_entry) = cpu_reg.next() {
+        && let Some(reg_entry) = cpu_reg.next()
+    {
         let cpu_address = reg_entry.address as usize;
         debug!(
             "Checking CPU node {} with address 0x{:x}",
