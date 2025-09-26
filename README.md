@@ -67,11 +67,16 @@ If necessary, you may also need to install [musl-gcc](http://musl.cc/x86_64-linu
 
 ## Configuration Files
 
-Since configuring the guest is a complex process, AxVisor chooses to use TOML files to manage the guest configurations. These configurations include the virtual machine ID, virtual machine name, virtual machine type, number of CPU cores, memory size, virtual devices, passthrough devices, and more. In the source code, the `./config/vms` directory contains some example templates for guest configurations.
+Since guest configuration is a complex process, AxVisor chooses to use toml files to manage guest configurations, which include the virtual machine ID, virtual machine name, virtual machine type, number of CPU cores, memory size, virtual devices, and passthrough devices.
 
-In addition, you can use the [axvmconfig](https://github.com/arceos-hypervisor/axvmconfig) tool to generate a custom configuration file. For detailed information, refer to the [axvmconfig](https://arceos-hypervisor.github.io/axvmconfig/axvmconfig/index.html) documentation.
+- In the source code's `./config/vms` directory, there are some example templates for guest configurations. The configuration files are named in the format `<os>-<arch>-board_or_cpu-smpx`, where:
+  - `<os>` is the guest operating system name
+  - `<arch>` is the architecture
+  - `board_or_cpu` is the name of the hardware development board or CPU (different strings are concatenated with `_`)
+  - `smpx` refers to the number of CPUs allocated to the guest, where `x` is the specific value
+  - The different components are concatenated with `-` to form the whole name
 
-The configuration file naming format is `<os>-<arch>-board_or_cpu-smpx`, where `<os>` is the guest system name, `<arch>` is the architecture, `board_or_cpu` is the hardware development board or CPU name (concatenating different strings with `_`), and `smpx` indicates the number of CPUs allocated to the guest, with `x` being the specific value. Each component is concatenated with `-` to form the complete name.
+- Additionally, you can also use the [axvmconfig](https://github.com/arceos-hypervisor/axvmconfig) tool to generate a custom configuration file. For detailed information, please refer to [axvmconfig](https://arceos-hypervisor.github.io/axvmconfig/axvmconfig/index.html).
 
 ## Load and run from file system
 
@@ -85,18 +90,9 @@ Loading from the filesystem refers to the method where the AxVisor image, Linux 
    ./scripts/nimbos.sh --arch aarch64
    ```
 
-2. Execute `./axvisor.sh defconfig` to set up the development environment and generate AxVisor config `.hvconfig.toml`.
+2. Execute `./axvisor.sh run --plat aarch64-generic --features fs,ept-level-4 --arceos-args BUS=mmio,BLK=y,DISK_IMG=tmp/nimbos-aarch64.img,LOG=info --vmconfigs configs/vms/nimbos-aarch64-qemu-smp1.toml` to build AxVisor and start it in QEMU.
 
-3. Edit the `.hvconfig.toml` file to set the `vmconfigs` item to the path of your guest configuration file, for example:
-
-   ```toml
-   plat = "aarch64-generic"
-   features = ["fs", "ept-level-4"]
-   arceos_args = [ "BUS=mmio","BLK=y", "DISK_IMG=tmp/nimbos-aarch64.img", "LOG=info"]
-   vmconfigs = [ "configs/vms/nimbos-aarch64.toml",]
-   ```
-
-4. Execute `./axvisor.sh run` to build AxVisor and start it in QEMU.
+3. After that, you can directly run `./axvisor.sh run` to start it, and modify `.hvconfig.toml` to change the startup parameters.
 
 ### More guest
 
