@@ -6,10 +6,10 @@
 mod create;
 mod device;
 mod parser;
-mod test;
+mod print;
 
 // Re-export public functions
 pub use parser::*;
-// pub use test::print_fdt;
+// pub use print::print_fdt;
 pub use create::*;
 pub use device::build_node_path;
