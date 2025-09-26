@@ -13,7 +13,7 @@ pub fn get_host_fdt() -> &'static [u8] {
         core::slice::from_raw_parts(bootarg as *const u8, core::mem::size_of::<FdtHeader>())
     };
     let fdt_header = FdtHeader::from_bytes(header)
-        .map_err(|e| format!("Failed to parse FDT header: {:#?}", e))
+        .map_err(|e| format!("Failed to parse FDT header: {e:#?}"))
         .unwrap();
 
     if fdt_header.magic.get() != FDT_VALID_MAGIC {
@@ -24,10 +24,7 @@ pub fn get_host_fdt() -> &'static [u8] {
         );
     }
 
-    let fdt_bytes =
-        unsafe { core::slice::from_raw_parts(bootarg as *const u8, fdt_header.total_size()) };
-
-    fdt_bytes
+    unsafe { core::slice::from_raw_parts(bootarg as *const u8, fdt_header.total_size()) }
 }
 
 pub fn setup_guest_fdt_from_vmm(
@@ -36,7 +33,7 @@ pub fn setup_guest_fdt_from_vmm(
     crate_config: &AxVMCrateConfig,
 ) {
     let fdt = Fdt::from_bytes(fdt_bytes)
-        .map_err(|e| format!("Failed to parse FDT: {:#?}", e))
+        .map_err(|e| format!("Failed to parse FDT: {e:#?}"))
         .expect("Failed to parse FDT");
 
     // Call the modified function and get the returned device name list
@@ -158,13 +155,13 @@ fn add_device_address_config(
     // Create a device configuration for each address segment
     let device_name = if index == 0 {
         match prefix {
-            Some(p) => format!("{}-{}", node_name, p),
+            Some(p) => format!("{node_name}-{p}"),
             None => node_name.to_string(),
         }
     } else {
         match prefix {
-            Some(p) => format!("{}-{}-region{}", node_name, p, index),
-            None => format!("{}-region{}", node_name, index),
+            Some(p) => format!("{node_name}-{p}-region{index}"),
+            None => format!("{node_name}-region{index}"),
         }
     };
 
@@ -198,9 +195,9 @@ fn add_pci_ranges_config(vm_cfg: &mut AxVMConfig, node_name: &str, range: &PciRa
     };
 
     let device_name = if index == 0 {
-        format!("{}-{}", node_name, prefix)
+        format!("{node_name}-{prefix}")
     } else {
-        format!("{}-{}-region{}", node_name, prefix, index)
+        format!("{node_name}-{prefix}-region{index}")
     };
 
     // Add new device configuration
@@ -238,20 +235,18 @@ pub fn parse_passthrough_devices_address(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
         // Check if it's a PCIe device node
         if node_name.starts_with("pcie@") || node_name.contains("pci") {
             // Process PCIe device's ranges property
-            if let Some(pci) = node.clone().into_pci() {
-                if let Ok(ranges) = pci.ranges() {
-                    for (index, range) in ranges.enumerate() {
-                        add_pci_ranges_config(vm_cfg, &node_name, &range, index);
-                    }
+            if let Some(pci) = node.clone().into_pci()
+                && let Ok(ranges) = pci.ranges() {
+                for (index, range) in ranges.enumerate() {
+                    add_pci_ranges_config(vm_cfg, &node_name, &range, index);
                 }
             }
 
             // Process PCIe device's reg property (ECAM space)
-            if let Some(mut reg_iter) = node.reg() {
-                let mut index = 0;
-                while let Some(reg) = reg_iter.next() {
+            if let Some(reg_iter) = node.reg() {
+                for (index, reg) in reg_iter.enumerate() {
                     let base_address = reg.address as usize;
-                    let size = reg.size.unwrap_or(0) as usize;
+                    let size = reg.size.unwrap_or(0);
 
                     add_device_address_config(
                         vm_cfg,
@@ -261,21 +256,18 @@ pub fn parse_passthrough_devices_address(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
                         index,
                         Some("ecam"),
                     );
-                    index += 1;
                 }
             }
         } else {
             // Get device's reg property (process regular devices)
-            if let Some(mut reg_iter) = node.reg() {
+            if let Some(reg_iter) = node.reg() {
                 // Process all address segments of the device
-                let mut index = 0;
-                while let Some(reg) = reg_iter.next() {
+                for (index, reg) in reg_iter.enumerate() {
                     // Get device's address and size information
                     let base_address = reg.address as usize;
-                    let size = reg.size.unwrap_or(0) as usize;
+                    let size = reg.size.unwrap_or(0);
 
                     add_device_address_config(vm_cfg, &node_name, base_address, size, index, None);
-                    index += 1;
                 }
             }
         }

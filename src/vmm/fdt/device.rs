@@ -178,11 +178,10 @@ pub fn find_all_passthrough_devices(vm_cfg: &mut AxVMConfig, fdt: &Fdt) -> Vec<S
 
 /// Build the full path of a node based on node level relationships
 /// Build the path by traversing all nodes and constructing paths based on level relationships to avoid path conflicts for nodes with the same name
-pub fn build_node_path(all_nodes: &Vec<Node>, target_index: usize) -> String {
+pub fn build_node_path(all_nodes: &[Node], target_index: usize) -> String {
     let mut path_stack: Vec<String> = Vec::new();
 
-    for i in 0..=target_index {
-        let node = &all_nodes[i];
+    for node in all_nodes.iter().take(target_index + 1) {
         let level = node.level;
 
         if level == 1 {
@@ -215,16 +214,15 @@ pub fn build_optimized_node_cache<'a>(fdt: &'a Fdt) -> BTreeMap<String, Vec<Node
 
     for (index, node) in all_nodes.iter().enumerate() {
         let node_path = build_node_path(&all_nodes, index);
-        if let Some(existing_nodes) = node_cache.get(&node_path) {
-            if !existing_nodes.is_empty() {
-                error!(
-                    "Duplicate node path found: {} for node '{}' at level {}, existing node: '{}'",
-                    node_path,
-                    node.name(),
-                    node.level,
-                    existing_nodes[0].name()
-                );
-            }
+        if let Some(existing_nodes) = node_cache.get(&node_path)
+            && !existing_nodes.is_empty() {
+            error!(
+                "Duplicate node path found: {} for node '{}' at level {}, existing node: '{}'",
+                node_path,
+                node.name(),
+                node.level,
+                existing_nodes[0].name()
+            );
         }
 
         trace!(
@@ -233,7 +231,7 @@ pub fn build_optimized_node_cache<'a>(fdt: &'a Fdt) -> BTreeMap<String, Vec<Node
         );
         node_cache
             .entry(node_path)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(node.clone());
     }
 
@@ -372,9 +370,8 @@ fn get_cells_count_for_property(prop_name: &str, cells_info: &BTreeMap<String, u
         "power-domains" => "#power-domain-cells",
         "phys" => "#phy-cells",
         "interrupts" | "interrupts-extended" => "#interrupt-cells",
-        "gpios" | _ if prop_name.ends_with("-gpios") || prop_name.ends_with("-gpio") => {
-            "#gpio-cells"
-        }
+        "gpios" => "#gpio-cells",
+        _ if prop_name.ends_with("-gpios") || prop_name.ends_with("-gpio") => "#gpio-cells",
         "dmas" => "#dma-cells",
         "thermal-sensors" => "#thermal-sensor-cells",
         "sound-dai" => "#sound-dai-cells",
@@ -405,7 +402,7 @@ fn parse_phandle_property(
     for (phandle, specifiers) in phandle_refs {
         if let Some((device_path, _cells_info)) = phandle_map.get(&phandle) {
             let spec_info = if !specifiers.is_empty() {
-                format!(" (specifiers: {:?})", specifiers)
+                format!(" (specifiers: {specifiers:?})")
             } else {
                 String::new()
             };
@@ -504,7 +501,7 @@ fn get_descendant_nodes_by_path<'a>(
     };
 
     // Traverse node_cache, find all nodes with parent path as prefix
-    for (path, _nodes) in node_cache {
+    for path in node_cache.keys() {
         // Check if path has parent path as prefix (and is not the parent path itself)
         if path.starts_with(&search_prefix) && path.len() > search_prefix.len() {
             // This is a descendant node path, add to results

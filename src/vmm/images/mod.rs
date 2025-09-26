@@ -1,5 +1,3 @@
-use core::ptr::NonNull;
-
 use axaddrspace::GuestPhysAddr;
 use axerrno::AxResult;
 
@@ -13,6 +11,9 @@ use crate::vmm::config::{config, get_vm_dtb_arc};
 
 #[cfg(target_arch = "aarch64")]
 use crate::vmm::fdt::update_fdt;
+
+#[cfg(target_arch = "aarch64")]
+use core::ptr::NonNull;
 
 mod linux;
 
@@ -107,7 +108,7 @@ impl ImageLoader {
         // Load DTB image
         let vm_config = axvm::config::AxVMConfig::from(self.config.clone());
         if let Some(dtb_arc) = get_vm_dtb_arc(&vm_config) {
-            let dtb_slice: &[u8] = &*dtb_arc;
+            let dtb_slice: &[u8] = &dtb_arc;
             debug!(
                 "DTB buffer addr: {:x}, size: {:#}",
                 self.dtb_load_gpa.unwrap(),
@@ -254,7 +255,7 @@ mod fs {
         // Load DTB image if needed.
         let vm_config = axvm::config::AxVMConfig::from(loader.config.clone());
         if let Some(dtb_arc) = get_vm_dtb_arc(&vm_config) {
-            let dtb_slice: &[u8] = &*dtb_arc;
+            let dtb_slice: &[u8] = &dtb_arc;
             debug!(
                 "DTB buffer addr: {:x}, size: {:#}",
                 loader.dtb_load_gpa.unwrap(),

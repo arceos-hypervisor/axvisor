@@ -4,7 +4,6 @@ use axvm::{
     config::{AxVMConfig, AxVMCrateConfig, VmMemMappingType},
 };
 use core::alloc::Layout;
-use fdt_parser::Fdt;
 use memory_addr::MemoryAddr;
 
 use crate::vmm::{VM, images::ImageLoader, vm_list::push_vm};
@@ -12,9 +11,14 @@ use crate::vmm::{VM, images::ImageLoader, vm_list::push_vm};
 #[cfg(target_arch = "aarch64")]
 use crate::vmm::fdt::*;
 
+#[cfg(target_arch = "aarch64")]
+use fdt_parser::Fdt;
+
+#[cfg(target_arch = "aarch64")]
+use alloc::vec::Vec;
+
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
-use alloc::vec::Vec;
 use lazyinit::LazyInit;
 use spin::Mutex;
 
@@ -48,16 +52,12 @@ pub mod config {
         let mut configs = Vec::new();
 
         if let Ok(entries) = fs::read_dir(config_dir) {
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    let path = entry.path();
-                    // Check if the file has a .toml extension
-                    let path_str = path.as_str();
-                    if path_str.ends_with(".toml") {
-                        if let Ok(content) = fs::read_to_string(path_str) {
-                            configs.push(content);
-                        }
-                    }
+            for entry in entries.flatten() {
+                let path = entry.path();
+                // Check if the file has a .toml extension
+                let path_str = path.as_str();
+                if path_str.ends_with(".toml") && let Ok(content) = fs::read_to_string(path_str) {
+                    configs.push(content);
                 }
             }
         }
@@ -74,6 +74,7 @@ pub mod config {
     include!(concat!(env!("OUT_DIR"), "/vm_configs.rs"));
 }
 
+#[cfg(target_arch = "aarch64")]
 pub fn get_developer_provided_dtb(
     vm_cfg: &AxVMConfig,
     crate_config: &AxVMCrateConfig,
@@ -94,7 +95,7 @@ pub fn get_developer_provided_dtb(
             use axerrno::ax_err_type;
             use std::io::{BufReader, Read};
             if let Some(dtb_path) = &crate_config.kernel.dtb_path {
-                let (dtb_file, dtb_size) = crate::vmm::images::open_image_file(&dtb_path).unwrap();
+                let (dtb_file, dtb_size) = crate::vmm::images::open_image_file(dtb_path).unwrap();
                 info!("DTB file in fs, size: 0x{:x}", dtb_size);
 
                 let mut file = BufReader::new(dtb_file);
@@ -133,7 +134,7 @@ pub fn get_vm_dtb_arc(vm_cfg: &AxVMConfig) -> Option<Arc<[u8]>> {
 fn handle_fdt_operations(vm_config: &mut AxVMConfig, vm_create_config: &AxVMCrateConfig) {
     let host_fdt_bytes = get_host_fdt();
     let host_fdt = Fdt::from_bytes(host_fdt_bytes)
-        .map_err(|e| format!("Failed to parse FDT: {:#?}", e))
+        .map_err(|e| format!("Failed to parse FDT: {e:#?}"))
         .expect("Failed to parse FDT");
     set_phys_cpu_sets(vm_config, &host_fdt, vm_create_config);
 
@@ -185,7 +186,11 @@ pub fn init_guest_vms() {
             );
         }
 
+        #[cfg(target_arch = "aarch64")]
         let mut vm_config = AxVMConfig::from(vm_create_config.clone());
+
+        #[cfg(not(target_arch = "aarch64"))]
+        let vm_config = AxVMConfig::from(vm_create_config.clone());
 
         // Handle FDT-related operations for aarch64
         #[cfg(target_arch = "aarch64")]

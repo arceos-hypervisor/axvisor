@@ -24,7 +24,7 @@ use crate::vmm::{VMRef, images::load_vm_image_from_memory};
 /// Returns the generated DTB data
 pub fn crate_guest_fdt(
     fdt: &Fdt,
-    passthrough_device_names: &Vec<String>,
+    passthrough_device_names: &[String],
     crate_config: &AxVMCrateConfig,
 ) -> Vec<u8> {
     let mut fdt_writer = FdtWriter::new().unwrap();
@@ -96,9 +96,7 @@ pub fn crate_guest_fdt(
     }
     assert_eq!(previous_node_level, 0);
 
-    let guest_fdt_bytes = fdt_writer.finish().unwrap();
-
-    guest_fdt_bytes
+    fdt_writer.finish().unwrap()
 }
 
 /// Generate guest FDT cache the result
@@ -133,29 +131,29 @@ enum NodeAction {
 fn determine_node_action(
     node: &Node,
     node_path: &str,
-    passthrough_device_names: &Vec<String>,
+    passthrough_device_names: &[String],
 ) -> NodeAction {
     if node.name() == "/" {
         // Special handling for root node
-        return NodeAction::RootNode;
+        NodeAction::RootNode
     } else if node.name().starts_with("memory") {
         // Skip memory nodes, will add them later
-        return NodeAction::Skip;
+        NodeAction::Skip
     } else if node_path.starts_with("/cpus") {
-        return NodeAction::CpuNode;
+        NodeAction::CpuNode
     } else if passthrough_device_names.contains(&node_path.to_string()) {
         // Fully matched passthrough device node
-        return NodeAction::IncludeAsPassthroughDevice;
+        NodeAction::IncludeAsPassthroughDevice
     }
     // Check if the node is a descendant of a passthrough device (by path inclusion and level validation)
     else if is_descendant_of_passthrough_device(node_path, node.level, passthrough_device_names) {
-        return NodeAction::IncludeAsChildNode;
+        NodeAction::IncludeAsChildNode
     }
     // Check if the node is an ancestor of a passthrough device (by path inclusion and level validation)
     else if is_ancestor_of_passthrough_device(node_path, passthrough_device_names) {
-        return NodeAction::IncludeAsAncestorNode;
+        NodeAction::IncludeAsAncestorNode
     } else {
-        return NodeAction::Skip;
+        NodeAction::Skip
     }
 }
 
@@ -165,7 +163,7 @@ fn determine_node_action(
 fn is_descendant_of_passthrough_device(
     node_path: &str,
     node_level: usize,
-    passthrough_device_names: &Vec<String>,
+    passthrough_device_names: &[String],
 ) -> bool {
     for passthrough_path in passthrough_device_names {
         // Check if the current node is a descendant of a passthrough device
@@ -180,9 +178,9 @@ fn is_descendant_of_passthrough_device(
 
                 // If passthrough_path is the root node "/", then its child node level should be 2
                 // Otherwise, the child node level should be higher than the parent node level
-                if passthrough_path == "/" && current_node_level >= 2 {
-                    return true;
-                } else if passthrough_path != "/" && current_node_level > expected_parent_level {
+                if (passthrough_path == "/" && current_node_level >= 2)
+                    || (passthrough_path != "/" && current_node_level > expected_parent_level)
+                {
                     return true;
                 }
             }
@@ -210,11 +208,11 @@ fn handle_node_level_change(
 /// Determine if node is an ancestor of passthrough device
 fn is_ancestor_of_passthrough_device(
     node_path: &str,
-    passthrough_device_names: &Vec<String>,
+    passthrough_device_names: &[String],
 ) -> bool {
     for passthrough_path in passthrough_device_names {
         // Check if the current node is an ancestor of a passthrough device
-        if passthrough_path.starts_with(&node_path) && passthrough_path.len() > node_path.len() {
+        if passthrough_path.starts_with(node_path) && passthrough_path.len() > node_path.len() {
             // Ensure it is a true ancestor path (separated by /)
             let next_char = passthrough_path.chars().nth(node_path.len()).unwrap_or(' ');
             if next_char == '/' || node_path == "/" {
@@ -226,36 +224,33 @@ fn is_ancestor_of_passthrough_device(
 }
 
 /// Determine if CPU node is needed
-fn need_cpu_node(phys_cpu_ids: &Vec<usize>, node: &Node, node_path: &str) -> bool {
+fn need_cpu_node(phys_cpu_ids: &[usize], node: &Node, node_path: &str) -> bool {
     let mut should_include_node = false;
 
     if !node_path.starts_with("/cpus/cpu@") {
         should_include_node = true;
-    } else {
-        if let Some(mut cpu_reg) = node.reg() {
-            if let Some(reg_entry) = cpu_reg.next() {
-                let cpu_address = reg_entry.address as usize;
-                debug!(
-                    "Checking CPU node {} with address 0x{:x}",
-                    node.name(),
-                    cpu_address
-                );
-                // Check if this CPU address is in the configured phys_cpu_ids
-                if phys_cpu_ids.contains(&cpu_address) {
-                    should_include_node = true;
-                    debug!(
-                        "CPU node {} with address 0x{:x} is in phys_cpu_ids, including in guest FDT",
-                        node.name(),
-                        cpu_address
-                    );
-                } else {
-                    debug!(
-                        "CPU node {} with address 0x{:x} is NOT in phys_cpu_ids, skipping",
-                        node.name(),
-                        cpu_address
-                    );
-                }
-            }
+    } else if let Some(mut cpu_reg) = node.reg()
+        && let Some(reg_entry) = cpu_reg.next() {
+        let cpu_address = reg_entry.address as usize;
+        debug!(
+            "Checking CPU node {} with address 0x{:x}",
+            node.name(),
+            cpu_address
+        );
+        // Check if this CPU address is in the configured phys_cpu_ids
+        if phys_cpu_ids.contains(&cpu_address) {
+            should_include_node = true;
+            debug!(
+                "CPU node {} with address 0x{:x} is in phys_cpu_ids, including in guest FDT",
+                node.name(),
+                cpu_address
+            );
+        } else {
+            debug!(
+                "CPU node {} with address 0x{:x} is NOT in phys_cpu_ids, skipping",
+                node.name(),
+                cpu_address
+            );
         }
     }
     should_include_node
@@ -415,7 +410,5 @@ pub fn update_cpu_node(fdt: &Fdt, host_fdt: &Fdt, crate_config: &AxVMCrateConfig
     }
     assert_eq!(previous_node_level, 0);
 
-    let guest_fdt_bytes = new_fdt.finish().unwrap();
-
-    guest_fdt_bytes
+    new_fdt.finish().unwrap()
 }

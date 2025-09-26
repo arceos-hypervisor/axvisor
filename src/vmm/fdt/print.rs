@@ -9,7 +9,7 @@ pub fn print_fdt(fdt_addr: usize) {
         core::slice::from_raw_parts(fdt_addr as *const u8, core::mem::size_of::<FdtHeader>())
     };
     let fdt_header = FdtHeader::from_bytes(header)
-        .map_err(|e| format!("Failed to parse FDT header: {:#?}", e))
+        .map_err(|e| format!("Failed to parse FDT header: {e:#?}"))
         .unwrap();
 
     if fdt_header.magic.get() != FDT_VALID_MAGIC {
@@ -25,7 +25,7 @@ pub fn print_fdt(fdt_addr: usize) {
         unsafe { core::slice::from_raw_parts(fdt_addr as *const u8, fdt_header.total_size()) };
 
     let fdt = Fdt::from_bytes(fdt_bytes)
-        .map_err(|e| format!("Failed to parse FDT: {:#?}", e))
+        .map_err(|e| format!("Failed to parse FDT: {e:#?}"))
         .expect("Failed to parse FDT");
 
     // Statistics of node count and level distribution
@@ -82,7 +82,7 @@ pub fn print_fdt(fdt_addr: usize) {
 #[allow(dead_code)]
 pub fn print_guest_fdt(fdt_bytes: &[u8]) {
     let fdt = Fdt::from_bytes(fdt_bytes)
-        .map_err(|e| format!("Failed to parse FDT: {:#?}", e))
+        .map_err(|e| format!("Failed to parse FDT: {e:#?}"))
         .expect("Failed to parse FDT");
     // Statistics of node count and level distribution
     let mut node_count = 0;
