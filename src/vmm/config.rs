@@ -1,18 +1,21 @@
-use core::alloc::Layout;
-
-use alloc::string::ToString;
-
 use axaddrspace::GuestPhysAddr;
 use axvm::{
     VMMemoryRegion,
-    config::{AxVMConfig, AxVMCrateConfig, PassThroughDeviceConfig, VmMemMappingType},
+    config::{AxVMConfig, AxVMCrateConfig, VmMemMappingType},
 };
+use core::alloc::Layout;
 use memory_addr::MemoryAddr;
 
 use crate::vmm::{VM, images::ImageLoader, vm_list::push_vm};
 
+#[cfg(target_arch = "aarch64")]
+use crate::vmm::fdt::*;
+
+use alloc::sync::Arc;
+
 #[allow(clippy::module_inception)]
 pub mod config {
+    use alloc::string::String;
     use alloc::vec::Vec;
 
     /// Default static VM configs. Used when no VM config is provided.
@@ -28,169 +31,71 @@ pub mod config {
         ]
     }
 
+    /// Read VM configs from filesystem
+    #[cfg(feature = "fs")]
+    pub fn filesystem_vm_configs() -> Vec<String> {
+        use axstd::fs;
+
+        // Try to read config files from a predefined directory
+        let config_dir = "configs/vms";
+        let mut configs = Vec::new();
+
+        if let Ok(entries) = fs::read_dir(config_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                // Check if the file has a .toml extension
+                let path_str = path.as_str();
+                if path_str.ends_with(".toml")
+                    && let Ok(content) = fs::read_to_string(path_str)
+                {
+                    configs.push(content);
+                }
+            }
+        }
+
+        configs
+    }
+
+    /// Fallback function for when "fs" feature is not enabled
+    #[cfg(not(feature = "fs"))]
+    pub fn filesystem_vm_configs() -> Vec<String> {
+        Vec::new()
+    }
+
     include!(concat!(env!("OUT_DIR"), "/vm_configs.rs"));
 }
 
-pub fn get_vm_dtb(vm_cfg: &AxVMConfig) -> Option<&'static [u8]> {
-    let vm_imags = config::get_memory_images()
-        .iter()
-        .find(|&v| v.id == vm_cfg.id())?;
-    // .expect("VM images is missed, Perhaps add `VM_CONFIGS=PATH/CONFIGS/FILE` command.");
-    vm_imags.dtb
-}
-
-pub fn parse_vm_dtb(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
-    use fdt_parser::{Fdt, Status};
-
-    let fdt = Fdt::from_bytes(dtb)
-        .expect("Failed to parse DTB image, perhaps the DTB is invalid or corrupted");
-
-    for reserved in fdt.reserved_memory() {
-        warn!("Find reserved memory: {:?}", reserved.name());
-    }
-
-    for mem_reserved in fdt.memory_reservation_block() {
-        warn!("Find memory reservation block: {:?}", mem_reserved);
-    }
-
-    for node in fdt.all_nodes() {
-        trace!("DTB node: {:?}", node.name());
-        let name = node.name();
-        if name.starts_with("memory") {
-            // Skip the memory node, as we handle memory regions separately.
-            continue;
-        }
-
-        if let Some(status) = node.status()
-            && status == Status::Disabled
-        {
-            // Skip disabled nodes
-            trace!("DTB node: {} is disabled", name);
-            // continue;
-        }
-
-        // Skip the interrupt controller, as we will use vGIC
-        // TODO: filter with compatible property and parse its phandle from DT; maybe needs a second pass?
-        const GIC_PHANDLE: usize = 1;
-        if name.starts_with("interrupt-controller")
-            || name.starts_with("intc")
-            || name.starts_with("its")
-        {
-            info!("skipping node {} to use vGIC", name);
-            continue;
-        }
-
-        // Collect all GIC_SPI interrupts and add them to vGIC
-        if let Some(interrupts) = node.interrupts() {
-            // TODO: skip non-GIC interrupt
-            if let Some(parent) = node.interrupt_parent() {
-                trace!("node: {}, intr parent: {}", name, parent.node.name());
-                if let Some(phandle) = parent.node.phandle() {
-                    if phandle.as_usize() != GIC_PHANDLE {
-                        warn!(
-                            "node: {}, intr parent: {}, phandle: 0x{:x} is not GIC!",
-                            name,
-                            parent.node.name(),
-                            phandle.as_usize()
-                        );
-                    }
-                } else {
-                    warn!(
-                        "node: {}, intr parent: {} no phandle!",
-                        name,
-                        parent.node.name(),
-                    );
-                }
-            } else {
-                warn!("node: {} no interrupt parent!", name);
-            }
-
-            trace!("node: {} interrupts:", name);
-
-            for interrupt in interrupts {
-                // <GIC_SPI/GIC_PPI, IRQn, trigger_mode>
-                for (k, v) in interrupt.enumerate() {
-                    match k {
-                        0 => {
-                            if v == 0 {
-                                trace!("node: {}, GIC_SPI", name);
-                            } else {
-                                warn!(
-                                    "node: {}, intr type: {}, not GIC_SPI, not supported!",
-                                    name, v
-                                );
-                                break;
-                            }
-                        }
-                        1 => {
-                            trace!("node: {}, interrupt id: 0x{:x}", name, v);
-                            vm_cfg.add_pass_through_spi(v);
-                        }
-                        2 => {
-                            trace!("node: {}, interrupt mode: 0x{:x}", name, v);
-                        }
-                        _ => {
-                            warn!("unknown interrupt property {}:0x{:x}", k, v)
-                        }
-                    }
-                }
-            }
-        }
-
-        if let Some(regs) = node.reg() {
-            for reg in regs {
-                if reg.address < 0x1000 {
-                    // Skip registers with address less than 0x10000.
-                    trace!(
-                        "Skipping DTB node {} with register address {:#x} < 0x10000",
-                        node.name(),
-                        reg.address
-                    );
-                    continue;
-                }
-
-                if let Some(size) = reg.size {
-                    let start = reg.address as usize;
-                    // let end = start + size;
-                    // if vm_cfg.contains_memory_range(&(start..end)) {
-                    //     trace!(
-                    //         "Skipping DTB node {} with register address {:#x} and size {:#x} as it overlaps with existing memory regions",
-                    //         node.name(),
-                    //         reg.address,
-                    //         size
-                    //     );
-                    //     continue;
-                    // }
-
-                    let pt_dev = PassThroughDeviceConfig {
-                        name: node.name().to_string(),
-                        base_gpa: start,
-                        base_hpa: start,
-                        length: size as _,
-                        irq_id: 0,
-                    };
-                    trace!("Adding {:x?}", pt_dev);
-                    vm_cfg.add_pass_through_device(pt_dev);
-                }
-            }
+pub fn get_vm_dtb_arc(_vm_cfg: &AxVMConfig) -> Option<Arc<[u8]>> {
+    #[cfg(target_arch = "aarch64")]
+    {
+        let cache_lock = dtb_cache().lock();
+        if let Some(dtb) = cache_lock.get(&_vm_cfg.id()) {
+            return Some(Arc::from(dtb.as_slice()));
         }
     }
-
-    vm_cfg.add_pass_through_device(PassThroughDeviceConfig {
-        name: "Fake Node".to_string(),
-        base_gpa: 0x0,
-        base_hpa: 0x0,
-        length: 0x20_0000,
-        irq_id: 0,
-    });
+    None
 }
 
 pub fn init_guest_vms() {
-    let gvm_raw_configs = config::static_vm_configs();
+    // Initialize the DTB cache in the fdt module
+    #[cfg(target_arch = "aarch64")]
+    {
+        init_dtb_cache();
+    }
+
+    // First try to get configs from filesystem if fs feature is enabled
+    let mut gvm_raw_configs = config::filesystem_vm_configs();
+
+    // If no filesystem configs found, fallback to static configs
+    if gvm_raw_configs.is_empty() {
+        let static_configs = config::static_vm_configs();
+        // Convert static configs to String type
+        gvm_raw_configs.extend(static_configs.into_iter().map(|s| s.into()));
+    }
 
     for raw_cfg_str in gvm_raw_configs {
         let vm_create_config =
-            AxVMCrateConfig::from_toml(raw_cfg_str).expect("Failed to resolve VM config");
+            AxVMCrateConfig::from_toml(&raw_cfg_str).expect("Failed to resolve VM config");
 
         if let Some(linux) = super::images::get_image_header(&vm_create_config) {
             debug!(
@@ -199,18 +104,17 @@ pub fn init_guest_vms() {
             );
         }
 
+        #[cfg(target_arch = "aarch64")]
         let mut vm_config = AxVMConfig::from(vm_create_config.clone());
 
-        // Overlay VM config with the given DTB.
-        if let Some(dtb) = get_vm_dtb(&vm_config) {
-            parse_vm_dtb(&mut vm_config, dtb);
-        } else {
-            warn!(
-                "VM[{}] DTB not found in memory, skipping...",
-                vm_config.id()
-            );
-        }
+        #[cfg(not(target_arch = "aarch64"))]
+        let vm_config = AxVMConfig::from(vm_create_config.clone());
 
+        // Handle FDT-related operations for aarch64
+        #[cfg(target_arch = "aarch64")]
+        handle_fdt_operations(&mut vm_config, &vm_create_config);
+
+        // info!("after parse_vm_interrupt, crate VM[{}] with config: {:#?}", vm_config.id(), vm_config);
         info!("Creating VM[{}] {:?}", vm_config.id(), vm_config.name());
 
         // Create VM.

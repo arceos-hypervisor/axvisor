@@ -11,8 +11,6 @@ vm_type = 1
 cpu_num = 2
 # The physical CPU ids.
 phys_cpu_ids = [0x00, 0x100]
-# Guest vm physical cpu sets.
-phys_cpu_sets = [1, 2]
 
 #
 # Vm kernel configs
@@ -29,7 +27,7 @@ kernel_load_addr = 0x7008_0000
 kernel_path = "/path/arceos-aarch64-dyn.bin"
 ## The file path of the device tree blob (DTB).
 dtb_load_addr = 0x7000_0000
-dtb_path = "/path/arceos-aarch64-rk3568_smp2.dtb"
+#dtb_path = "/path/arceos-aarch64-rk3568_smp2.dtb"
 # Memory regions with format (`base_paddr`, `size`, `flags`, `map_type`).
 # For `map_type`, 0 means `MAP_ALLOC`, 1 means `MAP_IDENTICAL`.
 memory_regions = [
@@ -49,25 +47,11 @@ emu_devices = []
 # Pass-through devices.
 # Name Base-Ipa Base-Pa Length Alloc-Irq.
 passthrough_devices = [
-  [
-    "UART2",
-    0xfe66_0000,
-    0xfe66_0000,
-    0x10000,
-    0x1,
-  ],
-  [
-    "gic-v3",
-    0xfd40_0000,
-    0xfd40_0000,
-    0x10000,
-    0x1,
-  ],
-  [
-    "gic-v3-its",
-    0xfd44_0000,
-    0xfd44_0000,
-    0x100000,
-    0x1,
-  ],
+    ["/"],
+    #["/timer"],
+]
+
+# Devices that are not desired to be passed through to the guest
+excluded_devices = [
+   # ["/gic-v3"],
 ]

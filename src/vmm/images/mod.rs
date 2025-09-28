@@ -1,5 +1,3 @@
-use core::ptr::NonNull;
-
 use axaddrspace::GuestPhysAddr;
 use axerrno::AxResult;
 
@@ -7,11 +5,15 @@ use axvm::VMMemoryRegion;
 use axvm::config::AxVMCrateConfig;
 use byte_unit::Byte;
 
-use crate::vmm::fdt::updated_fdt;
-
 use crate::hal::CacheOp;
 use crate::vmm::VMRef;
-use crate::vmm::config::config;
+use crate::vmm::config::{config, get_vm_dtb_arc};
+
+#[cfg(target_arch = "aarch64")]
+use crate::vmm::fdt::update_fdt;
+
+#[cfg(target_arch = "aarch64")]
+use core::ptr::NonNull;
 
 mod linux;
 
@@ -104,17 +106,20 @@ impl ImageLoader {
         load_vm_image_from_memory(vm_imags.kernel, self.kernel_load_gpa, self.vm.clone())
             .expect("Failed to load VM images");
         // Load DTB image
-        if let Some(buffer) = vm_imags.dtb {
+        let vm_config = axvm::config::AxVMConfig::from(self.config.clone());
+        if let Some(dtb_arc) = get_vm_dtb_arc(&vm_config) {
+            let dtb_slice: &[u8] = &dtb_arc;
             debug!(
                 "DTB buffer addr: {:x}, size: {:#}",
                 self.dtb_load_gpa.unwrap(),
-                Byte::from(buffer.len())
+                Byte::from(dtb_slice.len())
             );
 
-            updated_fdt(
+            #[cfg(target_arch = "aarch64")]
+            update_fdt(
                 self.dtb_load_gpa.unwrap(),
-                NonNull::new(buffer.as_ptr() as *mut u8).unwrap(),
-                buffer.len(),
+                NonNull::new(dtb_slice.as_ptr() as *mut u8).unwrap(),
+                dtb_slice.len(),
                 self.vm.clone(),
             );
         }
@@ -186,15 +191,10 @@ pub fn load_vm_image_from_memory(
 
 #[cfg(feature = "fs")]
 mod fs {
-    use std::{fs::File, vec::Vec};
-
-    use axerrno::{AxResult, ax_err, ax_err_type};
-
-    use crate::hal::CacheOp;
-
     use super::*;
-
-    use std::io::{BufReader, Read};
+    use crate::hal::CacheOp;
+    use axerrno::{AxResult, ax_err, ax_err_type};
+    use std::{fs::File, vec::Vec};
 
     pub fn kernal_read(config: &AxVMCrateConfig, read_size: usize) -> AxResult<Vec<u8>> {
         use std::fs::File;
@@ -253,35 +253,24 @@ mod fs {
             }
         };
         // Load DTB image if needed.
-        // Todo: generate DTB file for guest VM.
-        if let Some(dtb_path) = &loader.config.kernel.dtb_path {
-            let (dtb_file, dtb_size) = open_image_file(dtb_path)?;
-            info!("DTB file size {}", dtb_size);
-
-            let mut file = BufReader::new(dtb_file);
-            let mut dtb_buffer = vec![0; dtb_size];
-
-            file.read_exact(&mut dtb_buffer).map_err(|err| {
-                ax_err_type!(
-                    Io,
-                    format!("Failed in reading from file {}, err {:?}", dtb_path, err)
-                )
-            })?;
-
-            let dtb_addr = loader.dtb_load_gpa.unwrap();
-
-            info!(
+        let vm_config = axvm::config::AxVMConfig::from(loader.config.clone());
+        if let Some(dtb_arc) = get_vm_dtb_arc(&vm_config) {
+            let dtb_slice: &[u8] = &dtb_arc;
+            debug!(
                 "DTB buffer addr: {:x}, size: {:#}",
-                dtb_addr,
-                Byte::from(dtb_size)
+                loader.dtb_load_gpa.unwrap(),
+                Byte::from(dtb_slice.len())
             );
-            updated_fdt(
-                dtb_addr,
-                NonNull::new(dtb_buffer.as_mut_ptr()).unwrap(),
-                dtb_size,
+
+            #[cfg(target_arch = "aarch64")]
+            update_fdt(
+                loader.dtb_load_gpa.unwrap(),
+                NonNull::new(dtb_slice.as_ptr() as *mut u8).unwrap(),
+                dtb_slice.len(),
                 loader.vm.clone(),
             );
-        };
+        }
+
         Ok(())
     }
 
@@ -310,7 +299,7 @@ mod fs {
         Ok(())
     }
 
-    fn open_image_file(file_name: &str) -> AxResult<(File, usize)> {
+    pub fn open_image_file(file_name: &str) -> AxResult<(File, usize)> {
         let file = File::open(file_name).map_err(|err| {
             ax_err_type!(
                 NotFound,
@@ -335,3 +324,6 @@ mod fs {
         Ok((file, file_size))
     }
 }
+
+#[cfg(feature = "fs")]
+pub use fs::open_image_file;
