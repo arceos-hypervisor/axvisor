@@ -17,14 +17,33 @@ echo "执行命令: ${COMMAND[*]}"
 
         sleep 2
 
+        echo "安全查找并杀死QEMU进程..."
+        
+        # 获取当前脚本及其父进程的PID，避免误杀
+        SCRIPT_PID=$$
+        PARENT_PID=$PPID
+        
+        echo "当前脚本PID: $SCRIPT_PID"
+        echo "父进程PID: $PARENT_PID"
+        
+        # 查找QEMU进程，但排除脚本相关进程
         pgrep -f "qemu" 2>/dev/null | while read pid; do
-            echo "kill -9 $pid"
-            kill -9 "$pid" 2>/dev/null || true
+            # 检查是否是脚本相关进程
+            if [ "$pid" != "$SCRIPT_PID" ] && [ "$pid" != "$PARENT_PID" ]; then
+                # 进一步检查进程命令行
+                CMD=$(ps -p "$pid" -o cmd --no-headers 2>/dev/null)
+                if [[ "$CMD" == *"qemu-system"* ]]; then
+                    echo "kill -9 $pid (QEMU系统进程)"
+                    kill -9 "$pid" 2>/dev/null || true
+                else
+                    echo "跳过进程 $pid (非QEMU系统进程): $CMD"
+                fi
+            else
+                echo "跳过脚本相关进程: $pid"
+            fi
         done
 
-        # pkill -9 -f "${COMMAND[0]}" 2>/dev/null
-        
-        break
+        exit 0
     fi
 done
 
