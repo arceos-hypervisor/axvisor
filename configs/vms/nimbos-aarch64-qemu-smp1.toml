@@ -66,10 +66,10 @@ emu_devices = [
 # Name Base-Ipa Base-Pa Length Alloc-Irq.
 passthrough_devices = [
     ["/"],
-    #["/timer"],
+    #["/pl011@9000000"],
 ]
 
 # Devices that are not desired to be passed through to the guest
 excluded_devices = [
-   # ["/gic-v3"],
+    ["/pcie@10000000"],
 ]
