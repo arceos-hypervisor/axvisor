@@ -1,6 +1,5 @@
 use alloc::{
     string::{String, ToString},
-    sync::Arc,
     vec::Vec,
 };
 use core::ptr::NonNull;
@@ -99,17 +98,7 @@ pub fn crate_guest_fdt(
     fdt_writer.finish().unwrap()
 }
 
-/// Generate guest FDT cache the result
-/// # Return Value
-/// Returns the generated DTB data and stores it in the global cache
-pub fn crate_guest_fdt_with_cache(dtb_data: Vec<u8>, crate_config: &AxVMCrateConfig) {
-    // Store data in global cache
-    if let Some(cache) = crate::vmm::config::GENERATED_DTB_CACHE.get() {
-        let mut cache_lock = cache.lock();
-        let dtb_arc: Arc<[u8]> = Arc::from(dtb_data);
-        cache_lock.insert(crate_config.base.id, dtb_arc);
-    }
-}
+// 移除了 crate_guest_fdt_with_cache 函数，因为它现在在 mod.rs 中实现
 
 /// Node processing action enumeration
 enum NodeAction {

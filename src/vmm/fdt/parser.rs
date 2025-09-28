@@ -4,6 +4,7 @@ use alloc::{string::ToString, vec::Vec};
 use axvm::config::{AxVMConfig, AxVMCrateConfig, PassThroughDeviceConfig};
 use fdt_parser::{Fdt, FdtHeader, PciRange, PciSpace};
 
+use crate::vmm::fdt::crate_guest_fdt_with_cache;
 use crate::vmm::fdt::create::update_cpu_node;
 
 pub fn get_host_fdt() -> &'static [u8] {
@@ -40,7 +41,8 @@ pub fn setup_guest_fdt_from_vmm(
     let passthrough_device_names = super::device::find_all_passthrough_devices(vm_cfg, &fdt);
 
     let dtb_data = super::create::crate_guest_fdt(&fdt, &passthrough_device_names, crate_config);
-    super::create::crate_guest_fdt_with_cache(dtb_data, crate_config);
+    // 调用新的 crate_guest_fdt_with_cache 函数
+    crate_guest_fdt_with_cache(dtb_data, crate_config);
 }
 
 pub fn set_phys_cpu_sets(vm_cfg: &mut AxVMConfig, fdt: &Fdt, crate_config: &AxVMCrateConfig) {
@@ -375,5 +377,5 @@ pub fn update_provided_fdt(provided_dtb: &[u8], host_dtb: &[u8], crate_config: &
     let host_fdt = Fdt::from_bytes(host_dtb)
         .expect("Failed to parse DTB image, perhaps the DTB is invalid or corrupted");
     let provided_dtb_data = update_cpu_node(&provided_fdt, &host_fdt, crate_config);
-    super::create::crate_guest_fdt_with_cache(provided_dtb_data, crate_config);
+    crate_guest_fdt_with_cache(provided_dtb_data, crate_config);
 }

@@ -17,12 +17,7 @@ use fdt_parser::Fdt;
 #[cfg(target_arch = "aarch64")]
 use alloc::vec::Vec;
 
-use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
-use lazyinit::LazyInit;
-use spin::Mutex;
-
-pub static GENERATED_DTB_CACHE: LazyInit<Mutex<BTreeMap<usize, Arc<[u8]>>>> = LazyInit::new();
 
 #[allow(clippy::module_inception)]
 pub mod config {
@@ -121,11 +116,13 @@ pub fn get_developer_provided_dtb(
     None
 }
 
-pub fn get_vm_dtb_arc(vm_cfg: &AxVMConfig) -> Option<Arc<[u8]>> {
-    if let Some(cache) = GENERATED_DTB_CACHE.get() {
-        let cache_lock = cache.lock();
-        if let Some(dtb) = cache_lock.get(&vm_cfg.id()) {
-            return Some(dtb.clone());
+pub fn get_vm_dtb_arc(_vm_cfg: &AxVMConfig) -> Option<Arc<[u8]>> {
+    #[cfg(target_arch = "aarch64")]
+    {
+        let cache_lock = dtb_cache().lock();
+        if let Some(dtb) = cache_lock.get(&_vm_cfg.id()) {
+            // Convert Vec<u8> to Arc<[u8]>
+            return Some(Arc::from(dtb.as_slice()));
         }
     }
     None
@@ -165,7 +162,11 @@ fn handle_fdt_operations(vm_config: &mut AxVMConfig, vm_create_config: &AxVMCrat
 }
 
 pub fn init_guest_vms() {
-    GENERATED_DTB_CACHE.init_once(Mutex::new(BTreeMap::new()));
+    // Initialize the DTB cache in the fdt module
+    #[cfg(target_arch = "aarch64")]
+    {
+        init_dtb_cache();
+    }
 
     // First try to get configs from filesystem if fs feature is enabled
     let mut gvm_raw_configs = config::filesystem_vm_configs();
