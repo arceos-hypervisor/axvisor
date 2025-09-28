@@ -107,23 +107,23 @@ impl ImageLoader {
             .expect("Failed to load VM images");
         // Load DTB image
         let vm_config = axvm::config::AxVMConfig::from(self.config.clone());
-        if let Some(dtb_arc) = get_vm_dtb_arc(&vm_config) {
-            if let Some(dtb_load_gpa) = self.dtb_load_gpa {
-                let dtb_slice: &[u8] = &dtb_arc;
-                debug!(
-                    "DTB buffer addr: {:x}, size: {:#}",
-                    dtb_load_gpa,
-                    Byte::from(dtb_slice.len())
-                );
+        if let Some(dtb_arc) = get_vm_dtb_arc(&vm_config)
+            && let Some(dtb_load_gpa) = self.dtb_load_gpa
+        {
+            let dtb_slice: &[u8] = &dtb_arc;
+            debug!(
+                "DTB buffer addr: {:x}, size: {:#}",
+                dtb_load_gpa,
+                Byte::from(dtb_slice.len())
+            );
 
-                #[cfg(target_arch = "aarch64")]
-                update_fdt(
-                    dtb_load_gpa,
-                    NonNull::new(dtb_slice.as_ptr() as *mut u8).unwrap(),
-                    dtb_slice.len(),
-                    self.vm.clone(),
-                );
-            }
+            #[cfg(target_arch = "aarch64")]
+            update_fdt(
+                dtb_load_gpa,
+                NonNull::new(dtb_slice.as_ptr() as *mut u8).unwrap(),
+                dtb_slice.len(),
+                self.vm.clone(),
+            );
         }
 
         // Load BIOS image
@@ -256,23 +256,23 @@ mod fs {
         };
         // Load DTB image if needed.
         let vm_config = axvm::config::AxVMConfig::from(loader.config.clone());
-        if let Some(dtb_arc) = get_vm_dtb_arc(&vm_config) {
-            if let Some(dtb_load_gpa) = loader.dtb_load_gpa {
-                let dtb_slice: &[u8] = &dtb_arc;
-                debug!(
-                    "DTB buffer addr: {:x}, size: {:#}",
-                    dtb_load_gpa,
-                    Byte::from(dtb_slice.len())
-                );
+        if let Some(dtb_arc) = get_vm_dtb_arc(&vm_config)
+            && let Some(dtb_load_gpa) = loader.dtb_load_gpa
+        {
+            let dtb_slice: &[u8] = &dtb_arc;
+            debug!(
+                "DTB buffer addr: {:x}, size: {:#}",
+                dtb_load_gpa,
+                Byte::from(dtb_slice.len())
+            );
 
-                #[cfg(target_arch = "aarch64")]
-                update_fdt(
-                    dtb_load_gpa,
-                    NonNull::new(dtb_slice.as_ptr() as *mut u8).unwrap(),
-                    dtb_slice.len(),
-                    loader.vm.clone(),
-                );
-            } 
+            #[cfg(target_arch = "aarch64")]
+            update_fdt(
+                dtb_load_gpa,
+                NonNull::new(dtb_slice.as_ptr() as *mut u8).unwrap(),
+                dtb_slice.len(),
+                loader.vm.clone(),
+            );
         }
 
         Ok(())
