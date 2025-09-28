@@ -121,7 +121,6 @@ pub fn get_vm_dtb_arc(_vm_cfg: &AxVMConfig) -> Option<Arc<[u8]>> {
     {
         let cache_lock = dtb_cache().lock();
         if let Some(dtb) = cache_lock.get(&_vm_cfg.id()) {
-            // Convert Vec<u8> to Arc<[u8]>
             return Some(Arc::from(dtb.as_slice()));
         }
     }

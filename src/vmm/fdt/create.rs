@@ -98,8 +98,6 @@ pub fn crate_guest_fdt(
     fdt_writer.finish().unwrap()
 }
 
-// 移除了 crate_guest_fdt_with_cache 函数，因为它现在在 mod.rs 中实现
-
 /// Node processing action enumeration
 enum NodeAction {
     /// Skip node, not included in guest FDT

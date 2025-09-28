@@ -41,7 +41,6 @@ pub fn setup_guest_fdt_from_vmm(
     let passthrough_device_names = super::device::find_all_passthrough_devices(vm_cfg, &fdt);
 
     let dtb_data = super::create::crate_guest_fdt(&fdt, &passthrough_device_names, crate_config);
-    // 调用新的 crate_guest_fdt_with_cache 函数
     crate_guest_fdt_with_cache(dtb_data, crate_config);
 }
 
