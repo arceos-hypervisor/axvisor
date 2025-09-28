@@ -10,18 +10,19 @@ COMMAND=("$@")
 echo "执行命令: ${COMMAND[*]}"
 
 "${COMMAND[@]}" 2>&1 | while IFS= read -r line; do
-    echo "输出: $line"
+    echo "$line"
 
     if [[ "$line" == *"[OK] Default guest initialized"* ]]; then
-        echo "检测到Shell就绪信号！发送中断信号..."
-        
-        PROCESS_NAME=$(basename "${COMMAND[0]}")
-        PIDS=$(pgrep -f "${COMMAND[0]}")
-        
-        for PID in $PIDS; do
-            echo "发送 SIGINT 到进程 $PID"
-            kill -INT "$PID" 2>/dev/null
+        echo "检测到完成信号，退出中..."
+
+        sleep 2
+
+        pgrep -f "qemu" 2>/dev/null | while read pid; do
+            echo "kill -9 $pid"
+            kill -9 "$pid" 2>/dev/null || true
         done
+
+        pkill -9 -f "${COMMAND[0]}" 2>/dev/null
         
         break
     fi

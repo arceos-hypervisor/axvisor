@@ -1,6 +1,5 @@
 mod command;
 
-use std::time::{Duration, Instant};
 use std::io::prelude::*;
 use std::println;
 use std::string::ToString;
@@ -45,9 +44,7 @@ pub fn console_init() {
         let mut temp_buf = [0u8; 1];
 
         let ch = match stdin.read(&mut temp_buf) {
-            Ok(1) => {
-                temp_buf[0]
-            }
+            Ok(1) => temp_buf[0],
             _ => {
                 continue;
             }

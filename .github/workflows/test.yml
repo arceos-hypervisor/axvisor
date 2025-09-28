@@ -41,7 +41,7 @@ jobs:
         cargo version
         export DISK_IMG="${{ github.workspace }}/disk-aarch64.img"
         export VM_CONFIGS="$(pwd)/configs/vms/nimbos-aarch64-qemu-smp1.toml"
-        ./auto_interrupt.sh ./axvisor.sh run --plat ${{ matrix.plat }} --vmconfigs $VM_CONFIGS --features fs,ept-level-4 --arceos-args DISK_IMG=$DISK_IMG,BUS=mmio,BLK=y,MEM=8g
+        ./scripts/auto_interrupt.sh ./axvisor.sh run --plat ${{ matrix.plat }} --vmconfigs $VM_CONFIGS --features fs,ept-level-4 --arceos-args DISK_IMG=$DISK_IMG,BUS=mmio,BLK=y,MEM=8g
 
   aarch64-generic-phytiumpi:
     runs-on: [self-hosted, linux, phytiumpi]
@@ -135,4 +135,4 @@ jobs:
         cargo version
         export DISK_IMG="${{ github.workspace }}/disk-x86_64.img"
         export VM_CONFIGS="$(pwd)/configs/vms/nimbos-x86_64-qemu-smp1.toml"
-        ./auto_interrupt.sh ./axvisor.sh run --plat ${{ matrix.plat }} --vmconfigs $VM_CONFIGS --features fs --arceos-args DISK_IMG=$DISK_IMG,BLK=y
+        ./scripts/auto_interrupt.sh ./axvisor.sh run --plat ${{ matrix.plat }} --vmconfigs $VM_CONFIGS --features fs --arceos-args DISK_IMG=$DISK_IMG,BLK=y
