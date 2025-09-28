@@ -22,7 +22,7 @@ echo "执行命令: ${COMMAND[*]}"
             kill -9 "$pid" 2>/dev/null || true
         done
 
-        pkill -9 -f "${COMMAND[0]}" 2>/dev/null
+        # pkill -9 -f "${COMMAND[0]}" 2>/dev/null
         
         break
     fi
