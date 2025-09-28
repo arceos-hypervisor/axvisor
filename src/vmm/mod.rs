@@ -1,10 +1,11 @@
-mod config;
 mod hvc;
-mod images;
 mod ivc;
+
+pub mod config;
+pub mod images;
 pub mod timer;
-mod vcpus;
-mod vm_list;
+pub mod vcpus;
+pub mod vm_list;
 
 #[cfg(target_arch = "aarch64")]
 pub mod fdt;
@@ -30,7 +31,7 @@ pub type VCpuRef = axvm::AxVCpuRef<AxVCpuHalImpl>;
 static VMM: AxWaitQueueHandle = AxWaitQueueHandle::new();
 
 /// The number of running VMs. This is used to determine when to exit the VMM.
-static RUNNING_VM_COUNT: AtomicUsize = AtomicUsize::new(0);
+pub static RUNNING_VM_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 /// Initialize the VMM.
 ///
