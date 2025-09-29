@@ -1,2 +1,2 @@
-# Axvisor task.py 依赖
+# Axvisor task.py dependencies
 toml>=0.10.0

@@ -10,34 +10,32 @@ from . import build
 
 
 def main(args) -> int:
-    """运行项目"""
-    print("执行 run 功能...")
+    """Run the project"""
+    print("Running run task...")
 
-    # 创建配置对象
+    # Create config object
     config: AxvisorConfig = create_config_from_args(args)
-
-    # 首先执行 build
-    print("运行前先构建项目...")
+    # Build first
+    print("Building project before run...")
     build_result = build.main(args)
     if build_result != 0:
-        print("构建失败，无法运行")
+        print("Build failed; aborting run")
         return build_result
-
-    # 构建 make 命令
+    # Build make command
     cmd = config.format_make_command("run")
 
-    print(f"执行命令: {cmd}")
+    print(f"Executing: {cmd}")
 
     try:
-        # 执行 make run 命令
+        # Run make run command
         result = subprocess.run(
             cmd, shell=True, check=True, env=config.get_subprocess_env()
         )
-        print("运行完成!")
+        print("Run completed!")
         return 0
     except subprocess.CalledProcessError as e:
-        print(f"运行失败，退出码: {e.returncode}")
+        print(f"Run failed, exit code: {e.returncode}")
         return e.returncode
     except Exception as e:
-        print(f"运行过程中发生错误: {e}")
+        print(f"Error during run: {e}")
         return 1

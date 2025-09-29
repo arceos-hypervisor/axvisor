@@ -15,62 +15,61 @@ except Exception:
 
 
 def main(args) -> int:
-    """运行 clippy 代码检查"""
-    print("执行 clippy 功能...")
+    """Run clippy lint checks"""
+    print("Running clippy task...")
 
-    # 首先设置 arceos 依赖
-    print("设置 arceos 依赖...")
+    # First setup arceos dependency
+    print("Setting up arceos dependency...")
     if not setup_arceos():
-        print("设置 arceos 失败，无法继续执行 clippy")
+        print("Failed to setup arceos, cannot continue clippy")
         return 1
-    # 读取根目录的 Cargo.toml 并解析 [features]
+    # Read root Cargo.toml and parse [features]
     cargo_toml_path = os.path.join(os.getcwd(), "Cargo.toml")
     if not os.path.exists(cargo_toml_path):
-        print(f"未找到 {cargo_toml_path}，无法继续")
+        print(f"Not found {cargo_toml_path}, abort")
         return 1
-
-    # 解析 Cargo.toml，使用第三方 toml 包（文本模式）
+    # Parse Cargo.toml using third-party toml package
     parsed = None
     if _toml_impl is None:
-        print("需要安装 python-toml 包（pip install toml）来解析 Cargo.toml")
+        print("Need python 'toml' package (pip install toml) to parse Cargo.toml")
         return 1
     try:
         with open(cargo_toml_path, "r", encoding="utf-8") as f:
             parsed = _toml_impl.load(f)
     except Exception as e:
-        print(f"解析 Cargo.toml 失败: {e}")
+        print(f"Failed to parse Cargo.toml: {e}")
         return 1
 
     features_dict = parsed.get("features", {}) if isinstance(parsed, dict) else {}
     all_features: List[str] = list(features_dict.keys())
 
-    # 找出以 plat- 开头的 feature
+    # Collect features starting with plat-
     plat_features = [f for f in all_features if f.startswith("plat-")]
-    # 其他非 plat 的 feature
+    # Non-plat features
     non_plat_features = [f for f in all_features if not f.startswith("plat-")]
 
     if not plat_features:
         print(
-            "在 Cargo.toml 的 [features] 中未找到以 'plat-' 开头的 feature，将以所有 feature 运行一次 clippy"
+            "No 'plat-' features found in Cargo.toml [features]; running single clippy pass with all features"
         )
         features_arg = ",".join(all_features) if all_features else ""
         cmd_parts = ["cargo", "clippy"]
         if features_arg:
             cmd_parts.extend(["--features", f'"{features_arg}"'])
         cmd = " ".join(cmd_parts)
-        print(f"执行命令: {cmd}")
+        print(f"Executing: {cmd}")
         try:
             subprocess.run(cmd, shell=True, check=True)
-            print("clippy 检查完成!")
+            print("Clippy finished successfully")
             return 0
         except subprocess.CalledProcessError as e:
-            print(f"clippy 检查失败，退出码: {e.returncode}")
+            print(f"Clippy failed with exit code: {e.returncode}")
             return e.returncode
         except Exception as e:
-            print(f"clippy 检查过程中发生错误: {e}")
+            print(f"Error while running clippy: {e}")
             return 1
 
-    # 简单的 arch -> target 三元组映射（可按需扩展）
+    # Simple arch -> target triple map (extend as needed)
     arch_target_map = {
         "aarch64": "aarch64-unknown-none-softfloat",
         "x86": "x86_64-unknown-none",
@@ -81,12 +80,12 @@ def main(args) -> int:
 
     any_failure = False
     for plat in plat_features:
-        # 从 plat 名称尝试提取 arch token（plat-<arch>-...）
+        # Extract arch token from plat name (plat-<arch>-...)
         parts = plat.split("-")
         arch_token = parts[1] if len(parts) > 1 else None
         target = arch_target_map.get(arch_token) if arch_token else None
 
-        # 构建 features: 选中当前 plat + 所有非 plat features（避免同时启用多个 plat）
+        # Build features: current plat + all non-plat ones (avoid enabling multiple plat features)
         features_to_use = [plat] + non_plat_features
         features_arg = ",".join(features_to_use) if features_to_use else ""
 
@@ -96,17 +95,25 @@ def main(args) -> int:
         if features_arg:
             cmd_parts.extend(["--features", f'"{features_arg}"'])
 
+        cmd_parts.extend(
+            [
+                "--",
+                "-D",
+                "warnings",
+            ]
+        )
+
         cmd = " ".join(cmd_parts)
-        print(f"执行命令: {cmd}")
+        print(f"Executing: {cmd}")
 
         try:
             subprocess.run(cmd, shell=True, check=True)
-            print(f"{plat}: clippy 检查完成")
+            print(f"{plat}: clippy finished successfully")
         except subprocess.CalledProcessError as e:
-            print(f"{plat}: clippy 检查失败，退出码: {e.returncode}")
+            print(f"{plat}: clippy failed, exit code: {e.returncode}")
             any_failure = True
         except Exception as e:
-            print(f"{plat}: clippy 检查过程中发生错误: {e}")
+            print(f"{plat}: error while running clippy: {e}")
             any_failure = True
 
     return 1 if any_failure else 0

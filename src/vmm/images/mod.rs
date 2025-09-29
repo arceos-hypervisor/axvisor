@@ -192,7 +192,7 @@ pub fn load_vm_image_from_memory(
 }
 
 #[cfg(feature = "fs")]
-mod fs {
+pub mod fs {
     use super::*;
     use crate::hal::CacheOp;
     use axerrno::{AxResult, ax_err, ax_err_type};
@@ -328,6 +328,3 @@ mod fs {
         Ok((file, file_size))
     }
 }
-
-#[cfg(feature = "fs")]
-pub use fs::open_image_file;

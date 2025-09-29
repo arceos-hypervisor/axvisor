@@ -5,13 +5,13 @@ import subprocess
 
 
 def setup_arceos():
-    """设置 arceos 依赖"""
+    """Setup arceos dependency"""
     arceos_dir = ".arceos"
 
     if not os.path.exists(arceos_dir):
-        print("正在克隆 arceos 仓库...")
+        print("Cloning arceos repository...")
         try:
-            # 克隆 arceos 仓库
+            # Clone arceos repository
             result = subprocess.run(
                 [
                     "git",
@@ -25,22 +25,21 @@ def setup_arceos():
                 capture_output=True,
                 text=True,
             )
-
-            print("arceos 仓库克隆完成")
+            print("arceos repository cloned")
             return True
         except subprocess.CalledProcessError as e:
-            print(f"克隆 arceos 仓库失败: {e}")
-            print(f"错误输出: {e.stderr}")
+            print(f"Failed to clone arceos repository: {e}")
+            print(f"Stderr: {e.stderr}")
             return False
         except Exception as e:
-            print(f"设置 arceos 过程中发生错误: {e}")
+            print(f"Error while setting up arceos: {e}")
             return False
     else:
-        print(".arceos 文件夹已存在")
+        print(".arceos directory already exists")
         return True
 
 
 def main(args=None):
-    """作为独立命令使用时的入口"""
-    print("执行 setup-arceos 功能...")
+    """Entry point when used as standalone command"""
+    print("Running setup-arceos task...")
     return 0 if setup_arceos() else 1
