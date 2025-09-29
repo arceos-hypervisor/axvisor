@@ -55,8 +55,8 @@ pub fn register_timer<F>(deadline: u64, handler: F) -> usize
 where
     F: FnOnce(TimeValue) + Send + 'static,
 {
-    info!("Registering timer...");
-    info!(
+    trace!("Registering timer...");
+    trace!(
         "deadline is {:#?} = {:#?}",
         deadline,
         TimeValue::from_nanos(deadline)
