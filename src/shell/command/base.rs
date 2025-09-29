@@ -68,8 +68,8 @@ fn do_ls(cmd: &ParsedCommand) {
 
         for entry in entries {
             let entry_str = path_to_str(&entry);
-            let path = format!("{}/{}", name, entry_str);
-            if let Err(e) = show_entry_info(&path, &entry_str, show_long) {
+            let path = format!("{name}/{entry_str}");
+            if let Err(e) = show_entry_info(&path, entry_str, show_long) {
                 print_err!("ls", path, e);
             }
         }
@@ -151,12 +151,10 @@ fn do_echo(cmd: &ParsedCommand) {
         if let Err(e) = echo_file(fname, &text_list) {
             print_err!("echo", fname, e);
         }
+    } else if *no_newline {
+        print!("{}", args_str);
     } else {
-        if *no_newline {
-            print!("{}", args_str);
-        } else {
-            println!("{}", args_str);
-        }
+        println!("{}", args_str);
     }
 }
 
@@ -218,16 +216,16 @@ fn do_rm(cmd: &ParsedCommand) {
     }
 
     for path in args {
-        if let Err(e) = rm_one(path, *rm_dir, *recursive, *force) {
-            if !force {
-                print_err!("rm", format_args!("cannot remove '{path}'"), e);
-            }
+        if let Err(e) = rm_one(path, *rm_dir, *recursive, *force)
+            && !force
+        {
+            print_err!("rm", format_args!("cannot remove '{path}'"), e);
         }
     }
 }
 
 // Implementation of recursively deleting directories (manual recursion)
-fn remove_dir_recursive(path: &str, force: bool) -> io::Result<()> {
+fn remove_dir_recursive(path: &str, _force: bool) -> io::Result<()> {
     // Read directory contents
     let entries = fs::read_dir(path)?;
 
@@ -239,7 +237,7 @@ fn remove_dir_recursive(path: &str, force: bool) -> io::Result<()> {
 
         if metadata.is_dir() {
             // Recursively delete subdirectory
-            remove_dir_recursive(&entry_path, force)?;
+            remove_dir_recursive(&entry_path, _force)?;
         } else {
             // Delete file
             fs::remove_file(&entry_path)?;
@@ -361,30 +359,31 @@ fn do_mv(cmd: &ParsedCommand) {
         let dest = &args[1];
 
         // Check if destination exists and is a directory
-        if let Ok(dest_meta) = fs::metadata(dest) {
-            if dest_meta.is_dir() {
-                // Move source into destination directory
-                let mut file_dir = fs::read_dir(dest).unwrap();
-                let source_name = match file_dir.next() {
-                    Some(name) => {
-                        let dir_name = name.unwrap().file_name();
-                        format!("{}/{}", dest, dir_name.to_string())
-                    }
-                    None => {
-                        print_err!("mv", format_args!("invalid source path '{source}'"));
-                        return;
-                    }
-                };
-                let dest_path = format!("{}/{}", dest, source_name);
-                if let Err(e) = move_file_or_dir(source, &dest_path) {
-                    print_err!(
-                        "mv",
-                        format_args!("cannot move '{source}' to '{dest_path}'"),
-                        e
-                    );
+        if let Ok(dest_meta) = fs::metadata(dest)
+            && dest_meta.is_dir()
+        {
+            // Move source into destination directory
+            let mut file_dir = fs::read_dir(dest).unwrap();
+            let source_name = match file_dir.next() {
+                Some(name) => {
+                    let dir_name = name.expect("Failed to read directory");
+                    let file = dir_name.file_name();
+                    format!("{dest}/{file}")
                 }
-                return;
+                None => {
+                    print_err!("mv", format_args!("invalid source path '{source}'"));
+                    return;
+                }
+            };
+            let dest_path = format!("{dest}/{source_name}");
+            if let Err(e) = move_file_or_dir(source, &dest_path) {
+                print_err!(
+                    "mv",
+                    format_args!("cannot move '{source}' to '{dest_path}'"),
+                    e
+                );
             }
+            return;
         }
 
         // Direct rename/move
@@ -404,15 +403,16 @@ fn do_mv(cmd: &ParsedCommand) {
                     let mut file_dir = fs::read_dir(source).unwrap();
                     let source_name = match file_dir.next() {
                         Some(name) => {
-                            let dir_name = name.unwrap().file_name();
-                            format!("{}/{}", dest, dir_name.to_string())
+                            let dir_name = name.expect("Failed to read directory");
+                            let file = dir_name.file_name();
+                            format!("{dest}/{file}")
                         }
                         None => {
                             print_err!("mv", format_args!("invalid source path '{source}'"));
                             return;
                         }
                     };
-                    let dest_path = format!("{}/{}", dest, source_name);
+                    let dest_path = format!("{dest}/{source_name}");
                     if let Err(e) = move_file_or_dir(source, &dest_path) {
                         print_err!(
                             "mv",
@@ -534,8 +534,8 @@ fn copy_dir_recursive(src: &str, dst: &str) -> io::Result<()> {
         let entry = entry_result?;
         let file_name = entry.file_name();
         let entry_name = path_to_str(&file_name);
-        let src_path = format!("{}/{}", src, entry_name);
-        let dst_path = format!("{}/{}", dst, entry_name);
+        let src_path = format!("{src}/{entry_name}");
+        let dst_path = format!("{dst}/{entry_name}");
 
         let metadata = entry.file_type();
         if metadata.is_dir() {

@@ -1,4 +1,3 @@
-use core::sync::atomic::Ordering;
 use std::{
     collections::btree_map::BTreeMap,
     fs::read_to_string,
@@ -9,7 +8,9 @@ use std::{
 
 use crate::{
     shell::command::{CommandNode, FlagDef, OptionDef, ParsedCommand},
-    vmm::{RUNNING_VM_COUNT, config::init_guest_vm, vcpus, vm_list, with_vm},
+    vmm::{
+        config::init_guest_vm, get_running_vm_count, set_running_vm_count, vcpus, vm_list, with_vm,
+    },
 };
 
 fn vm_help(_cmd: &ParsedCommand) {
@@ -93,7 +94,7 @@ fn vm_start(cmd: &ParsedCommand) {
             match vm.boot() {
                 Ok(_) => {
                     vcpus::notify_primary_vcpu(vm.id());
-                    RUNNING_VM_COUNT.fetch_add(1, Ordering::Release);
+                    set_running_vm_count(1);
                     println!("✓ VM[{}] started successfully", vm.id());
                     started_count += 1;
                 }
@@ -130,7 +131,7 @@ fn start_vm_by_id(vm_id: usize) {
     }) {
         Some(Ok(_)) => {
             vcpus::notify_primary_vcpu(vm_id);
-            RUNNING_VM_COUNT.fetch_add(1, Ordering::Release);
+            set_running_vm_count(1);
             println!("✓ VM[{}] started successfully", vm_id);
         }
         Some(Err(err)) => {
@@ -266,8 +267,7 @@ fn delete_vm_by_id(vm_id: usize, keep_data: bool) {
 }
 
 fn vm_list_simple() {
-    let vms: Vec<std::sync::Arc<axvm::AxVM<crate::hal::AxVMHalImpl, crate::hal::AxVCpuHalImpl>>> =
-        vm_list::get_vm_list();
+    let vms = vm_list::get_vm_list();
     println!("ID    NAME           STATE      VCPU   MEMORY");
     println!("----  -----------    -------    ----   ------");
     for vm in vms {
@@ -380,13 +380,11 @@ fn vm_list(cmd: &ParsedCommand) {
             );
         }
 
-        if !show_all {
-            if running_count < total_count {
-                println!(
-                    "\nShowing {} running VMs. Use --all to show all {} VMs.",
-                    running_count, total_count
-                );
-            }
+        if !show_all && running_count < total_count {
+            println!(
+                "\nShowing {} running VMs. Use --all to show all {} VMs.",
+                running_count, total_count
+            );
         }
     }
 }
@@ -410,6 +408,7 @@ fn vm_show(cmd: &ParsedCommand) {
     }
 }
 
+/// Show detailed information about a specific VM.
 fn show_vm_details(vm_id: usize, show_config: bool, show_stats: bool) {
     match with_vm(vm_id, |vm| {
         let state = if vm.running() {
@@ -522,6 +521,7 @@ fn vm_status(cmd: &ParsedCommand) {
     }
 }
 
+/// Show status of a specific VM.
 fn show_vm_status(vm_id: usize, watch: bool) {
     if watch {
         println!("Watching VM[{}] status (press Ctrl+C to stop):", vm_id);
@@ -598,6 +598,7 @@ fn show_vm_status(vm_id: usize, watch: bool) {
     }
 }
 
+/// Show status of all VMs in a summary format.
 fn show_all_vm_status(watch: bool) {
     if watch {
         println!("Watching all VMs status (press Ctrl+C to stop):");
@@ -611,10 +612,7 @@ fn show_all_vm_status(watch: bool) {
 
     println!("System Status:");
     println!("  Total VMs: {}", vms.len());
-    println!(
-        "  Running VMs: {}",
-        RUNNING_VM_COUNT.load(Ordering::Acquire)
-    );
+    println!("  Running VMs: {}", get_running_vm_count());
 
     let mut running_count = 0;
     let mut stopping_count = 0;
@@ -686,7 +684,7 @@ fn show_all_vm_status(watch: bool) {
 
             let summary_str: Vec<String> = vcpu_summary
                 .into_iter()
-                .map(|(state, count)| format!("{}:{}", state, count))
+                .map(|(state, count)| format!("{state}:{count}"))
                 .collect();
 
             if !summary_str.is_empty() {
@@ -696,6 +694,7 @@ fn show_all_vm_status(watch: bool) {
     }
 }
 
+/// Build the VM command tree and register it.
 pub fn build_vm_cmd(tree: &mut BTreeMap<String, CommandNode>) {
     let create_cmd = CommandNode::new("Create a new virtual machine")
         .with_handler(vm_create)

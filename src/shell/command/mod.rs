@@ -22,6 +22,7 @@ pub struct CommandNode {
     subcommands: BTreeMap<String, CommandNode>,
     description: &'static str,
     usage: Option<&'static str>,
+    #[allow(dead_code)]
     log_level: log::LevelFilter,
     options: Vec<OptionDef>,
     flags: Vec<FlagDef>,
@@ -84,6 +85,7 @@ impl CommandNode {
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_log_level(mut self, level: log::LevelFilter) -> Self {
         self.log_level = level;
         self
@@ -126,6 +128,7 @@ impl OptionDef {
         self
     }
 
+    #[allow(dead_code)]
     pub fn required(mut self) -> Self {
         self.required = true;
         self
@@ -167,7 +170,7 @@ impl CommandParser {
         let (command_path, command_node, remaining_tokens) = Self::find_command(&tokens)?;
 
         // Parse the arguments
-        let (options, flags, positional_args) = Self::parse_args(&remaining_tokens, command_node)?;
+        let (options, flags, positional_args) = Self::parse_args(remaining_tokens, command_node)?;
 
         // Validate required options
         Self::validate_required_options(command_node, &options)?;
@@ -235,6 +238,7 @@ impl CommandParser {
         Ok((command_path, current_node, &tokens[token_index..]))
     }
 
+    #[allow(clippy::type_complexity)]
     fn parse_args(
         tokens: &[String],
         command_node: &CommandNode,
@@ -254,9 +258,8 @@ impl CommandParser {
         while i < tokens.len() {
             let token = &tokens[i];
 
-            if token.starts_with("--") {
+            if let Some(name) = token.strip_prefix("--") {
                 // Long options/flags
-                let name = &token[2..];
                 if let Some(eq_pos) = name.find('=') {
                     // --option=value format
                     let (opt_name, value) = name.split_at(eq_pos);
@@ -264,19 +267,19 @@ impl CommandParser {
                     if Self::is_option(opt_name, command_node) {
                         options.insert(opt_name.to_string(), value.to_string());
                     } else {
-                        return Err(ParseError::UnknownOption(format!("--{}", opt_name)));
+                        return Err(ParseError::UnknownOption(format!("--{opt_name}")));
                     }
                 } else if Self::is_flag(name, command_node) {
                     flags.insert(name.to_string(), true);
                 } else if Self::is_option(name, command_node) {
                     // --option value format
                     if i + 1 >= tokens.len() {
-                        return Err(ParseError::MissingValue(format!("--{}", name)));
+                        return Err(ParseError::MissingValue(format!("--{name}")));
                     }
                     options.insert(name.to_string(), tokens[i + 1].clone());
                     i += 1; // Skip value
                 } else {
-                    return Err(ParseError::UnknownOption(format!("--{}", name)));
+                    return Err(ParseError::UnknownOption(format!("--{name}")));
                 }
             } else if token.starts_with('-') && token.len() > 1 {
                 // Short options/flags
@@ -296,10 +299,10 @@ impl CommandParser {
                             options.insert(opt_name.to_string(), tokens[i + 1].clone());
                             i += 1; // Skip value
                         } else {
-                            return Err(ParseError::MissingValue(format!("-{}", ch)));
+                            return Err(ParseError::MissingValue(format!("-{ch}")));
                         }
                     } else {
-                        return Err(ParseError::UnknownOption(format!("-{}", ch)));
+                        return Err(ParseError::UnknownOption(format!("-{ch}")));
                     }
                 }
             } else {
@@ -315,13 +318,13 @@ impl CommandParser {
     fn is_option(name: &str, node: &CommandNode) -> bool {
         node.options
             .iter()
-            .any(|opt| opt.long.map_or(false, |long| long == name) || opt.name == name)
+            .any(|opt| (opt.long == Some(name)) || opt.name == name)
     }
 
     fn is_flag(name: &str, node: &CommandNode) -> bool {
         node.flags
             .iter()
-            .any(|flag| flag.long.map_or(false, |long| long == name) || flag.name == name)
+            .any(|flag| (flag.long == Some(name)) || flag.name == name)
     }
 
     fn is_short_option(ch: char, node: &CommandNode) -> bool {
@@ -413,13 +416,13 @@ pub fn show_help(command_path: &[String]) -> Result<(), ParseError> {
         for option in &current_node.options {
             let mut opt_str = String::new();
             if let Some(short) = option.short {
-                opt_str.push_str(&format!("-{}", short));
+                opt_str.push_str(&format!("-{short}"));
             }
             if let Some(long) = option.long {
                 if !opt_str.is_empty() {
                     opt_str.push_str(", ");
                 }
-                opt_str.push_str(&format!("--{}", long));
+                opt_str.push_str(&format!("--{long}"));
             }
             if opt_str.is_empty() {
                 opt_str = option.name.to_string();
@@ -435,13 +438,13 @@ pub fn show_help(command_path: &[String]) -> Result<(), ParseError> {
         for flag in &current_node.flags {
             let mut flag_str = String::new();
             if let Some(short) = flag.short {
-                flag_str.push_str(&format!("-{}", short));
+                flag_str.push_str(&format!("-{short}"));
             }
             if let Some(long) = flag.long {
                 if !flag_str.is_empty() {
                     flag_str.push_str(", ");
                 }
-                flag_str.push_str(&format!("--{}", long));
+                flag_str.push_str(&format!("--{long}"));
             }
             if flag_str.is_empty() {
                 flag_str = flag.name.to_string();

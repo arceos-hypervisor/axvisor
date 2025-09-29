@@ -60,7 +60,7 @@ pub fn clear_line_and_redraw(
 ) {
     write!(stdout, "\r");
     write!(stdout, "\x1b[2K");
-    write!(stdout, "{}{}", prompt, content);
+    write!(stdout, "{prompt}{content}");
     if cursor_pos < content.len() {
         write!(stdout, "\x1b[{}D", content.len() - cursor_pos);
     }

@@ -31,7 +31,7 @@ pub type VCpuRef = axvm::AxVCpuRef<AxVCpuHalImpl>;
 static VMM: AxWaitQueueHandle = AxWaitQueueHandle::new();
 
 /// The number of running VMs. This is used to determine when to exit the VMM.
-pub static RUNNING_VM_COUNT: AtomicUsize = AtomicUsize::new(0);
+static RUNNING_VM_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 /// Initialize the VMM.
 ///
@@ -127,4 +127,12 @@ pub fn with_vm_and_vcpu_on_pcpu(
     // Ok(axipi::send_ipi_event_to_one(pcpu_id as usize, move || {
     // with_vm_and_vcpu_on_pcpu(vm_id, vcpu_id, f);
     // }))
+}
+
+pub fn get_running_vm_count() -> usize {
+    RUNNING_VM_COUNT.load(Ordering::Acquire)
+}
+
+pub fn set_running_vm_count(count: usize) {
+    RUNNING_VM_COUNT.fetch_add(count, Ordering::Release);
 }

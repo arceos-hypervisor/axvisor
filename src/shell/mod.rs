@@ -16,6 +16,7 @@ const ESC: u8 = 0x1b; // ESC key
 
 const MAX_LINE_LEN: usize = 256;
 
+// Initialize the console shell.
 pub fn console_init() {
     let mut stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
@@ -67,9 +68,7 @@ pub fn console_init() {
                             }
 
                             // reset buffer
-                            for i in 0..line_len {
-                                buf[i] = 0;
-                            }
+                            buf[..line_len].fill(0);
                             cursor = 0;
                             line_len = 0;
                         }
@@ -133,9 +132,7 @@ pub fn console_init() {
                         // UP arrow - previous command
                         if let Some(prev_cmd) = history.previous() {
                             // clear current buffer
-                            for i in 0..line_len {
-                                buf[i] = 0;
-                            }
+                            buf[..line_len].fill(0);
 
                             let cmd_bytes = prev_cmd.as_bytes();
                             let copy_len = cmd_bytes.len().min(MAX_LINE_LEN - 1);
@@ -153,9 +150,7 @@ pub fn console_init() {
                         match history.next() {
                             Some(next_cmd) => {
                                 // clear current buffer
-                                for i in 0..line_len {
-                                    buf[i] = 0;
-                                }
+                                buf[..line_len].fill(0);
 
                                 let cmd_bytes = next_cmd.as_bytes();
                                 let copy_len = cmd_bytes.len().min(MAX_LINE_LEN - 1);
@@ -169,9 +164,7 @@ pub fn console_init() {
                             }
                             None => {
                                 // clear current line
-                                for i in 0..line_len {
-                                    buf[i] = 0;
-                                }
+                                buf[..line_len].fill(0);
                                 cursor = 0;
                                 line_len = 0;
                                 let prompt =

@@ -1,8 +1,6 @@
 #![no_std]
 #![no_main]
 
-use std::println;
-
 #[macro_use]
 extern crate log;
 
@@ -39,7 +37,7 @@ fn main() {
     vmm::init();
     vmm::start();
 
-    println!("[OK] Default guest initialized");
+    info!("[OK] Default guest initialized");
 
     #[cfg(feature = "fs")]
     shell::console_init();

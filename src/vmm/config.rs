@@ -1,5 +1,5 @@
-use alloc::boxed::Box;
 use axaddrspace::GuestPhysAddr;
+use axerrno::AxResult;
 use axvm::{
     VMMemoryRegion,
     config::{AxVMConfig, AxVMCrateConfig, VmMemMappingType},
@@ -92,9 +92,9 @@ pub fn init_guest_vms() {
     }
 }
 
-pub fn init_guest_vm(raw_cfg: &str) -> Result<(), Box<dyn core::error::Error>> {
+pub fn init_guest_vm(raw_cfg: &str) -> AxResult {
     let vm_create_config =
-        AxVMCrateConfig::from_toml(&raw_cfg).expect("Failed to resolve VM config");
+        AxVMCrateConfig::from_toml(raw_cfg).expect("Failed to resolve VM config");
 
     if let Some(linux) = super::images::get_image_header(&vm_create_config) {
         debug!(

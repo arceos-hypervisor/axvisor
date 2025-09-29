@@ -51,6 +51,12 @@ Currently, AxVisor has been verified in scenarios with the following systems as 
 - [NimbOS](https://github.com/equation314/nimbos)
 - Linux
 
+## Shell Management
+
+AxVisor provides an interactive shell interface for managing virtual machines and file operations.
+
+For detailed information about shell features, commands, and usage, see: [Shell模块介绍.md](doc/Shell模块介绍.md)
+
 # Build and Run
 
 After AxVisor starts, it loads and starts the guest based on the information in the guest configuration file. Currently, AxVisor supports loading guest images from a FAT32 file system and also supports binding guest images to the hypervisor image through static compilation (using include_bytes).
