@@ -96,6 +96,14 @@ def main(args) -> int:
         if features_arg:
             cmd_parts.extend(["--features", f'"{features_arg}"'])
 
+        cmd_parts.extend(
+            [
+                "--",
+                "-D",
+                "warnings",
+            ]
+        )
+
         cmd = " ".join(cmd_parts)
         print(f"执行命令: {cmd}")
 
