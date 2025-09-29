@@ -96,7 +96,8 @@ pub fn get_developer_provided_dtb(
             use axerrno::ax_err_type;
             use std::io::{BufReader, Read};
             if let Some(dtb_path) = &crate_config.kernel.dtb_path {
-                let (dtb_file, dtb_size) = crate::vmm::images::open_image_file(dtb_path).unwrap();
+                let (dtb_file, dtb_size) =
+                    crate::vmm::images::fs::open_image_file(dtb_path).unwrap();
                 info!("DTB file in fs, size: 0x{:x}", dtb_size);
 
                 let mut file = BufReader::new(dtb_file);

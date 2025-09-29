@@ -13,13 +13,12 @@ use crate::vmm::fdt::*;
 
 use alloc::sync::Arc;
 
-#[allow(clippy::module_inception)]
+#[allow(clippy::module_inception, dead_code)]
 pub mod config {
     use alloc::string::String;
     use alloc::vec::Vec;
 
     /// Default static VM configs. Used when no VM config is provided.
-    #[allow(dead_code)]
     pub fn default_static_vm_configs() -> Vec<&'static str> {
         vec![
             #[cfg(target_arch = "x86_64")]
