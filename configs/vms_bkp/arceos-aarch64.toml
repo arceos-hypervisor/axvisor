@@ -20,9 +20,9 @@ phys_cpu_sets = [2]
 entry_point = 0x4020_0000
 # The location of image: "memory" | "fs".
 # Load from file system.
-image_location = "memory"
+image_location = "fs"
 # The file path of the kernel image.
-kernel_path = "path/to/kernel"
+kernel_path = "helloworld_aarch64-qemu-virt.bin"
 # The load address of the kernel image.
 kernel_load_addr = 0x4020_0000
 ## Load from memory

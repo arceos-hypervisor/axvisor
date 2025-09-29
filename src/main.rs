@@ -3,6 +3,7 @@
 
 #[macro_use]
 extern crate log;
+
 #[macro_use]
 extern crate alloc;
 
@@ -16,6 +17,9 @@ extern crate axplat_aarch64_phytium_pi;
 extern crate axplat_aarch64_roc_rk3568_pc;
 #[cfg(feature = "plat-x86-qemu-q35")]
 extern crate axplat_x86_qemu_q35;
+
+#[cfg(feature = "fs")]
+mod shell;
 
 mod hal;
 mod logo;
@@ -33,5 +37,8 @@ fn main() {
     vmm::init();
     vmm::start();
 
-    info!("VMM shutdown");
+    info!("[OK] Default guest initialized");
+
+    #[cfg(feature = "fs")]
+    shell::console_init();
 }

@@ -1,4 +1,5 @@
 use axaddrspace::GuestPhysAddr;
+use axerrno::AxResult;
 use axvm::{
     VMMemoryRegion,
     config::{AxVMConfig, AxVMCrateConfig, VmMemMappingType},
@@ -20,14 +21,7 @@ pub mod config {
 
     /// Default static VM configs. Used when no VM config is provided.
     pub fn default_static_vm_configs() -> Vec<&'static str> {
-        vec![
-            #[cfg(target_arch = "x86_64")]
-            core::include_str!("../../configs/vms/nimbos-x86_64-qemu-smp1.toml"),
-            #[cfg(target_arch = "aarch64")]
-            core::include_str!("../../configs/vms/nimbos-aarch64-qemu-smp1.toml"),
-            #[cfg(target_arch = "riscv64")]
-            core::include_str!("../../configs/vms/nimbos-riscv64-qemu-smp1.toml"),
-        ]
+        vec![]
     }
 
     /// Read VM configs from filesystem
@@ -93,53 +87,61 @@ pub fn init_guest_vms() {
     }
 
     for raw_cfg_str in gvm_raw_configs {
-        let vm_create_config =
-            AxVMCrateConfig::from_toml(&raw_cfg_str).expect("Failed to resolve VM config");
-
-        if let Some(linux) = super::images::get_image_header(&vm_create_config) {
-            debug!(
-                "VM[{}] Linux header: {:#x?}",
-                vm_create_config.base.id, linux
-            );
-        }
-
-        #[cfg(target_arch = "aarch64")]
-        let mut vm_config = AxVMConfig::from(vm_create_config.clone());
-
-        #[cfg(not(target_arch = "aarch64"))]
-        let vm_config = AxVMConfig::from(vm_create_config.clone());
-
-        // Handle FDT-related operations for aarch64
-        #[cfg(target_arch = "aarch64")]
-        handle_fdt_operations(&mut vm_config, &vm_create_config);
-
-        // info!("after parse_vm_interrupt, crate VM[{}] with config: {:#?}", vm_config.id(), vm_config);
-        info!("Creating VM[{}] {:?}", vm_config.id(), vm_config.name());
-
-        // Create VM.
-        let vm = VM::new(vm_config).expect("Failed to create VM");
-        push_vm(vm.clone());
-
-        vm_alloc_memorys(&vm_create_config, &vm);
-
-        let main_mem = vm
-            .memory_regions()
-            .first()
-            .cloned()
-            .expect("VM must have at least one memory region");
-
-        config_guest_address(&vm, &main_mem);
-
-        // Load corresponding images for VM.
-        info!("VM[{}] created success, loading images...", vm.id());
-
-        let mut loader = ImageLoader::new(main_mem, vm_create_config, vm.clone());
-        loader.load().expect("Failed to load VM images");
-
-        if let Err(e) = vm.init() {
-            panic!("VM[{}] setup failed: {:?}", vm.id(), e);
+        if let Err(e) = init_guest_vm(&raw_cfg_str) {
+            error!("Failed to initialize guest VM: {:?}", e);
         }
     }
+}
+
+pub fn init_guest_vm(raw_cfg: &str) -> AxResult {
+    let vm_create_config =
+        AxVMCrateConfig::from_toml(raw_cfg).expect("Failed to resolve VM config");
+
+    if let Some(linux) = super::images::get_image_header(&vm_create_config) {
+        debug!(
+            "VM[{}] Linux header: {:#x?}",
+            vm_create_config.base.id, linux
+        );
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    let mut vm_config = AxVMConfig::from(vm_create_config.clone());
+
+    #[cfg(not(target_arch = "aarch64"))]
+    let vm_config = AxVMConfig::from(vm_create_config.clone());
+
+    // Handle FDT-related operations for aarch64
+    #[cfg(target_arch = "aarch64")]
+    handle_fdt_operations(&mut vm_config, &vm_create_config);
+
+    // info!("after parse_vm_interrupt, crate VM[{}] with config: {:#?}", vm_config.id(), vm_config);
+    info!("Creating VM[{}] {:?}", vm_config.id(), vm_config.name());
+
+    // Create VM.
+    let vm = VM::new(vm_config).expect("Failed to create VM");
+    push_vm(vm.clone());
+
+    vm_alloc_memorys(&vm_create_config, &vm);
+
+    let main_mem = vm
+        .memory_regions()
+        .first()
+        .cloned()
+        .expect("VM must have at least one memory region");
+
+    config_guest_address(&vm, &main_mem);
+
+    // Load corresponding images for VM.
+    info!("VM[{}] created success, loading images...", vm.id());
+
+    let mut loader = ImageLoader::new(main_mem, vm_create_config, vm.clone());
+    loader.load().expect("Failed to load VM images");
+
+    if let Err(e) = vm.init() {
+        panic!("VM[{}] setup failed: {:?}", vm.id(), e);
+    }
+
+    Ok(())
 }
 
 fn config_guest_address(vm: &VM, main_memory: &VMMemoryRegion) {

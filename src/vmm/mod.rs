@@ -1,10 +1,11 @@
-mod config;
 mod hvc;
-mod images;
 mod ivc;
+
+pub mod config;
+pub mod images;
 pub mod timer;
-mod vcpus;
-mod vm_list;
+pub mod vcpus;
+pub mod vm_list;
 
 #[cfg(target_arch = "aarch64")]
 pub mod fdt;
@@ -126,4 +127,12 @@ pub fn with_vm_and_vcpu_on_pcpu(
     // Ok(axipi::send_ipi_event_to_one(pcpu_id as usize, move || {
     // with_vm_and_vcpu_on_pcpu(vm_id, vcpu_id, f);
     // }))
+}
+
+pub fn get_running_vm_count() -> usize {
+    RUNNING_VM_COUNT.load(Ordering::Acquire)
+}
+
+pub fn add_running_vm_count(count: usize) {
+    RUNNING_VM_COUNT.fetch_add(count, Ordering::Release);
 }
