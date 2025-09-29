@@ -133,6 +133,6 @@ pub fn get_running_vm_count() -> usize {
     RUNNING_VM_COUNT.load(Ordering::Acquire)
 }
 
-pub fn set_running_vm_count(count: usize) {
+pub fn add_running_vm_count(count: usize) {
     RUNNING_VM_COUNT.fetch_add(count, Ordering::Release);
 }

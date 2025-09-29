@@ -9,7 +9,7 @@ use std::{
 use crate::{
     shell::command::{CommandNode, FlagDef, OptionDef, ParsedCommand},
     vmm::{
-        config::init_guest_vm, get_running_vm_count, set_running_vm_count, vcpus, vm_list, with_vm,
+        add_running_vm_count, config::init_guest_vm, get_running_vm_count, vcpus, vm_list, with_vm,
     },
 };
 
@@ -94,7 +94,7 @@ fn vm_start(cmd: &ParsedCommand) {
             match vm.boot() {
                 Ok(_) => {
                     vcpus::notify_primary_vcpu(vm.id());
-                    set_running_vm_count(1);
+                    add_running_vm_count(1);
                     println!("✓ VM[{}] started successfully", vm.id());
                     started_count += 1;
                 }
@@ -131,7 +131,7 @@ fn start_vm_by_id(vm_id: usize) {
     }) {
         Some(Ok(_)) => {
             vcpus::notify_primary_vcpu(vm_id);
-            set_running_vm_count(1);
+            add_running_vm_count(1);
             println!("✓ VM[{}] started successfully", vm_id);
         }
         Some(Err(err)) => {
