@@ -15,10 +15,6 @@ use crate::vmm::fdt::update_fdt;
 #[cfg(target_arch = "aarch64")]
 use core::ptr::NonNull;
 
-#[cfg(feature = "fs")]
-#[allow(unused_imports)]
-pub use fs::open_image_file;
-
 mod linux;
 
 pub fn get_image_header(config: &AxVMCrateConfig) -> Option<linux::Header> {

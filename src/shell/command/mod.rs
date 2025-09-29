@@ -465,15 +465,8 @@ pub fn show_help(command_path: &[String]) -> Result<(), ParseError> {
 }
 
 pub fn print_prompt() {
-    print!(
-        "axvisor:{}$ ",
-        path_to_str(&std::env::current_dir().unwrap())
-    );
+    print!("axvisor:{}$ ", std::env::current_dir().unwrap());
     std::io::stdout().flush().unwrap();
-}
-
-fn path_to_str(path: &str) -> &str {
-    path
 }
 
 pub fn run_cmd_bytes(cmd_bytes: &[u8]) {

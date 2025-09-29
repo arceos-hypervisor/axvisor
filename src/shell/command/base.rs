@@ -5,7 +5,7 @@ use std::string::{String, ToString};
 use std::vec::Vec;
 use std::{print, println};
 
-use crate::shell::command::{CommandNode, FlagDef, ParsedCommand, path_to_str};
+use crate::shell::command::{CommandNode, FlagDef, ParsedCommand};
 
 macro_rules! print_err {
     ($cmd: literal, $msg: expr) => {
@@ -62,14 +62,13 @@ fn do_ls(cmd: &ParsedCommand) {
         let mut entries = fs::read_dir(name)?
             .filter_map(|e| e.ok())
             .map(|e| e.file_name())
-            .filter(|name| show_all || !path_to_str(name).starts_with('.'))
+            .filter(|name| show_all || !name.starts_with('.'))
             .collect::<Vec<_>>();
         entries.sort();
 
         for entry in entries {
-            let entry_str = path_to_str(&entry);
-            let path = format!("{name}/{entry_str}");
-            if let Err(e) = show_entry_info(&path, entry_str, show_long) {
+            let path = format!("{name}/{entry}");
+            if let Err(e) = show_entry_info(&path, &entry, show_long) {
                 print_err!("ls", path, e);
             }
         }
@@ -232,7 +231,7 @@ fn remove_dir_recursive(path: &str, _force: bool) -> io::Result<()> {
     // Remove all child items
     for entry_result in entries {
         let entry = entry_result?;
-        let entry_path = format!("{}/{}", path, path_to_str(&entry.file_name()));
+        let entry_path = format!("{}/{}", path, entry.file_name());
         let metadata = entry.file_type();
 
         if metadata.is_dir() {
@@ -269,7 +268,7 @@ fn do_pwd(cmd: &ParsedCommand) {
     let _logical = cmd.flags.get("logical").unwrap_or(&false);
 
     let pwd = std::env::current_dir().unwrap();
-    println!("{}", path_to_str(&pwd));
+    println!("{}", pwd);
 }
 
 fn do_uname(cmd: &ParsedCommand) {
@@ -533,9 +532,8 @@ fn copy_dir_recursive(src: &str, dst: &str) -> io::Result<()> {
     for entry_result in entries {
         let entry = entry_result?;
         let file_name = entry.file_name();
-        let entry_name = path_to_str(&file_name);
-        let src_path = format!("{src}/{entry_name}");
-        let dst_path = format!("{dst}/{entry_name}");
+        let src_path = format!("{src}/{file_name}");
+        let dst_path = format!("{dst}/{file_name}");
 
         let metadata = entry.file_type();
         if metadata.is_dir() {
