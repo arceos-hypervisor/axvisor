@@ -9,43 +9,42 @@ from .setup import setup_arceos
 
 
 def main(args) -> int:
-    """创建磁盘镜像"""
-    print("执行 disk_img 功能...")
+    """Create disk image"""
+    print("Running disk_img task...")
 
-    # 首先设置 arceos 依赖
-    print("设置 arceos 依赖...")
+    # Setup arceos dependency first
+    print("Setting up arceos dependency...")
     if not setup_arceos():
-        print("设置 arceos 失败，无法继续执行 disk_img")
+        print("Failed to setup arceos, cannot create disk image")
         return 1
 
     cmd = format_make_command_base()
 
     if args.image:
-        # 处理镜像路径，如果是相对路径则转换为绝对路径
+        # Handle image path: convert relative path to absolute
         image_path = args.image
         if not os.path.isabs(image_path):
-            # 相对于项目根目录计算绝对路径
+            # Compute absolute path relative to project root
             project_root = os.getcwd()
             image_path = os.path.abspath(os.path.join(project_root, image_path))
-
-        # 如果指定了镜像路径和文件名，则添加到命令中
+        # Add image path to command if specified
         cmd.append(f"DISK_IMG={image_path}")
 
     cmd.append("disk_img")
 
-    # 构建 make 命令
+    # Build make command
     cmd = " ".join(cmd)
 
-    print(f"执行命令: {cmd}")
+    print(f"Executing: {cmd}")
 
     try:
-        # 执行 make 命令
+        # Run make command
         subprocess.run(cmd, shell=True, check=True)
-        print("磁盘镜像创建完成!")
+        print("Disk image created successfully!")
         return 0
     except subprocess.CalledProcessError as e:
-        print(f"磁盘镜像创建失败，退出码: {e.returncode}")
+        print(f"Disk image creation failed, exit code: {e.returncode}")
         return e.returncode
     except Exception as e:
-        print(f"磁盘镜像创建过程中发生错误: {e}")
+        print(f"Error during disk image creation: {e}")
         return 1
