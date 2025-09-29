@@ -16,6 +16,7 @@ use crate::vmm::fdt::update_fdt;
 use core::ptr::NonNull;
 
 #[cfg(feature = "fs")]
+#[allow(unused_imports)]
 pub use fs::open_image_file;
 
 mod linux;

@@ -211,6 +211,7 @@ fn generate_guest_img_loading_functions(
             /// kernel image
             pub kernel: &'static [u8],
             /// dtb image
+            #[allow(dead_code)]
             pub dtb: Option<&'static [u8]>,
             /// bios image
             pub bios: Option<&'static [u8]>,
