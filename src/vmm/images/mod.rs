@@ -196,7 +196,7 @@ pub fn load_vm_image_from_memory(
 }
 
 #[cfg(feature = "fs")]
-mod fs {
+pub mod fs {
     use super::*;
     use crate::hal::CacheOp;
     use axerrno::{AxResult, ax_err, ax_err_type};

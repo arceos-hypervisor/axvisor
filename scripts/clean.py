@@ -6,32 +6,32 @@ from .setup import setup_arceos
 
 
 def main(args) -> int:
-    """清理构建产物"""
-    print("执行 clean 功能...")
+    """Clean build artifacts"""
+    print("Running clean task...")
 
-    # 首先设置 arceos 依赖
-    print("设置 arceos 依赖...")
+    # Setup arceos dependency first
+    print("Setting up arceos dependency...")
     if not setup_arceos():
-        print("设置 arceos 失败，无法继续执行 clean")
+        print("Failed to setup arceos, cannot clean")
         return 1
 
     cmd = format_make_command_base()
 
     cmd.append("clean")
 
-    # 构建 make 命令
+    # Build make command string
     cmd = " ".join(cmd)
 
-    print(f"执行命令: {cmd}")
+    print(f"Executing: {cmd}")
 
     try:
-        # 执行 make 命令
+        # Run make command
         subprocess.run(cmd, shell=True, check=True)
-        print("清理完成!")
+        print("Clean succeeded!")
         return 0
     except subprocess.CalledProcessError as e:
-        print(f"清理失败，退出码: {e.returncode}")
+        print(f"Clean failed, exit code: {e.returncode}")
         return e.returncode
     except Exception as e:
-        print(f"清理过程中发生错误: {e}")
+        print(f"Error during clean: {e}")
         return 1
