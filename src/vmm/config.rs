@@ -87,7 +87,9 @@ pub fn init_guest_vms() {
     }
 
     for raw_cfg_str in gvm_raw_configs {
-        init_guest_vm(&raw_cfg_str).expect("Failed to initialize guest VM");
+        if let Err(e) = init_guest_vm(&raw_cfg_str) {
+            error!("Failed to initialize guest VM: {:?}", e);
+        }
     }
 }
 
