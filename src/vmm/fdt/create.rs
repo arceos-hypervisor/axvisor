@@ -318,7 +318,11 @@ pub fn update_fdt(fdt_src: NonNull<u8>, dtb_size: usize, vm: VMRef) {
     // crate::vmm::fdt::print::print_guest_fdt(new_fdt_bytes.as_slice());
     let vm_clone = vm.clone();
     let dest_addr = calculate_dtb_load_addr(vm, new_fdt_bytes.len());
-    info!("New FDT will be loaded at {:x}", dest_addr);
+    info!(
+        "New FDT will be loaded at {:x}, size: 0x{:x}",
+        dest_addr,
+        new_fdt_bytes.len()
+    );
     // Load the updated FDT into VM
     load_vm_image_from_memory(&new_fdt_bytes, dest_addr, vm_clone)
         .expect("Failed to load VM images");
