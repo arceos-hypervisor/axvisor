@@ -314,7 +314,7 @@ pub fn update_fdt(dest_addr: GuestPhysAddr, fdt_src: NonNull<u8>, dtb_size: usiz
 
     let new_fdt_bytes = new_fdt.finish().unwrap();
 
-    // print_guest_fdt(new_fdt_bytes.as_slice());
+    // crate::vmm::fdt::print::print_guest_fdt(new_fdt_bytes.as_slice());
 
     // Load the updated FDT into VM
     load_vm_image_from_memory(&new_fdt_bytes, dest_addr, vm.clone())
