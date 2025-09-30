@@ -10,10 +10,10 @@ use crate::vmm::VMRef;
 use crate::vmm::config::{config, get_vm_dtb_arc};
 
 #[cfg(target_arch = "aarch64")]
-use crate::vmm::fdt::update_fdt;
+use core::ptr::NonNull;
 
 #[cfg(target_arch = "aarch64")]
-use core::ptr::NonNull;
+use crate::vmm::fdt::update_fdt;
 
 mod linux;
 
@@ -107,23 +107,17 @@ impl ImageLoader {
             .expect("Failed to load VM images");
         // Load DTB image
         let vm_config = axvm::config::AxVMConfig::from(self.config.clone());
-        if let Some(dtb_arc) = get_vm_dtb_arc(&vm_config)
-            && let Some(dtb_load_gpa) = self.dtb_load_gpa
-        {
-            let dtb_slice: &[u8] = &dtb_arc;
-            debug!(
-                "DTB buffer addr: {:x}, size: {:#}",
-                dtb_load_gpa,
-                Byte::from(dtb_slice.len())
-            );
 
+        if let Some(dtb_arc) = get_vm_dtb_arc(&vm_config) {
+            let _dtb_slice: &[u8] = &dtb_arc;
             #[cfg(target_arch = "aarch64")]
             update_fdt(
-                dtb_load_gpa,
-                NonNull::new(dtb_slice.as_ptr() as *mut u8).unwrap(),
-                dtb_slice.len(),
+                NonNull::new(_dtb_slice.as_ptr() as *mut u8).unwrap(),
+                _dtb_slice.len(),
                 self.vm.clone(),
             );
+        } else {
+            info!("dtb_load_gpa not provided");
         }
 
         // Load BIOS image
@@ -256,21 +250,12 @@ pub mod fs {
         };
         // Load DTB image if needed.
         let vm_config = axvm::config::AxVMConfig::from(loader.config.clone());
-        if let Some(dtb_arc) = get_vm_dtb_arc(&vm_config)
-            && let Some(dtb_load_gpa) = loader.dtb_load_gpa
-        {
-            let dtb_slice: &[u8] = &dtb_arc;
-            debug!(
-                "DTB buffer addr: {:x}, size: {:#}",
-                dtb_load_gpa,
-                Byte::from(dtb_slice.len())
-            );
-
+        if let Some(dtb_arc) = get_vm_dtb_arc(&vm_config) {
+            let _dtb_slice: &[u8] = &dtb_arc;
             #[cfg(target_arch = "aarch64")]
             update_fdt(
-                dtb_load_gpa,
-                NonNull::new(dtb_slice.as_ptr() as *mut u8).unwrap(),
-                dtb_slice.len(),
+                NonNull::new(_dtb_slice.as_ptr() as *mut u8).unwrap(),
+                _dtb_slice.len(),
                 loader.vm.clone(),
             );
         }
