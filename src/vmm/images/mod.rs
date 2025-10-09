@@ -9,12 +9,6 @@ use crate::hal::CacheOp;
 use crate::vmm::VMRef;
 use crate::vmm::config::{config, get_vm_dtb_arc};
 
-#[cfg(target_arch = "aarch64")]
-use core::ptr::NonNull;
-
-#[cfg(target_arch = "aarch64")]
-use crate::vmm::fdt::update_fdt;
-
 mod linux;
 
 pub fn get_image_header(config: &AxVMCrateConfig) -> Option<linux::Header> {
@@ -111,8 +105,8 @@ impl ImageLoader {
         if let Some(dtb_arc) = get_vm_dtb_arc(&vm_config) {
             let _dtb_slice: &[u8] = &dtb_arc;
             #[cfg(target_arch = "aarch64")]
-            update_fdt(
-                NonNull::new(_dtb_slice.as_ptr() as *mut u8).unwrap(),
+            crate::vmm::fdt::update_fdt(
+                core::ptr::NonNull::new(_dtb_slice.as_ptr() as *mut u8).unwrap(),
                 _dtb_slice.len(),
                 self.vm.clone(),
             );
@@ -253,8 +247,8 @@ pub mod fs {
         if let Some(dtb_arc) = get_vm_dtb_arc(&vm_config) {
             let _dtb_slice: &[u8] = &dtb_arc;
             #[cfg(target_arch = "aarch64")]
-            update_fdt(
-                NonNull::new(_dtb_slice.as_ptr() as *mut u8).unwrap(),
+            crate::vmm::fdt::update_fdt(
+                core::ptr::NonNull::new(_dtb_slice.as_ptr() as *mut u8).unwrap(),
                 _dtb_slice.len(),
                 loader.vm.clone(),
             );

@@ -344,24 +344,12 @@ fn calculate_dtb_load_addr(vm: VMRef, fdt_size: usize) -> GuestPhysAddr {
             addr
         } else {
             // If dtb_load_gpa is None, calculate based on memory size and FDT size
-            if main_memory.size() > 512 * MB {
-                // When memory size is greater than 512MB, place in the last area of the first 512MB
-                let available_space = 2 * MB;
-                if fdt_size <= available_space {
-                    (main_memory.gpa + 512 * MB - available_space).align_down(2 * MB)
-                } else {
-                    // If FDT is larger than available space, place it at the end of main memory
-                    (main_memory.gpa + main_memory.size() - fdt_size).align_down(2 * MB)
-                }
-            } else {
-                // When memory size is less than or equal to 512MB, place at the end of main_memory
-                if fdt_size <= main_memory.size() {
-                    (main_memory.gpa + main_memory.size() - fdt_size).align_down(2 * MB)
-                } else {
-                    // This shouldn't happen, but just in case
-                    main_memory.gpa.align_down(2 * MB)
-                }
+            let main_memory_size = main_memory.size().min(512 * MB);
+            let addr = (main_memory.gpa + main_memory_size - fdt_size).align_down(2 * MB);
+            if fdt_size > main_memory_size {
+                error!("DTB size is larger than available memory");
             }
+            addr
         };
         config.image_config.dtb_load_gpa = Some(dtb_addr);
         dtb_addr
