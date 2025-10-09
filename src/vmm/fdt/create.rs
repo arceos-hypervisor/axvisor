@@ -7,6 +7,7 @@ use core::ptr::NonNull;
 use axaddrspace::GuestPhysAddr;
 use axvm::{VMMemoryRegion, config::AxVMCrateConfig};
 use fdt_parser::{Fdt, Node};
+use memory_addr::MemoryAddr;
 use vm_fdt::{FdtWriter, FdtWriterNode};
 
 use crate::vmm::{VMRef, images::load_vm_image_from_memory};
@@ -259,7 +260,7 @@ fn add_memory_node(new_memory: &[VMMemoryRegion], new_fdt: &mut FdtWriter) {
     new_fdt.property_string("device_type", "memory").unwrap();
 }
 
-pub fn update_fdt(dest_addr: GuestPhysAddr, fdt_src: NonNull<u8>, dtb_size: usize, vm: VMRef) {
+pub fn update_fdt(fdt_src: NonNull<u8>, dtb_size: usize, vm: VMRef) {
     let mut new_fdt = FdtWriter::new().unwrap();
     let mut previous_node_level = 0;
     let mut node_stack: Vec<FdtWriterNode> = Vec::new();
@@ -314,11 +315,45 @@ pub fn update_fdt(dest_addr: GuestPhysAddr, fdt_src: NonNull<u8>, dtb_size: usiz
 
     let new_fdt_bytes = new_fdt.finish().unwrap();
 
-    // print_guest_fdt(new_fdt_bytes.as_slice());
-
+    // crate::vmm::fdt::print::print_guest_fdt(new_fdt_bytes.as_slice());
+    let vm_clone = vm.clone();
+    let dest_addr = calculate_dtb_load_addr(vm, new_fdt_bytes.len());
+    info!(
+        "New FDT will be loaded at {:x}, size: 0x{:x}",
+        dest_addr,
+        new_fdt_bytes.len()
+    );
     // Load the updated FDT into VM
-    load_vm_image_from_memory(&new_fdt_bytes, dest_addr, vm.clone())
+    load_vm_image_from_memory(&new_fdt_bytes, dest_addr, vm_clone)
         .expect("Failed to load VM images");
+}
+
+fn calculate_dtb_load_addr(vm: VMRef, fdt_size: usize) -> GuestPhysAddr {
+    const MB: usize = 1024 * 1024;
+
+    // Get main memory from VM memory regions outside the closure
+    let main_memory = vm
+        .memory_regions()
+        .first()
+        .cloned()
+        .expect("VM must have at least one memory region");
+
+    vm.with_config(|config| {
+        let dtb_addr = if let Some(addr) = config.image_config.dtb_load_gpa {
+            // If dtb_load_gpa is already set, use the original value
+            addr
+        } else {
+            // If dtb_load_gpa is None, calculate based on memory size and FDT size
+            let main_memory_size = main_memory.size().min(512 * MB);
+            let addr = (main_memory.gpa + main_memory_size - fdt_size).align_down(2 * MB);
+            if fdt_size > main_memory_size {
+                error!("DTB size is larger than available memory");
+            }
+            addr
+        };
+        config.image_config.dtb_load_gpa = Some(dtb_addr);
+        dtb_addr
+    })
 }
 
 pub fn update_cpu_node(fdt: &Fdt, host_fdt: &Fdt, crate_config: &AxVMCrateConfig) -> Vec<u8> {
