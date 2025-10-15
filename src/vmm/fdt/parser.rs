@@ -219,7 +219,7 @@ fn add_pci_ranges_config(vm_cfg: &mut AxVMConfig, node_name: &str, range: &PciRa
 
 pub fn parse_passthrough_devices_address(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
     let devices = vm_cfg.pass_through_devices().to_vec();
-    if !devices.is_empty() && devices[0].length != 0  {
+    if !devices.is_empty() && devices[0].length != 0 {
         for (index, device) in devices.iter().enumerate() {
             add_device_address_config(
                 vm_cfg,

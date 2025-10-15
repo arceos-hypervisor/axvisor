@@ -158,7 +158,8 @@ fn vm_alloc_memorys(vm_create_config: &AxVMCrateConfig, vm: &VM) {
             VmMemMappingType::MapReserved => {
                 info!("VM[{}] map same region: {:#x?}", vm.id(), memory);
                 let layout = Layout::from_size_align(memory.size, ALIGN).unwrap();
-                vm.map_reserved_memory_region(layout, Some(GuestPhysAddr::from(memory.gpa))).expect("Failed to map memory region for VM");
+                vm.map_reserved_memory_region(layout, Some(GuestPhysAddr::from(memory.gpa)))
+                    .expect("Failed to map memory region for VM");
             }
         }
     }
