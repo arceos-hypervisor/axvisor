@@ -44,7 +44,7 @@ AxVisor 会优先使用提供的设备树文件，并根据以下配置更新其
 - CPU 节点根据 [base] 部分的 `phys_cpu_ids` 更新
 - 内存节点根据 [kernel] 部分的 `memory_regions` 更新
 
-注意：当使用预定义设备树文件时，[devices] 部分的 `passthrough_devices` 和 `excluded_devices` 配置将被忽略。
+注意：当使用预定义设备树文件时，[devices] 部分的 `passthrough_devices` 中如果有规范化的[Name,Base-Ipa,Base-Pa,Length,Alloc-Irq]设备配置，则axvisor会直接按照 `passthrough_devices`中的配置给guest映射设备内存，设备树中的解析则会被忽略，只是将更改过内存和cpu的预定义设备树文件直接传给guest。
 
 ### 3.2 动态生成设备树
 
@@ -88,6 +88,7 @@ dtb_path = "tmp/linux.dtb"          # 设备树文件路径（空字符串表示
 dtb_load_addr = 0x8000_0000         # 设备树加载地址
 
 # 内存区域配置，格式为 (基地址, 大小, 标志, 映射类型)
+其中映射类型0为MAP_Alloc(由host负责，随机分配内存)，1为Map_Identical(由host负责1:1给guest映射内存，但是起始地址随机)，2为MAP_Reserved(由host负责，将host中一块标记为reserved的内存完全1:1映射给guest，起始地址和配置一致)
 memory_regions = [
   [0x8000_0000, 0x1000_0000, 0x7, 0], # 系统 RAM 1G MAP_IDENTICAL
 ]
