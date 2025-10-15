@@ -218,70 +218,91 @@ fn add_pci_ranges_config(vm_cfg: &mut AxVMConfig, node_name: &str, range: &PciRa
 }
 
 pub fn parse_passthrough_devices_address(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
-    let fdt = Fdt::from_bytes(dtb)
-        .expect("Failed to parse DTB image, perhaps the DTB is invalid or corrupted");
-
-    // Clear existing passthrough device configurations
-    vm_cfg.clear_pass_through_devices();
-
-    // Traverse all device tree nodes
-    for node in fdt.all_nodes() {
-        // Skip root node
-        if node.name() == "/" || node.name().starts_with("memory") {
-            continue;
+    let devices = vm_cfg.pass_through_devices().to_vec();
+    if !devices.is_empty() && devices[0].length != 0  {
+        for (index, device) in devices.iter().enumerate() {
+            add_device_address_config(
+                vm_cfg,
+                &device.name,
+                device.base_gpa,
+                device.length,
+                index,
+                None,
+            );
         }
+    } else {
+        let fdt = Fdt::from_bytes(dtb)
+            .expect("Failed to parse DTB image, perhaps the DTB is invalid or corrupted");
 
-        let node_name = node.name().to_string();
+        // Clear existing passthrough device configurations
+        vm_cfg.clear_pass_through_devices();
 
-        // Check if it's a PCIe device node
-        if node_name.starts_with("pcie@") || node_name.contains("pci") {
-            // Process PCIe device's ranges property
-            if let Some(pci) = node.clone().into_pci()
-                && let Ok(ranges) = pci.ranges()
-            {
-                for (index, range) in ranges.enumerate() {
-                    add_pci_ranges_config(vm_cfg, &node_name, &range, index);
-                }
+        // Traverse all device tree nodes
+        for node in fdt.all_nodes() {
+            // Skip root node
+            if node.name() == "/" || node.name().starts_with("memory") {
+                continue;
             }
 
-            // Process PCIe device's reg property (ECAM space)
-            if let Some(reg_iter) = node.reg() {
-                for (index, reg) in reg_iter.enumerate() {
-                    let base_address = reg.address as usize;
-                    let size = reg.size.unwrap_or(0);
+            let node_name = node.name().to_string();
 
-                    add_device_address_config(
-                        vm_cfg,
-                        &node_name,
-                        base_address,
-                        size,
-                        index,
-                        Some("ecam"),
-                    );
+            // Check if it's a PCIe device node
+            if node_name.starts_with("pcie@") || node_name.contains("pci") {
+                // Process PCIe device's ranges property
+                if let Some(pci) = node.clone().into_pci()
+                    && let Ok(ranges) = pci.ranges()
+                {
+                    for (index, range) in ranges.enumerate() {
+                        add_pci_ranges_config(vm_cfg, &node_name, &range, index);
+                    }
                 }
-            }
-        } else {
-            // Get device's reg property (process regular devices)
-            if let Some(reg_iter) = node.reg() {
-                // Process all address segments of the device
-                for (index, reg) in reg_iter.enumerate() {
-                    // Get device's address and size information
-                    let base_address = reg.address as usize;
-                    let size = reg.size.unwrap_or(0);
 
-                    add_device_address_config(vm_cfg, &node_name, base_address, size, index, None);
+                // Process PCIe device's reg property (ECAM space)
+                if let Some(reg_iter) = node.reg() {
+                    for (index, reg) in reg_iter.enumerate() {
+                        let base_address = reg.address as usize;
+                        let size = reg.size.unwrap_or(0);
+
+                        add_device_address_config(
+                            vm_cfg,
+                            &node_name,
+                            base_address,
+                            size,
+                            index,
+                            Some("ecam"),
+                        );
+                    }
+                }
+            } else {
+                // Get device's reg property (process regular devices)
+                if let Some(reg_iter) = node.reg() {
+                    // Process all address segments of the device
+                    for (index, reg) in reg_iter.enumerate() {
+                        // Get device's address and size information
+                        let base_address = reg.address as usize;
+                        let size = reg.size.unwrap_or(0);
+
+                        add_device_address_config(
+                            vm_cfg,
+                            &node_name,
+                            base_address,
+                            size,
+                            index,
+                            None,
+                        );
+                    }
                 }
             }
         }
+        trace!(
+            "All passthrough devices: {:#x?}",
+            vm_cfg.pass_through_devices()
+        );
+        debug!(
+            "Finished parsing passthrough devices, total: {}",
+            vm_cfg.pass_through_devices().len()
+        );
     }
-    trace!(
-        "All passthrough devices: {:#x?}",
-        vm_cfg.pass_through_devices()
-    );
-    debug!(
-        "Finished parsing passthrough devices, total: {}",
-        vm_cfg.pass_through_devices().len()
-    );
 }
 
 pub fn parse_vm_interrupt(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
