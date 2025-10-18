@@ -45,15 +45,17 @@ Vendor ID:                GenuineIntel
 
 First, you need to modify the Linux cmdline to limit the memory size occupied by host Linux and reserve a portion of memory space starting from `0x40000000` for the hypervisor
 
-There is a script at [update-cmdline.sh](https://github.com/arceos-hypervisor/axvisor-tools/blob/boot_linux/jailhouse-axvisor/update-cmdline.sh), you need to execute it with `sudo` privileges.
+There is a script at [setup.sh](https://github.com/arceos-hypervisor/axvisor-tools/blob/boot_linux/scripts/setup.sh).
 
 This script will also create soft links between `evm-intel.bin` and `/lib/firmware/evm-intel.bin`, and make sure there is an `evm-intel.bin` file in your home directory, which should be the AxVisor's binary image `axvisor_x86_64-nuc15-linux.bin` you just build.
 
 You only need to prepare it once.
 
     ```bash
+    xxx@225h-nuc15:~/axvisor-tools$ ./scripts/setup.sh
+
     xxx@225h-nuc15:~$ cat /proc/cmdline
-    BOOT_IMAGE=/boot/vmlinuz-6.8.0-59-generic root=UUID=7e378681-5d44-424e-8a32-b41163aaeb5b ro memmap=0xa000000$0x40000000 mem=32G
+    BOOT_IMAGE=/boot/vmlinuz-6.8.0-59-generic root=UUID=7e378681-5d44-424e-8a32-b41163aaeb5b ro memmap=0xa000000$0x40000000 mem=16G
     xxx@225h-nuc15:~$ ls /lib/firmware/evm-intel.bin -al
     lrwxrwxrwx 1 root root 29  9月 26 12:16 /lib/firmware/evm-intel.bin -> $(PATH/OF/YOUR/HOME)/evm-intel.bin
     ```
