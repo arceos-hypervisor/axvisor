@@ -10,7 +10,6 @@
 *.bin
 *.elf
 *.tmp_its
-*.dtb
 *guest.S
 actual.out
 qemu.log
@@ -59,3 +58,6 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+.qemu*
+.build*

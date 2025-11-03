@@ -9,7 +9,7 @@ extern crate alloc;
 
 extern crate axstd as std;
 
-#[cfg(feature = "plat-aarch64-generic")]
+#[cfg(target_arch = "aarch64")]
 extern crate axplat_aarch64_generic;
 #[cfg(feature = "plat-aarch64-phytium-pi")]
 extern crate axplat_aarch64_phytium_pi;

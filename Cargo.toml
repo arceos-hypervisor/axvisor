@@ -13,7 +13,7 @@ version = "0.1.0"
 ept-level-4 = ["axaddrspace/4-level-ept"]
 fs = ["axstd/fs"]
 
-plat-aarch64-generic = ["axplat-aarch64-generic", "axstd/driver-dyn"]
+# plat-aarch64-generic = ["axplat-aarch64-generic", "axstd/driver-dyn"]
 plat-aarch64-phytium-pi = ["axplat-aarch64-phytium-pi", "axstd/driver-dyn"]
 plat-aarch64-roc-rk3568-pc = ["axplat-aarch64-roc-rk3568-pc", "axstd/driver-dyn"]
 plat-x86-qemu-q35 = ["axplat-x86-qemu-q35"]
@@ -38,6 +38,7 @@ axstd = {git = "https://github.com/arceos-hypervisor/arceos.git", tag = "hv-0.3.
   "multitask",
   "smp", # "page-alloc-64g",
   "myplat",
+  "driver-dyn",
 ]}
 
 # System dependent modules provided by ArceOS-Hypervisor.
@@ -65,13 +66,13 @@ axdevice_base = "0.1"
 axvisor_api = "0.1"
 
 # platform
-axplat-aarch64-generic = {path = "platform/aarch64-generic", optional = true}
 axplat-x86-qemu-q35 = {path = "platform/x86-qemu-q35", optional = true}
 axplat-aarch64-phytium-pi = {path = "platform/aarch64-phytium-pi", optional = true}
 axplat-aarch64-roc-rk3568-pc = {path = "platform/aarch64-roc-rk3568-pc", optional = true}
 
 [target.'cfg(target_arch = "aarch64")'.dependencies]
 aarch64-cpu-ext = "0.1"
+axplat-aarch64-generic = {path = "platform/aarch64-generic"}
 arm-gic-driver = {version = "0.15.5", features = ["rdif"]}
 
 [build-dependencies]
