@@ -18,10 +18,9 @@ extern crate axplat_aarch64_roc_rk3568_pc;
 #[cfg(feature = "plat-x86-qemu-q35")]
 extern crate axplat_x86_qemu_q35;
 
-mod shell;
-
 mod hal;
 mod logo;
+mod shell;
 mod task;
 mod vmm;
 
