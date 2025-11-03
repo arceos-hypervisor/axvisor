@@ -698,9 +698,9 @@ dependencies = [
 [[package]]
 name = "axplat"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/axplat_crates.git?branch=vmm#c38bbc1d58733ca0c90256000f9a900917f255c8"
+source = "git+https://github.com/arceos-hypervisor/axplat_crates.git#9e93b2807b59518234d5fbdd3d7573c4ded7c4f4"
 dependencies = [
- "axplat-macros 0.1.0 (git+https://github.com/arceos-hypervisor/axplat_crates.git?branch=vmm)",
+ "axplat-macros 0.1.0 (git+https://github.com/arceos-hypervisor/axplat_crates.git)",
  "bitflags 2.9.4",
  "const-str",
  "crate_interface",
@@ -829,7 +829,7 @@ dependencies = [
 [[package]]
 name = "axplat-macros"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/axplat_crates.git?branch=vmm#c38bbc1d58733ca0c90256000f9a900917f255c8"
+source = "git+https://github.com/arceos-hypervisor/axplat_crates.git#9e93b2807b59518234d5fbdd3d7573c4ded7c4f4"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -877,11 +877,11 @@ dependencies = [
 [[package]]
 name = "axplat-x86-pc"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/axplat_crates.git?branch=vmm#c38bbc1d58733ca0c90256000f9a900917f255c8"
+source = "git+https://github.com/arceos-hypervisor/axplat_crates.git#9e93b2807b59518234d5fbdd3d7573c4ded7c4f4"
 dependencies = [
  "axconfig-macros",
  "axcpu",
- "axplat 0.2.0 (git+https://github.com/arceos-hypervisor/axplat_crates.git?branch=vmm)",
+ "axplat 0.2.0 (git+https://github.com/arceos-hypervisor/axplat_crates.git)",
  "bitflags 2.9.4",
  "heapless 0.9.1",
  "int_ratio",
@@ -901,7 +901,7 @@ dependencies = [
 name = "axplat-x86-qemu-q35"
 version = "0.1.0"
 dependencies = [
- "axplat-x86-pc 0.2.0 (git+https://github.com/arceos-hypervisor/axplat_crates.git?branch=vmm)",
+ "axplat-x86-pc 0.2.0 (git+https://github.com/arceos-hypervisor/axplat_crates.git)",
 ]
 
 [[package]]
@@ -1062,6 +1062,7 @@ dependencies = [
 [[package]]
 name = "axvm"
 version = "0.1.0"
+source = "git+https://github.com/arceos-hypervisor/axvm.git?branch=next#a5b6c0319673cd0eb037ed67449511d321d66aa3"
 dependencies = [
  "arm_vcpu",
  "arm_vgic 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
