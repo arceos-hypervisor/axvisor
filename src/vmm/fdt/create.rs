@@ -339,7 +339,9 @@ fn calculate_dtb_load_addr(vm: VMRef, fdt_size: usize) -> GuestPhysAddr {
         .expect("VM must have at least one memory region");
 
     vm.with_config(|config| {
-        let dtb_addr = if let Some(addr) = config.image_config.dtb_load_gpa {
+        let dtb_addr = if let Some(addr) = config.image_config.dtb_load_gpa
+            && !main_memory.is_identical()
+        {
             // If dtb_load_gpa is already set, use the original value
             addr
         } else {

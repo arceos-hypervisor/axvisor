@@ -1,6 +1,9 @@
 use axaddrspace::GuestPhysAddr;
 use axerrno::AxResult;
-use axvm::config::{AxVMConfig, AxVMCrateConfig, VmMemMappingType};
+use axvm::{
+    VMMemoryRegion,
+    config::{AxVMConfig, AxVMCrateConfig, VmMemMappingType},
+};
 use core::alloc::Layout;
 
 use crate::vmm::{VM, images::ImageLoader, vm_list::push_vm};
@@ -125,6 +128,8 @@ pub fn init_guest_vm(raw_cfg: &str) -> AxResult {
         .cloned()
         .expect("VM must have at least one memory region");
 
+    config_guest_address(&vm, &main_mem);
+
     // Load corresponding images for VM.
     info!("VM[{}] created success, loading images...", vm.id());
 
@@ -136,6 +141,26 @@ pub fn init_guest_vm(raw_cfg: &str) -> AxResult {
     }
 
     Ok(())
+}
+
+fn config_guest_address(vm: &VM, main_memory: &VMMemoryRegion) {
+    const MB: usize = 1024 * 1024;
+    vm.with_config(|config| {
+        if main_memory.is_identical() {
+            debug!(
+                "Adjusting kernel load address from {:#x} to {:#x}",
+                config.image_config.kernel_load_gpa, main_memory.gpa
+            );
+            let mut kernel_addr = main_memory.gpa;
+            if config.image_config.bios_load_gpa.is_some() {
+                kernel_addr += MB * 2; // leave 2MB for BIOS
+            }
+
+            config.image_config.kernel_load_gpa = kernel_addr;
+            config.cpu_config.bsp_entry = kernel_addr;
+            config.cpu_config.ap_entry = kernel_addr;
+        }
+    });
 }
 
 fn vm_alloc_memorys(vm_create_config: &AxVMCrateConfig, vm: &VM) {
