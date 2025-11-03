@@ -1,10 +1,12 @@
 use std::{
     collections::btree_map::BTreeMap,
-    fs::read_to_string,
     println,
     string::{String, ToString},
     vec::Vec,
 };
+
+#[cfg(feature = "fs")]
+use std::fs::read_to_string;
 
 use crate::{
     shell::command::{CommandNode, FlagDef, OptionDef, ParsedCommand},
@@ -28,6 +30,7 @@ fn vm_help(_cmd: &ParsedCommand) {
     println!("Use 'vm <command> --help' for more information on a specific command.");
 }
 
+#[cfg(feature = "fs")]
 fn vm_create(cmd: &ParsedCommand) {
     let args = &cmd.positional_args;
 
@@ -78,6 +81,7 @@ fn vm_create(cmd: &ParsedCommand) {
     }
 }
 
+#[cfg(feature = "fs")]
 fn vm_start(cmd: &ParsedCommand) {
     let args = &cmd.positional_args;
     let detach = cmd.flags.get("detach").unwrap_or(&false);
@@ -696,6 +700,7 @@ fn show_all_vm_status(watch: bool) {
 
 /// Build the VM command tree and register it.
 pub fn build_vm_cmd(tree: &mut BTreeMap<String, CommandNode>) {
+    #[cfg(feature = "fs")]
     let create_cmd = CommandNode::new("Create a new virtual machine")
         .with_handler(vm_create)
         .with_usage("vm create [OPTIONS] <CONFIG_FILE>...")
@@ -720,6 +725,7 @@ pub fn build_vm_cmd(tree: &mut BTreeMap<String, CommandNode>) {
                 .with_long("force"),
         );
 
+    #[cfg(feature = "fs")]
     let start_cmd = CommandNode::new("Start a virtual machine")
         .with_handler(vm_start)
         .with_usage("vm start [OPTIONS] [VM_ID...]")
@@ -801,15 +807,22 @@ pub fn build_vm_cmd(tree: &mut BTreeMap<String, CommandNode>) {
         );
 
     // main VM command
-    let vm_node = CommandNode::new("Virtual machine management")
+    let mut vm_node = CommandNode::new("Virtual machine management")
         .with_handler(vm_help)
         .with_usage("vm <command> [options] [args...]")
         .add_subcommand(
             "help",
             CommandNode::new("Show VM help").with_handler(vm_help),
-        )
-        .add_subcommand("create", create_cmd)
-        .add_subcommand("start", start_cmd)
+        );
+
+    #[cfg(feature = "fs")]
+    {
+        vm_node = vm_node
+            .add_subcommand("create", create_cmd)
+            .add_subcommand("start", start_cmd);
+    }
+
+    vm_node = vm_node
         .add_subcommand("stop", stop_cmd)
         .add_subcommand("restart", restart_cmd)
         .add_subcommand("delete", delete_cmd)

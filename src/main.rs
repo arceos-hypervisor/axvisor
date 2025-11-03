@@ -18,7 +18,6 @@ extern crate axplat_aarch64_roc_rk3568_pc;
 #[cfg(feature = "plat-x86-qemu-q35")]
 extern crate axplat_x86_qemu_q35;
 
-#[cfg(feature = "fs")]
 mod shell;
 
 mod hal;
@@ -39,6 +38,5 @@ fn main() {
 
     info!("[OK] Default guest initialized");
 
-    #[cfg(feature = "fs")]
     shell::console_init();
 }

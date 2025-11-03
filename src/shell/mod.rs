@@ -89,7 +89,10 @@ pub fn console_init() {
 
                             let current_content =
                                 std::str::from_utf8(&buf[..line_len]).unwrap_or("");
+                            #[cfg(feature = "fs")]
                             let prompt = format!("axvisor:{}$ ", &std::env::current_dir().unwrap());
+                            #[cfg(not(feature = "fs"))]
+                            let prompt = "axvisor:$ ".to_string();
                             clear_line_and_redraw(&mut stdout, &prompt, current_content, cursor);
                         }
                     }
@@ -112,7 +115,10 @@ pub fn console_init() {
 
                             let current_content =
                                 std::str::from_utf8(&buf[..line_len]).unwrap_or("");
+                            #[cfg(feature = "fs")]
                             let prompt = format!("axvisor:{}$ ", &std::env::current_dir().unwrap());
+                            #[cfg(not(feature = "fs"))]
+                            let prompt = "axvisor:$ ".to_string();
                             clear_line_and_redraw(&mut stdout, &prompt, current_content, cursor);
                         }
                     }
@@ -139,8 +145,10 @@ pub fn console_init() {
                             buf[..copy_len].copy_from_slice(&cmd_bytes[..copy_len]);
                             cursor = copy_len;
                             line_len = copy_len;
-
+                            #[cfg(feature = "fs")]
                             let prompt = format!("axvisor:{}$ ", &std::env::current_dir().unwrap());
+                            #[cfg(not(feature = "fs"))]
+                            let prompt = "axvisor:$ ".to_string();
                             clear_line_and_redraw(&mut stdout, &prompt, prev_cmd, cursor);
                         }
                         input_state = InputState::Normal;
@@ -158,8 +166,10 @@ pub fn console_init() {
                                 cursor = copy_len;
                                 line_len = copy_len;
 
-                                let prompt =
-                                    format!("axvisor:{}$ ", &std::env::current_dir().unwrap());
+                                #[cfg(feature = "fs")]
+                                let prompt = format!("axvisor:{}$ ", &std::env::current_dir().unwrap());
+                                #[cfg(not(feature = "fs"))]
+                                let prompt = "axvisor:$ ".to_string();
                                 clear_line_and_redraw(&mut stdout, &prompt, next_cmd, cursor);
                             }
                             None => {
@@ -167,8 +177,10 @@ pub fn console_init() {
                                 buf[..line_len].fill(0);
                                 cursor = 0;
                                 line_len = 0;
-                                let prompt =
-                                    format!("axvisor:{}$ ", &std::env::current_dir().unwrap());
+                                #[cfg(feature = "fs")]
+                                let prompt = format!("axvisor:{}$ ", &std::env::current_dir().unwrap());
+                                #[cfg(not(feature = "fs"))]
+                                let prompt = "axvisor:$ ".to_string();
                                 clear_line_and_redraw(&mut stdout, &prompt, "", cursor);
                             }
                         }

@@ -37,7 +37,7 @@ src/shell/
 
 ## 核心组件
 
-### 1. 交互式Shell界面 (mod.rs)
+### 1. 交互式Shell界面 ([shell/mod.rs](/src/shell/mod.rs))
 
 #### 主要功能
 - **实时字符输入处理**: 支持逐字符读取和处理用户输入
@@ -64,7 +64,7 @@ enum InputState {
 - **上/下箭头**: 浏览命令历史
 - **左/右箭头**: 移动光标位置
 
-### 2. 命令框架和解析器 (command/mod.rs)
+### 2. 命令框架和解析器 ([command/mod.rs](/src/shell/command/mod.rs))
 
 #### 命令树结构
 采用基于树状结构的命令系统，支持主命令和子命令的层次化组织：
@@ -99,7 +99,7 @@ pub enum ParseError {
 }
 ```
 
-### 3. 基础Unix命令 (command/base.rs)
+### 3. 基础Unix命令 ([command/base.rs](/src/shell/command/base.rs))
 
 实现了部分Unix风格命令，包括：
 
@@ -139,22 +139,39 @@ fn file_type_to_char(ty: FileType) -> char {
 }
 ```
 
-### 4. 虚拟机管理命令 (command/vm.rs)
+### 4. 虚拟机管理命令 ([command/vm.rs](/src/shell/command/vm.rs))
 
 提供完整的虚拟机生命周期管理功能：
 
 #### 主要子命令
-- **vm create**: 从配置文件创建虚拟机
-- **vm start**: 启动虚拟机(支持单个或全部)
-- **vm stop**: 停止虚拟机，支持强制停止
-- **vm restart**: 重启虚拟机
-- **vm delete**: 删除虚拟机，支持数据保留选项
-- **vm list**: 列出虚拟机，支持JSON格式输出
+- **vm create**: 从配置文件创建虚拟机，支持批量创建多个VM
+- **vm start**: 启动虚拟机
+  - 不带参数：启动所有虚拟机
+  - 指定VM ID：启动特定虚拟机
+  - 支持 `--detach` 后台模式运行(**有计划实现**)
+- **vm stop**: 停止虚拟机
+  - 必须指定VM ID
+  - 支持 `--force` 强制停止
+- **vm restart**: 重启虚拟机，必须指定VM ID
+- **vm delete**: 删除虚拟机
+  - 必须指定VM ID
+  - 需要 `--force` 确认删除
+  - 支持 `--keep-data` 保留数据选项
+- **vm list**: 列出虚拟机
+  - 默认只显示运行中的虚拟机
+  - `--all` 显示所有虚拟机(包括已停止)
+  - `--format json` 支持JSON格式输出
 - **vm show**: 显示虚拟机详细信息
-- **vm status**: 显示虚拟机状态，支持实时监控
+  - 必须指定VM ID
+  - `--config` 显示配置信息
+  - `--stats` 显示统计信息
+- **vm status**: 显示虚拟机状态
+  - 不带参数：显示所有VM的状态概览
+  - 指定VM ID：显示特定VM的详细状态
+  - 支持 `--watch` 实时监控(计划实现)
 
 #### 功能特性
-```rust
+``` rust
 // 虚拟机状态显示
 let state = if vm.running() {
     "🟢 running"
@@ -166,20 +183,58 @@ let state = if vm.running() {
 ```
 
 #### 详细信息显示
-- **配置信息**: BSP/AP入口点、中断模式、直通设备、模拟设备
-- **资源统计**: 内存区域、VCPU数量、设备数量
-- **运行状态**: VCPU状态分布、CPU亲和性设置
+- **配置信息** (`--config`):
+  - BSP/AP入口点地址
+  - 中断模式 (InterruptMode)
+  - 直通设备列表 (PassThrough Devices)
+    - 设备名称、GPA范围、HPA范围
+  - 模拟设备列表 (Emulated Devices)
+- **资源统计** (`--stats`):
+  - EPT根页表地址
+  - 内存区域详细信息 (GPA范围、大小)
+  - VCPU数量和设备数量
+- **运行状态**:
+  - VCPU状态分布 (Free/Running/Blocked/Invalid/Created/Ready)
+  - CPU亲和性设置 (Physical CPU affinity mask)
+  - 虚拟机整体状态 (运行中/停止中/已停止)
 
 #### 支持的选项和标志
-- `--all`: 显示所有虚拟机(包括已停止的)
+- `--all` / `-a`: 显示所有虚拟机(包括已停止的)
 - `--format json`: JSON格式输出
-- `--config`: 显示配置信息
-- `--stats`: 显示统计信息
-- `--force`: 强制操作
-- `--detach`: 后台运行
-- `--watch`: 实时监控
+- `--config` / `-c`: 显示配置信息
+- `--stats` / `-s`: 显示统计信息
+- `--force` / `-f`: 强制操作(无需确认)
+- `--detach` / `-d`: 后台运行
+- `--watch` / `-w`: 实时监控(计划实现)
+- `--keep-data`: 保留VM数据
 
-### 5. 命令历史管理 (command/history.rs)
+#### 输出格式示例
+
+**Table格式** (默认):
+```
+ID    NAME           STATE      VCPU   MEMORY
+----  -----------    -------    ----   ------
+0     linux-vm       🟢 running    2    512MB
+1     test-vm        🔴 stopped    1    256MB
+```
+
+**JSON格式** (`--format json`):
+``` json
+{
+  "vms": [
+    {
+      "id": 0,
+      "name": "linux-vm",
+      "state": "running",
+      "vcpu": 2,
+      "memory": "512MB",
+      "interrupt_mode": "Emulated"
+    }
+  ]
+}
+```
+
+### 5. 命令历史管理 ([command/history.rs](/src/shell/command/history.rs))
 
 #### 核心功能
 ```rust
@@ -218,14 +273,48 @@ pub fn clear_line_and_redraw(
 
 ### 系统级内置命令
 - **help**: 显示可用命令列表
+  - 列出所有顶级命令及其子命令
+  - 包含内置命令和系统命令
 - **help `<command>`**: 显示特定命令的详细帮助
-- **clear**: 清屏 (发送ANSI清屏序列)
+  - 显示命令描述
+  - 显示用法 (Usage)
+  - 列出所有选项 (Options)
+  - 列出所有标志 (Flags)
+  - 列出所有子命令 (Subcommands)
+- **clear**: 清屏 (发送ANSI清屏序列 `\x1b[2J\x1b[H`)
 - **exit/quit**: 退出shell
+
+### 错误处理
+Shell会对命令解析和执行错误提供友好的提示信息：
+```bash
+# 未知命令
+$ unknown_cmd
+Error: Unknown command 'unknown_cmd'
+Type 'help' to see available commands
+
+# 未知选项
+$ ls --invalid
+Error: Unknown option '--invalid'
+
+# 缺少参数值
+$ vm create
+Error: No VM configuration file specified
+Usage: vm create [CONFIG_FILE]
+
+# 缺少必需选项
+$ vm stop
+Error: No VM specified
+Usage: vm stop [OPTIONS] <VM_ID>
+```
 
 ### 命令提示符
 ```rust
-fn print_prompt() {
-    print!("axvisor:{}$ ", current_directory);
+pub fn print_prompt() {
+    #[cfg(feature = "fs")]
+    print!("axvisor:{}$ ", std::env::current_dir().unwrap());
+    #[cfg(not(feature = "fs"))]
+    print!("axvisor:$ ");
+    std::io::stdout().flush().unwrap();
 }
 ```
 
@@ -261,61 +350,357 @@ tree.insert(
 
 # 使用说明
 
-## 启用Shell功能
+## Shell功能特性
 
-AxVisor Shell模块需要启用特定的feature才能使用：
+AxVisor Shell模块**默认启用**，但不同功能对features有不同要求：
 
-### 必需的Features
+### 功能分层
 
-编译时需要启用 `fs` feature 以及对应的文件系统类型：
+#### 🟢 基础功能（无需额外feature）
+- 交互式命令行界面
+- 命令历史记录（上下箭头导航）
+- 光标移动和行编辑
+- 内置命令：`help`, `clear`, `exit`
+- 系统命令：`uname`, `log`
+- VM管理命令：`vm list`, `vm show`, `vm status`, `vm stop` 等
 
-#### 基础Shell功能
+#### 🟡 文件系统功能（需要 `fs` feature）
+- 文件操作命令：`ls`, `cat`, `mkdir`, `rm`, `cp`, `mv`, `touch`, `cd`, `pwd`, `echo`
+- `vm create` - 从配置文件创建VM
+- `vm /` - 从文件系统加载VM镜像启动
 
+## vmconfigs 配置说明
+
+`vmconfigs` 参数决定了 AxVisor 启动时是否自动创建和启动虚拟机：
+
+### 📌 配置行为
+
+| vmconfigs 配置 | 启动行为 | 使用场景 |
+|---------------|---------|---------|
+| **有值**（指定配置文件）| ✅ 自动创建并启动VM | 预加载VM，启动后VM已运行 |
+| **无值**（不指定）| ❌ 不创建VM，进入空Shell | 手动管理VM，通过Shell创建 |
+
+### 配置示例
+
+#### 场景1：自动启动VM
 ```bash
-# 启用Shell基础功能
---features fs
+# VM会在启动时自动创建并运行
+./axvisor.sh run \
+  --plat aarch64-generic \
+  --vmconfigs configs/vms/nimbos-aarch64-qemu-smp1.toml
 ```
 
-#### 文件系统支持
+**启动后**：
+```
+Welcome to AxVisor Shell!
+...
+VMM starting, booting VMs...
+VM[0] boot success
 
-根据使用的文件系统类型选择对应的feature，默认为`fatfs`：
-
-```bash
-# FAT32文件系统支持
-./axvisor.sh run --features fs --arceos-features "fatfs"
-
-# EXT4文件系统支持
-./axvisor.sh run --arceos-features "fs,ext4fs" 
-
+axvisor:/$ vm list
+ID    NAME           STATE         VCPU   MEMORY
+----  -----------    -------       ----   ------
+0     nimbos-vm      🟢 running       1    512MB
 ```
 
-#### 完整示例
-
+#### 场景2：不自动启动VM（空Shell）
 ```bash
-# 使用FAT32文件系统运行AxVisor Shell
-./axvisor.sh run --plat aarch64-generic --vmconfigs configs/vms/nimbos-aarch64-qemu-smp1.toml --features fs,ept-level-4 --arceos-features fatfs --arceos-args DISK_IMG=disk-aarch64.img,BUS=mmio,BLK=y,MEM=8g
-
-# 使用EXT4文件系统运行AxVisor Shell
-./axvisor.sh run --plat aarch64-generic --vmconfigs configs/vms/nimbos-aarch64-qemu-smp1.toml --features fs,ept-level-4 --arceos-features ext4fs --arceos-args DISK_IMG=disk-aarch64.img,BUS=mmio,BLK=y,MEM=8g
+# 不指定 vmconfigs 参数
+./axvisor.sh run --plat aarch64-generic --features fs,ept-level-4
 ```
 
-### 配置说明
+**启动后**（需要手动创建VM）：
+```
+Welcome to AxVisor Shell!
+...
 
-Shell模块通过条件编译控制：
+axvisor:/$ vm list
+No virtual machines found.
+
+axvisor:/$ vm create /path/to/vm.toml
+✓ Successfully created VM from config: /path/to/vm.toml
+
+axvisor:/$ vm start 0
+✓ VM[0] started successfully
+```
+
+### 配置方式
+
+#### 命令行指定
+```bash
+./axvisor.sh run --vmconfigs configs/vms/vm1.toml,configs/vms/vm2.toml
+```
+
+#### 配置文件指定
+在 `.hvconfig.toml` 中：
+```toml
+vmconfigs = [
+    "configs/vms/nimbos-aarch64-qemu-smp1.toml",
+    "configs/vms/linux-aarch64-qemu.toml"
+]
+```
+
+### 💡 使用建议
+
+| 使用场景 | 推荐配置 |
+|---------|---------|
+| **生产环境** - 固定的VM配置 | 指定 `vmconfigs`，自动启动 |
+| **开发调试** - 频繁修改VM配置 | 不指定 `vmconfigs`，Shell中手动创建 |
+| **演示测试** - 需要快速启动 | 指定 `vmconfigs`，自动启动 |
+| **交互式管理** - 动态创建多个VM | 不指定或只指定部分，其余手动创建 |
+
+## 启用方式
+
+### 方式一：自动启动VM（指定 vmconfigs）
+
+指定 `--vmconfigs` 参数，AxVisor 会在启动时自动创建并启动虚拟机：
+
+```bash
+# VM会自动启动
+./axvisor.sh run \
+  --plat aarch64-generic \
+  --vmconfigs configs/vms/nimbos-aarch64-qemu-smp1.toml
+```
+
+**启动后状态**：
+- ✅ VM已创建并运行
+- ✅ Shell可直接管理VM
+- ✅ 可执行 `vm list`, `vm status` 等命令
+
+**可用功能**：
+- VM状态查询和管理
+- 系统信息查看
+- 命令历史和行编辑
+- 日志级别控制
+
+**不可用功能**（无 `fs` feature时）：
+- 文件操作命令
+- 从文件系统动态创建新VM
+
+### 方式二：空Shell模式（不指定 vmconfigs）
+
+不指定 `--vmconfigs`，AxVisor 启动后不会创建VM，提供纯净的Shell环境：
+
+```bash
+# 启动时不创建VM，需要启用fs以便手动创建
+./axvisor.sh run --plat aarch64-generic --features fs,ept-level-4
+```
+
+**启动后状态**：
+- ❌ 无VM运行
+- ✅ Shell就绪，等待用户操作
+- ✅ 可通过 `vm create` 手动创建VM
+
+**使用场景**：
+- 需要在Shell中动态创建多个VM
+- 测试不同的VM配置
+- 交互式VM管理
+
+### 方式三：完整Shell功能（带文件系统 + vmconfigs）
+
+结合文件系统和 vmconfigs，既可以自动启动预定义的VM，又可以使用文件操作和动态创建VM：
+
+#### 步骤1：准备磁盘镜像
+
+```bash
+# 创建磁盘镜像（以FAT32为例）
+dd if=/dev/zero of=disk.img bs=1M count=64
+mkfs.vfat disk.img
+
+# 挂载并放入VM配置文件
+mkdir -p mnt
+sudo mount disk.img mnt
+sudo cp configs/vms/*.toml mnt/
+sudo umount mnt
+```
+
+#### 步骤2：运行AxVisor（完整功能）
+
+```bash
+# 同时启用文件系统和自动启动VM
+./axvisor.sh run \
+  --plat aarch64-generic \
+  --vmconfigs configs/vms/nimbos-aarch64-qemu-smp1.toml \
+  --features fs,ept-level-4 \
+  --arceos-args "BUS=mmio,BLK=y,DISK_IMG=disk.img,MEM=8g,LOG=info"
+```
+
+**启动后状态**：
+- ✅ VM已自动创建并运行
+- ✅ 文件系统已挂载
+- ✅ 可执行所有Shell命令
+- ✅ 可从文件系统创建更多VM
+
+**完整功能**：
+``` bash
+axvisor:/$ vm list           # 查看已启动的VM
+axvisor:/$ ls -la            # 浏览文件系统
+axvisor:/$ cat /vm2.toml     # 查看其他配置文件
+axvisor:/$ vm create /vm2.toml  # 创建更多VM
+```
+
+#### 文件系统类型选择
+
+ArceOS 默认使用 **FAT32** 文件系统。如需使用其他文件系统，可通过 ArceOS 的构建参数指定：
+
+```bash
+# 使用EXT4文件系统（需要创建ext4格式的磁盘镜像）
+./axvisor.sh run \
+  --plat aarch64-generic \
+  --vmconfigs configs/vms/nimbos-aarch64-qemu-smp1.toml \
+  --features fs,ept-level-4 \
+  --arceos-features ext4fs \
+  --arceos-args "BUS=mmio,BLK=y,DISK_IMG=disk-ext4.img,MEM=8g"
+```
+
+## 实际使用示例
+
+### 示例1：NimbOS客户机（自动启动）
+
+使用 `--vmconfigs` 让 NimbOS 在启动时自动运行：
+
+```bash
+# 1. 准备NimbOS镜像
+./scripts/nimbos.sh --arch aarch64
+
+# 2. 启动AxVisor（VM会自动启动）
+./axvisor.sh run \
+  --plat aarch64-generic \
+  --features fs,ept-level-4 \
+  --vmconfigs configs/vms/nimbos-aarch64-qemu-smp1.toml \
+  --arceos-args "BUS=mmio,BLK=y,DISK_IMG=tmp/nimbos-aarch64.img,LOG=info"
+
+# 3. 在Shell中操作（VM已运行）
+# 查看VM状态
+axvisor:/$ vm list
+ID    NAME           STATE         VCPU   MEMORY
+----  -----------    -------       ----   ------
+0     nimbos-vm      🟢 running       1    512MB
+
+axvisor:/$ vm status 0        # 查看详细状态
+axvisor:/$ log debug          # 调整日志级别
+```
+
+### 示例2：交互式创建VM（手动管理）
+
+不使用 `--vmconfigs`，在Shell中手动创建和管理VM：
+
+```bash
+# 1. 准备镜像和配置文件
+./scripts/nimbos.sh --arch aarch64
+
+# 2. 启动AxVisor（不指定vmconfigs，不自动启动VM）
+./axvisor.sh run \
+  --plat aarch64-generic \
+  --features fs,ept-level-4 \
+  --arceos-args "BUS=mmio,BLK=y,DISK_IMG=tmp/nimbos-aarch64.img,LOG=info"
+
+# 3. 在Shell中手动创建和启动VM
+axvisor:/$ vm list
+No virtual machines found.
+
+axvisor:/$ ls /              # 浏览文件系统
+nimbos-aarch64-qemu-smp1.toml
+...
+
+axvisor:/$ vm create /nimbos-aarch64-qemu-smp1.toml
+✓ Successfully created VM from config
+
+axvisor:/$ vm list -a
+ID    NAME           STATE         VCPU   MEMORY
+----  -----------    -------       ----   ------
+0     nimbos-vm      🔴 stopped       1    512MB
+
+axvisor:/$ vm start 0
+✓ VM[0] started successfully
+
+axvisor:/$ vm list
+ID    NAME           STATE         VCPU   MEMORY
+----  -----------    -------       ----   ------
+0     nimbos-vm      🟢 running       1    512MB
+```
+
+### 示例3：混合模式（部分自动，部分手动）
+
+自动启动一个VM，再手动创建更多：
+
+```bash
+# 启动AxVisor，自动启动第一个VM
+./axvisor.sh run \
+  --plat aarch64-generic \
+  --features fs,ept-level-4 \
+  --vmconfigs configs/vms/vm1.toml \
+  --arceos-args "BUS=mmio,BLK=y,DISK_IMG=disk.img,LOG=info"
+
+# Shell中查看和创建更多VM
+axvisor:/$ vm list
+ID    NAME           STATE         VCPU   MEMORY
+----  -----------    -------       ----   ------
+0     vm1            🟢 running       2    1024MB
+
+axvisor:/$ vm create /configs/vm2.toml
+✓ Successfully created VM from config
+
+axvisor:/$ vm start 1
+✓ VM[1] started successfully
+
+axvisor:/$ vm list
+ID    NAME           STATE         VCPU   MEMORY
+----  -----------    -------       ----   ------
+0     vm1            🟢 running       2    1024MB
+1     vm2            🟢 running       1    512MB
+```
+
+### 代码层面说明
+
+Shell模块在代码中的启用方式：
+
 ```rust
-#[cfg(feature = "fs")]
-mod shell;
+// src/main.rs
+fn main() {
+    // ... 初始化代码 ...
 
-#[cfg(feature = "fs")]
-shell::console_init();
+    // Shell总是被调用，无条件编译
+    shell::console_init();
+}
 ```
 
-只有当启用 `fs` feature时，Shell模块才会被编译和启动。
+```rust
+// src/shell/command/base.rs
+// 文件系统相关命令通过条件编译控制
+#[cfg(feature = "fs")]
+fn do_ls(cmd: &ParsedCommand) { /* ... */ }
+
+#[cfg(feature = "fs")]
+fn do_cat(cmd: &ParsedCommand) { /* ... */ }
+
+// 这些命令在构建命令树时也受条件编译控制
+pub fn build_base_cmd(tree: &mut BTreeMap<String, CommandNode>) {
+    #[cfg(feature = "fs")]
+    tree.insert("ls".to_string(), /* ... */);
+
+    #[cfg(feature = "fs")]
+    tree.insert("cat".to_string(), /* ... */);
+
+    // 非文件系统命令始终可用
+    tree.insert("uname".to_string(), /* ... */);
+    tree.insert("log".to_string(), /* ... */);
+}
+```
+
+这种设计使得：
+1. **Shell界面始终可用** - 提供基本的交互和VM管理能力
+2. **文件系统功能可选** - 仅在需要时启用，减少依赖
+3. **灵活的部署方式** - 支持从内存或文件系统加载VM
 
 ## 快速开始
 
 启动AxVisor后会自动进入Shell界面：
 ```
+Welcome to AxVisor Shell!
+Type 'help' to see available commands
+Use UP/DOWN arrows to navigate command history
+
 axvisor:/$
 ```
 
@@ -345,12 +730,22 @@ touch file.txt             # 创建空文件
 
 ### 虚拟机管理
 ```bash
-vm list -a                 # 列出所有虚拟机
+vm list                    # 列出运行中的虚拟机
+vm list -a                 # 列出所有虚拟机(包括已停止)
+vm list --format json      # JSON格式输出
 vm create config.toml      # 创建虚拟机
+vm create vm1.toml vm2.toml # 批量创建虚拟机
+vm start                   # 启动所有虚拟机
 vm start 1                 # 启动VM（ID=1）
+vm start -d 1              # 后台启动VM
 vm stop -f 1               # 强制停止VM
-vm status 1                # 查看VM状态
+vm restart 1               # 重启VM
+vm delete -f 1             # 删除VM(需要确认)
+vm status                  # 显示所有VM状态概览
+vm status 1                # 查看特定VM状态
 vm show -c 1               # 查看VM配置
+vm show -s 1               # 查看VM统计信息
+vm show -c -s 1            # 查看VM配置和统计信息
 ```
 
 ### 系统信息
@@ -361,19 +756,48 @@ uname -a                   # 系统信息
 
 ## 典型工作流
 
+### 单虚拟机场景
 ```bash
 # 1. 检查环境
 ls -la
+pwd
 
-# 2. 创建并启动虚拟机
+# 2. 创建虚拟机
 vm create linux.toml
+
+# 3. 启动虚拟机
 vm start 1
 
-# 3. 监控状态
+# 4. 监控状态
 vm status 1
+vm show -c -s 1            # 查看详细配置和统计
 
-# 4. 停止虚拟机
+# 5. 停止虚拟机
 vm stop 1
+```
+
+### 多虚拟机场景
+```bash
+# 1. 批量创建虚拟机
+vm create vm1.toml vm2.toml vm3.toml
+
+# 2. 查看所有虚拟机
+vm list -a
+
+# 3. 启动所有虚拟机
+vm start
+
+# 4. 查看整体状态
+vm status                  # 显示所有VM的状态概览
+
+# 5. 停止特定虚拟机
+vm stop 2
+
+# 6. 重启虚拟机
+vm restart 1
+
+# 7. 删除虚拟机
+vm delete -f 3
 ```
 
 更多详细信息请使用 `help <command>` 查看具体命令的使用方法。

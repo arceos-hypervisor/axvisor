@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+#[cfg(feature = "fs")]
 use std::fs::{self, File, FileType};
 use std::io::{self, Read, Write};
 use std::string::{String, ToString};
@@ -27,6 +28,7 @@ fn split_whitespace(s: &str) -> (&str, &str) {
     }
 }
 
+#[cfg(feature = "fs")]
 fn do_ls(cmd: &ParsedCommand) {
     let args = &cmd.positional_args;
     let show_long = cmd.flags.get("long").unwrap_or(&false);
@@ -91,6 +93,7 @@ fn do_ls(cmd: &ParsedCommand) {
     }
 }
 
+#[cfg(feature = "fs")]
 fn do_cat(cmd: &ParsedCommand) {
     let args = &cmd.positional_args;
 
@@ -119,6 +122,7 @@ fn do_cat(cmd: &ParsedCommand) {
     }
 }
 
+#[cfg(feature = "fs")]
 fn do_echo(cmd: &ParsedCommand) {
     let args = &cmd.positional_args;
     let no_newline = cmd.flags.get("no-newline").unwrap_or(&false);
@@ -157,6 +161,7 @@ fn do_echo(cmd: &ParsedCommand) {
     }
 }
 
+#[cfg(feature = "fs")]
 fn do_mkdir(cmd: &ParsedCommand) {
     let args = &cmd.positional_args;
     let create_parents = cmd.flags.get("parents").unwrap_or(&false);
@@ -181,6 +186,7 @@ fn do_mkdir(cmd: &ParsedCommand) {
     }
 }
 
+#[cfg(feature = "fs")]
 fn do_rm(cmd: &ParsedCommand) {
     let args = &cmd.positional_args;
     let rm_dir = cmd.flags.get("dir").unwrap_or(&false);
@@ -224,6 +230,7 @@ fn do_rm(cmd: &ParsedCommand) {
 }
 
 // Implementation of recursively deleting directories (manual recursion)
+#[cfg(feature = "fs")]
 fn remove_dir_recursive(path: &str, _force: bool) -> io::Result<()> {
     // Read directory contents
     let entries = fs::read_dir(path)?;
@@ -247,6 +254,7 @@ fn remove_dir_recursive(path: &str, _force: bool) -> io::Result<()> {
     fs::remove_dir(path)
 }
 
+#[cfg(feature = "fs")]
 fn do_cd(cmd: &ParsedCommand) {
     let args = &cmd.positional_args;
 
@@ -264,6 +272,7 @@ fn do_cd(cmd: &ParsedCommand) {
     }
 }
 
+#[cfg(feature = "fs")]
 fn do_pwd(cmd: &ParsedCommand) {
     let _logical = cmd.flags.get("logical").unwrap_or(&false);
 
@@ -344,6 +353,7 @@ fn do_log(cmd: &ParsedCommand) {
     println!("Log level set to: {:?}", log::max_level());
 }
 
+#[cfg(feature = "fs")]
 fn do_mv(cmd: &ParsedCommand) {
     let args = &cmd.positional_args;
 
@@ -432,6 +442,7 @@ fn do_mv(cmd: &ParsedCommand) {
 }
 
 // Helper function to move file or directory (handles cross-filesystem moves)
+#[cfg(feature = "fs")]
 fn move_file_or_dir(source: &str, dest: &str) -> io::Result<()> {
     // Try simple rename first (works within same filesystem)
     match fs::rename(source, dest) {
@@ -454,6 +465,7 @@ fn move_file_or_dir(source: &str, dest: &str) -> io::Result<()> {
     }
 }
 
+#[cfg(feature = "fs")]
 fn do_touch(cmd: &ParsedCommand) {
     let args = &cmd.positional_args;
 
@@ -469,6 +481,7 @@ fn do_touch(cmd: &ParsedCommand) {
     }
 }
 
+#[cfg(feature = "fs")]
 fn do_cp(cmd: &ParsedCommand) {
     let args = &cmd.positional_args;
     let recursive = cmd.flags.get("recursive").unwrap_or(&false);
@@ -506,6 +519,7 @@ fn do_cp(cmd: &ParsedCommand) {
 }
 
 // Manually implement file copy
+#[cfg(feature = "fs")]
 fn copy_file(src: &str, dst: &str) -> io::Result<()> {
     let mut src_file = File::open(src)?;
     let mut dst_file = File::create(dst)?;
@@ -522,6 +536,7 @@ fn copy_file(src: &str, dst: &str) -> io::Result<()> {
 }
 
 // Recursively copy directory
+#[cfg(feature = "fs")]
 fn copy_dir_recursive(src: &str, dst: &str) -> io::Result<()> {
     // Create target directory
     fs::create_dir(dst)?;
@@ -545,6 +560,7 @@ fn copy_dir_recursive(src: &str, dst: &str) -> io::Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "fs")]
 fn file_type_to_char(ty: FileType) -> char {
     if ty.is_char_device() {
         'c'
@@ -584,6 +600,7 @@ const fn file_perm_to_rwx(mode: u32) -> [u8; 9] {
 
 pub fn build_base_cmd(tree: &mut BTreeMap<String, CommandNode>) {
     // ls Command
+    #[cfg(feature = "fs")]
     tree.insert(
         "ls".to_string(),
         CommandNode::new("List directory contents")
@@ -602,6 +619,7 @@ pub fn build_base_cmd(tree: &mut BTreeMap<String, CommandNode>) {
     );
 
     // cat Command
+    #[cfg(feature = "fs")]
     tree.insert(
         "cat".to_string(),
         CommandNode::new("Display file contents")
@@ -610,6 +628,7 @@ pub fn build_base_cmd(tree: &mut BTreeMap<String, CommandNode>) {
     );
 
     // echo Command
+    #[cfg(feature = "fs")]
     tree.insert(
         "echo".to_string(),
         CommandNode::new("Display text")
@@ -623,6 +642,7 @@ pub fn build_base_cmd(tree: &mut BTreeMap<String, CommandNode>) {
     );
 
     // mkdir Command
+    #[cfg(feature = "fs")]
     tree.insert(
         "mkdir".to_string(),
         CommandNode::new("Create directories")
@@ -636,6 +656,7 @@ pub fn build_base_cmd(tree: &mut BTreeMap<String, CommandNode>) {
     );
 
     // rm Command
+    #[cfg(feature = "fs")]
     tree.insert(
         "rm".to_string(),
         CommandNode::new("Remove files and directories")
@@ -659,6 +680,7 @@ pub fn build_base_cmd(tree: &mut BTreeMap<String, CommandNode>) {
     );
 
     // cd Command
+    #[cfg(feature = "fs")]
     tree.insert(
         "cd".to_string(),
         CommandNode::new("Change directory")
@@ -667,6 +689,7 @@ pub fn build_base_cmd(tree: &mut BTreeMap<String, CommandNode>) {
     );
 
     // pwd Command
+    #[cfg(feature = "fs")]
     tree.insert(
         "pwd".to_string(),
         CommandNode::new("Print working directory")
@@ -719,6 +742,7 @@ pub fn build_base_cmd(tree: &mut BTreeMap<String, CommandNode>) {
     );
 
     // touch Command
+    #[cfg(feature = "fs")]
     tree.insert(
         "touch".to_string(),
         CommandNode::new("Create empty files")
@@ -727,6 +751,7 @@ pub fn build_base_cmd(tree: &mut BTreeMap<String, CommandNode>) {
     );
 
     // cp Command
+    #[cfg(feature = "fs")]
     tree.insert(
         "cp".to_string(),
         CommandNode::new("Copy files")
@@ -740,6 +765,7 @@ pub fn build_base_cmd(tree: &mut BTreeMap<String, CommandNode>) {
     );
 
     // mv Command
+    #[cfg(feature = "fs")]
     tree.insert(
         "mv".to_string(),
         CommandNode::new("Move/rename files")
