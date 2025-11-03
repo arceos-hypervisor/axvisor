@@ -1,2 +1,0 @@
-# Axvisor task.py dependencies
-toml>=0.10.0

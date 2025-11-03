@@ -3,14 +3,13 @@
 /.vscode
 /tmp
 /.arceos
-/.cargo
+
 .DS_Store
 *.asm
 *.img
 *.bin
 *.elf
 *.tmp_its
-*.dtb
 *guest.S
 actual.out
 qemu.log
@@ -59,3 +58,12 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+*-schema.json
+.qemu*
+.build*
+.uboot*
+
+# AI tools
+.spec-workflow/
+.claude/

@@ -2,137 +2,56 @@ name: Test CI
 
 on: [push, pull_request, workflow_dispatch]
 
-env:
-  qemu-version: 8.2.0
-  arceos-apps: '68054e8'
-
 jobs:
-  aarch64-generic-qemu:
-    runs-on: ubuntu-latest
+  board-test:
+    name: "Test ${{ matrix.board }} - ${{ matrix.vmconfigs_name }}"
     strategy:
-      fail-fast: false
       matrix:
-        plat: [aarch64-generic]
-        rust-toolchain: [nightly-2025-05-20, nightly]
-    steps:
-    - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: ${{ matrix.rust-toolchain }}
-        components: rust-src
-    - uses: Swatinem/rust-cache@v2
-    - run: cargo install cargo-binutils
-    - uses: arceos-org/setup-qemu@v0.1
-      with:
-        version: ${{ env.qemu-version }}
-        arch_list: aarch64
-    - uses: ./.github/workflows/actions/setup-nimbos-guest-image
-      with:
-        nimbos-version: 'tags/v0.7'
-        arch: aarch64
-        disk-path: ${{ github.workspace }}/disk-aarch64.img
-    - name: Update rust-toolchain.toml
-      run: |
-        sed -i "s/^channel = .*/channel = \"${{ matrix.rust-toolchain }}\"/" rust-toolchain.toml
-    - name: Run guests
-      continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
-      run: |
-        chmod +x axvisor.sh
-        cargo version
-        export DISK_IMG="${{ github.workspace }}/disk-aarch64.img"
-        export VM_CONFIGS="$(pwd)/configs/vms/nimbos-aarch64-qemu-smp1.toml"
-        ./scripts/auto_interrupt.sh ./axvisor.sh run --plat ${{ matrix.plat }} --vmconfigs $VM_CONFIGS --features fs,ept-level-4 --arceos-args DISK_IMG=$DISK_IMG,BUS=mmio,BLK=y,MEM=8g,LOG=info
+        include:
+          # - board: phytiumpi
+          #   vmconfigs: .github/workflows/vmconfigs/linux.toml,.github/workflows/vmconfigs/arceos.toml
+          #   vmconfigs_name: Linux + ArceOS
+          # - board: phytiumpi
+          #   vmconfigs: .github/workflows/vmconfigs/arceos.toml
+          #   vmconfigs_name: ArceOS Only
+          - board: roc-rk3568-pc
+            vmconfigs: .github/workflows/vmconfigs/arceos.toml
+            vmconfigs_name: ArceOS Only
+            # Multiple image archive names separated by commas, for example, roc-rk3568-pc_arceos.tar.gz,roc-rk3568-pc_linux.tar.gz[,...]
+            vmimage_name: roc-rk3568-pc_arceos.tar.gz
+    runs-on:
+      - self-hosted
+      - linux
+      - ${{ matrix.board }}
 
-  aarch64-generic-phytiumpi:
-    runs-on: [self-hosted, linux, phytiumpi]
-    strategy:
-      fail-fast: false
-      matrix:
-        plat: [aarch64-generic]
-        rust-toolchain: [nightly-2025-05-20]
     steps:
-    - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: ${{ matrix.rust-toolchain }}
-        components: rust-src
-    # - uses: Swatinem/rust-cache@v2
-    - run: cargo install cargo-binutils
-    - name: Update rust-toolchain.toml
-      run: |
-        sed -i "s/^channel = .*/channel = \"${{ matrix.rust-toolchain }}\"/" rust-toolchain.toml
-    - name: Run guests on phytiumpi
-      continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
-      run: |
-        cargo install ostool --force
-        git clone https://github.com/arceos-hypervisor/axboard_test
-        cd axboard_test
-        ./run.sh phytiumpi-arceos
-        cd ..
+      - name: Checkout
+        uses: actions/checkout@v4
 
-  aarch64-generic-rk3568:
-    runs-on: [self-hosted, linux, roc-rk3568-pc]
-    strategy:
-      fail-fast: false
-      matrix:
-        plat: [aarch64-generic]
-        rust-toolchain: [nightly-2025-05-20]
-    steps:
-    - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: ${{ matrix.rust-toolchain }}
-        components: rust-src
-    # - uses: Swatinem/rust-cache@v2
-    - run: cargo install cargo-binutils
-    - name: Update rust-toolchain.toml
-      run: |
-        sed -i "s/^channel = .*/channel = \"${{ matrix.rust-toolchain }}\"/" rust-toolchain.toml
-    - name: Run guests on rk3568
-      continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
-      run: |
-        cargo install ostool --force
-        git clone https://github.com/arceos-hypervisor/axboard_test
-        cd axboard_test
-        ./run.sh rk3568-arceos
-        cd ..
+      - name: Install dependencies (${{ matrix.board_name }})
+        run: cargo +stable install -f --git https://github.com/ZR233/ostool  ostool
 
-  x86-qemu-q35:
-    runs-on:  [self-hosted, linux, intel]
-    strategy:
-      fail-fast: false
-      matrix:
-        plat: [x86-qemu-q35]
-        rust-toolchain: [nightly-2025-05-20, nightly]
-    steps:
-    - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: ${{ matrix.rust-toolchain }}
-        components: rust-src
-    # - uses: Swatinem/rust-cache@v2
-    - run: cargo install cargo-binutils
-    # - uses: arceos-org/setup-qemu@v0.1
-    #   with:
-    #     version: ${{ env.qemu-version }}
-    #     arch_list: x86_64
-    - uses: ./.github/workflows/actions/setup-nimbos-guest-image
-      with:
-        nimbos-version: 'tags/v0.7'
-        arch: x86_64
-        disk-path: ${{ github.workspace }}/disk-x86_64.img
-    # - name: Enable KVM group perms
-    #   run: |
-    #     echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-    #     sudo udevadm control --reload-rules
-    #     sudo udevadm trigger --name-match=kvm
-    - name: Update rust-toolchain.toml
-      run: |
-        sed -i "s/^channel = .*/channel = \"${{ matrix.rust-toolchain }}\"/" rust-toolchain.toml
-    - name: Run guests
-      continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
-      run: |
-        cargo version
-        export DISK_IMG="${{ github.workspace }}/disk-x86_64.img"
-        export VM_CONFIGS="$(pwd)/configs/vms/nimbos-x86_64-qemu-smp1.toml"
-        ./scripts/auto_interrupt.sh ./axvisor.sh run --plat ${{ matrix.plat }} --vmconfigs $VM_CONFIGS --features fs --arceos-args DISK_IMG=$DISK_IMG,BLK=y,LOG=info
+      - name: Download guest images
+        run: |
+          mkdir -p images
+          cd images
+          IFS=',' read -ra IMAGES <<< "${{ matrix.vmimage_name }}"
+          for img in "${IMAGES[@]}"; do
+            img=$(echo "$img" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+            echo "Downloading $img"
+            wget https://github.com/arceos-hypervisor/axvisor-guest/releases/latest/download/$img
+            tar -xzf $img
+          done
+          cd ..
+
+      - name: Run tests  
+        run: |
+          echo $BOARD_POWER_RESET
+          export RUST_LOG=debug
+          # cargo xtask uboot \
+          #   --build-config configs/board/${{ matrix.board }}.toml \
+          #   --uboot-config .github/workflows/uboot.toml \
+          #   --vmconfigs ${{ matrix.vmconfigs }}
+          cargo xtask uboot \
+            --build-config configs/board/${{ matrix.board }}.toml \
+            --uboot-config .github/workflows/uboot.toml
