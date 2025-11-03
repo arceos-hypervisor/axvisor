@@ -11,11 +11,8 @@ extern crate axstd as std;
 
 #[cfg(target_arch = "aarch64")]
 extern crate axplat_aarch64_generic;
-#[cfg(feature = "plat-aarch64-phytium-pi")]
-extern crate axplat_aarch64_phytium_pi;
-#[cfg(feature = "plat-aarch64-roc-rk3568-pc")]
-extern crate axplat_aarch64_roc_rk3568_pc;
-#[cfg(feature = "plat-x86-qemu-q35")]
+
+#[cfg(target_arch = "x86_64")]
 extern crate axplat_x86_qemu_q35;
 
 #[cfg(feature = "fs")]

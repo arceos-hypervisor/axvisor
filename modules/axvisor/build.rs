@@ -235,7 +235,16 @@ fn generate_guest_img_loading_functions(
 fn main() -> io::Result<()> {
     let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
 
-    let platform = env::var("AX_PLATFORM").unwrap_or("".to_string());
+    // let platform = env::var("AX_PLATFORM").unwrap_or("".to_string());
+
+    let platform = if arch == "aarch64" {
+        "aarch64-generic".to_string()
+    } else if arch == "x86_64" {
+        "x86-qemu-q35".to_string()
+    } else {
+        "dummy".to_string()
+    };
+
     println!("cargo:rustc-cfg=platform=\"{platform}\"");
 
     if platform != "dummy" {
@@ -290,7 +299,7 @@ fn gen_linker_script(arch: &str, platform: &str) -> io::Result<()> {
     } else {
         arch
     };
-    let ld_content = std::fs::read_to_string("scripts/lds/linker.lds.S")?;
+    let ld_content = std::fs::read_to_string("../../scripts/lds/linker.lds.S")?;
     let ld_content = ld_content.replace("%ARCH%", output_arch);
     let ld_content = ld_content.replace(
         "%KERNEL_BASE%",
