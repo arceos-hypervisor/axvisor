@@ -10,7 +10,6 @@
 *.bin
 *.elf
 *.tmp_its
-*.dtb
 *guest.S
 actual.out
 qemu.log
@@ -59,3 +58,7 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+scripts/ostool/qemu-aarch64-schema.json
+.qemu*
+.build*
