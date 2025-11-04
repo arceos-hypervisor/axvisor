@@ -8,5 +8,4 @@ fp-simd = ["axplat-x86-pc/fp-simd"]
 rtc = ["axplat-x86-pc/x86_rtc"]
 
 [dependencies]
-axplat-x86-pc = {git = "https://github.com/arceos-hypervisor/axplat_crates.git", branch = "vmm", features=["irq", "smp"]}
-
+axplat-x86-pc = {git = "https://github.com/arceos-hypervisor/axplat_crates.git", tag = "vmm-v0.3.0", features = ["irq", "smp"]}
