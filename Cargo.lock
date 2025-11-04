@@ -133,10 +133,10 @@ checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
 [[package]]
 name = "arceos_api"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.3.1#0106ce9d36d225943acb93a86359a61346170ff2"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.4.0#ba98f3e88cd6345f31993dcfe9a2fd4426f841a9"
 dependencies = [
  "axalloc",
- "axconfig 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.3.1)",
+ "axconfig 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.4.0)",
  "axdriver",
  "axerrno",
  "axfeat",
@@ -294,7 +294,7 @@ dependencies = [
 [[package]]
 name = "axalloc"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.3.1#0106ce9d36d225943acb93a86359a61346170ff2"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.4.0#ba98f3e88cd6345f31993dcfe9a2fd4426f841a9"
 dependencies = [
  "allocator",
  "axerrno",
@@ -310,7 +310,7 @@ version = "0.1.0"
 source = "git+https://github.com/drivercraft/axbsp.git#5dce480c619b6435135808c764aff818c4e891a1"
 dependencies = [
  "axklib 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor)",
- "axplat-aarch64-dyn",
+ "axplat-aarch64-dyn 0.2.0",
  "log",
  "phytium-mci",
  "rdif-block",
@@ -326,7 +326,7 @@ version = "0.1.0"
 source = "git+https://github.com/drivercraft/axbsp.git#5dce480c619b6435135808c764aff818c4e891a1"
 dependencies = [
  "axklib 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor)",
- "axplat-aarch64-dyn",
+ "axplat-aarch64-dyn 0.2.0",
  "log",
  "rdif-block",
  "rdif-clk",
@@ -341,7 +341,7 @@ dependencies = [
 [[package]]
 name = "axconfig"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.3.1#0106ce9d36d225943acb93a86359a61346170ff2"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.4.0#ba98f3e88cd6345f31993dcfe9a2fd4426f841a9"
 dependencies = [
  "axconfig-macros",
 ]
@@ -433,18 +433,18 @@ dependencies = [
 [[package]]
 name = "axdriver"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.3.1#0106ce9d36d225943acb93a86359a61346170ff2"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.4.0#ba98f3e88cd6345f31993dcfe9a2fd4426f841a9"
 dependencies = [
  "arm-gic-driver",
  "axalloc",
- "axconfig 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.3.1)",
+ "axconfig 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.4.0)",
  "axdriver_base",
  "axdriver_block",
  "axdriver_pci",
  "axdriver_virtio",
  "axerrno",
  "axhal",
- "axmm",
+ "axklib 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.4.0)",
  "cfg-if",
  "crate_interface",
  "dma-api 0.5.2",
@@ -501,7 +501,7 @@ dependencies = [
 [[package]]
 name = "axfeat"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.3.1#0106ce9d36d225943acb93a86359a61346170ff2"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.4.0#ba98f3e88cd6345f31993dcfe9a2fd4426f841a9"
 dependencies = [
  "axalloc",
  "axdriver",
@@ -518,7 +518,7 @@ dependencies = [
 [[package]]
 name = "axfs"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.3.1#0106ce9d36d225943acb93a86359a61346170ff2"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.4.0#ba98f3e88cd6345f31993dcfe9a2fd4426f841a9"
 dependencies = [
  "axdriver",
  "axdriver_block",
@@ -572,18 +572,18 @@ dependencies = [
 [[package]]
 name = "axhal"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.3.1#0106ce9d36d225943acb93a86359a61346170ff2"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.4.0#ba98f3e88cd6345f31993dcfe9a2fd4426f841a9"
 dependencies = [
  "aarch64-cpu",
  "axalloc",
- "axconfig 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.3.1)",
+ "axconfig 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.4.0)",
  "axcpu",
  "axlog",
- "axplat 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "axplat 0.2.0 (git+https://github.com/arceos-hypervisor/axplat_crates?tag=vmm-v0.3.0)",
  "axplat-aarch64-qemu-virt",
  "axplat-loongarch64-qemu-virt",
  "axplat-riscv64-qemu-virt",
- "axplat-x86-pc 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "axplat-x86-pc",
  "cfg-if",
  "heapless 0.8.0",
  "kernel_guard",
@@ -616,7 +616,7 @@ dependencies = [
 [[package]]
 name = "axklib"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.3.1#0106ce9d36d225943acb93a86359a61346170ff2"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.4.0#ba98f3e88cd6345f31993dcfe9a2fd4426f841a9"
 dependencies = [
  "axerrno",
  "memory_addr",
@@ -626,7 +626,7 @@ dependencies = [
 [[package]]
 name = "axklib"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor#3b81289f520e33a75b489963649f0d6c2c46a9a9"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?branch=hypervisor#ba98f3e88cd6345f31993dcfe9a2fd4426f841a9"
 dependencies = [
  "axerrno",
  "memory_addr",
@@ -636,10 +636,10 @@ dependencies = [
 [[package]]
 name = "axklib-impl"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.3.1#0106ce9d36d225943acb93a86359a61346170ff2"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.4.0#ba98f3e88cd6345f31993dcfe9a2fd4426f841a9"
 dependencies = [
  "axhal",
- "axklib 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.3.1)",
+ "axklib 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.4.0)",
  "axmm",
  "trait-ffi",
 ]
@@ -647,7 +647,7 @@ dependencies = [
 [[package]]
 name = "axlog"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.3.1#0106ce9d36d225943acb93a86359a61346170ff2"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.4.0#ba98f3e88cd6345f31993dcfe9a2fd4426f841a9"
 dependencies = [
  "cfg-if",
  "crate_interface",
@@ -658,10 +658,9 @@ dependencies = [
 [[package]]
 name = "axmm"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.3.1#0106ce9d36d225943acb93a86359a61346170ff2"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.4.0#ba98f3e88cd6345f31993dcfe9a2fd4426f841a9"
 dependencies = [
  "axalloc",
- "axconfig 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.3.1)",
  "axerrno",
  "axhal",
  "kspin",
@@ -674,7 +673,7 @@ dependencies = [
 [[package]]
 name = "axns"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.3.1#0106ce9d36d225943acb93a86359a61346170ff2"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.4.0#ba98f3e88cd6345f31993dcfe9a2fd4426f841a9"
 dependencies = [
  "crate_interface",
  "lazyinit",
@@ -698,9 +697,9 @@ dependencies = [
 [[package]]
 name = "axplat"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/axplat_crates.git?tag=vmm-v0.2.0#c38bbc1d58733ca0c90256000f9a900917f255c8"
+source = "git+https://github.com/arceos-hypervisor/axplat_crates?tag=vmm-v0.3.0#3345f58f3da5ef2eafcfa1fcf1ac32e5e80e1a7d"
 dependencies = [
- "axplat-macros 0.1.0 (git+https://github.com/arceos-hypervisor/axplat_crates.git?tag=vmm-v0.2.0)",
+ "axplat-macros 0.1.0 (git+https://github.com/arceos-hypervisor/axplat_crates?tag=vmm-v0.3.0)",
  "bitflags 2.10.0",
  "const-str",
  "crate_interface",
@@ -738,10 +737,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "axplat-aarch64-dyn"
+version = "0.3.0"
+source = "git+https://github.com/arceos-hypervisor/axplat-aarch64-dyn?tag=v0.3.0#a393d50bee031a5731f7bbb02e0737f224a01c02"
+dependencies = [
+ "aarch64-cpu",
+ "aarch64-cpu-ext",
+ "any-uart",
+ "arm-gic-driver",
+ "axconfig-macros",
+ "axcpu",
+ "axplat 0.2.0 (git+https://github.com/arceos-hypervisor/axplat_crates?tag=vmm-v0.3.0)",
+ "fdt-parser",
+ "heapless 0.8.0",
+ "lazyinit",
+ "log",
+ "memory_addr",
+ "page_table_entry",
+ "paste",
+ "percpu",
+ "rdif-intc",
+ "rdrive",
+ "serde",
+ "somehal",
+ "spin 0.10.0",
+ "toml 0.8.23",
+]
+
+[[package]]
 name = "axplat-aarch64-generic"
 version = "0.1.0"
 dependencies = [
- "axplat-aarch64-dyn",
+ "axplat-aarch64-dyn 0.3.0",
  "serde",
  "toml 0.8.23",
 ]
@@ -749,15 +776,14 @@ dependencies = [
 [[package]]
 name = "axplat-aarch64-peripherals"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a9a6548290a150059eb2ae015dc58d9b3d652461760327b95a490666129974c"
+source = "git+https://github.com/arceos-hypervisor/axplat_crates?tag=vmm-v0.3.0#3345f58f3da5ef2eafcfa1fcf1ac32e5e80e1a7d"
 dependencies = [
  "aarch64-cpu",
  "arm-gic-driver",
  "arm_pl011",
  "arm_pl031",
  "axcpu",
- "axplat 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "axplat 0.2.0 (git+https://github.com/arceos-hypervisor/axplat_crates?tag=vmm-v0.3.0)",
  "int_ratio",
  "kspin",
  "lazyinit",
@@ -778,12 +804,11 @@ dependencies = [
 [[package]]
 name = "axplat-aarch64-qemu-virt"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f03bfe81ebc5b2f567eecadcab221107b90f394485dd0da39334411a676d81a"
+source = "git+https://github.com/arceos-hypervisor/axplat_crates?tag=vmm-v0.3.0#3345f58f3da5ef2eafcfa1fcf1ac32e5e80e1a7d"
 dependencies = [
  "axconfig-macros",
  "axcpu",
- "axplat 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "axplat 0.2.0 (git+https://github.com/arceos-hypervisor/axplat_crates?tag=vmm-v0.3.0)",
  "axplat-aarch64-peripherals",
  "log",
  "page_table_entry",
@@ -801,12 +826,11 @@ dependencies = [
 [[package]]
 name = "axplat-loongarch64-qemu-virt"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c404064c74824b2c509e1d84f2ae0cbd9240a3274fb4053dc81b9ad120b5962"
+source = "git+https://github.com/arceos-hypervisor/axplat_crates?tag=vmm-v0.3.0#3345f58f3da5ef2eafcfa1fcf1ac32e5e80e1a7d"
 dependencies = [
  "axconfig-macros",
  "axcpu",
- "axplat 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "axplat 0.2.0 (git+https://github.com/arceos-hypervisor/axplat_crates?tag=vmm-v0.3.0)",
  "kspin",
  "lazyinit",
  "log",
@@ -829,7 +853,7 @@ dependencies = [
 [[package]]
 name = "axplat-macros"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/axplat_crates.git?tag=vmm-v0.2.0#c38bbc1d58733ca0c90256000f9a900917f255c8"
+source = "git+https://github.com/arceos-hypervisor/axplat_crates?tag=vmm-v0.3.0#3345f58f3da5ef2eafcfa1fcf1ac32e5e80e1a7d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -839,12 +863,11 @@ dependencies = [
 [[package]]
 name = "axplat-riscv64-qemu-virt"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8d95d76dfa65d75d07380ac13692c3b0c5bd6ae5b68df7bbede1f2e7181027a"
+source = "git+https://github.com/arceos-hypervisor/axplat_crates?tag=vmm-v0.3.0#3345f58f3da5ef2eafcfa1fcf1ac32e5e80e1a7d"
 dependencies = [
  "axconfig-macros",
  "axcpu",
- "axplat 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "axplat 0.2.0 (git+https://github.com/arceos-hypervisor/axplat_crates?tag=vmm-v0.3.0)",
  "log",
  "riscv",
  "sbi-rt",
@@ -853,35 +876,11 @@ dependencies = [
 [[package]]
 name = "axplat-x86-pc"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4aef32b01b5b7e87e9f69933b64b704bc5d731adda2cdd24fc0a29cf0c359211"
+source = "git+https://github.com/arceos-hypervisor/axplat_crates?tag=vmm-v0.3.0#3345f58f3da5ef2eafcfa1fcf1ac32e5e80e1a7d"
 dependencies = [
  "axconfig-macros",
  "axcpu",
- "axplat 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "bitflags 2.10.0",
- "heapless 0.9.1",
- "int_ratio",
- "kspin",
- "lazyinit",
- "log",
- "multiboot",
- "percpu",
- "raw-cpuid 11.6.0",
- "uart_16550",
- "x2apic",
- "x86",
- "x86_64",
-]
-
-[[package]]
-name = "axplat-x86-pc"
-version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/axplat_crates.git?tag=vmm-v0.2.0#c38bbc1d58733ca0c90256000f9a900917f255c8"
-dependencies = [
- "axconfig-macros",
- "axcpu",
- "axplat 0.2.0 (git+https://github.com/arceos-hypervisor/axplat_crates.git?tag=vmm-v0.2.0)",
+ "axplat 0.2.0 (git+https://github.com/arceos-hypervisor/axplat_crates?tag=vmm-v0.3.0)",
  "bitflags 2.10.0",
  "heapless 0.9.1",
  "int_ratio",
@@ -901,23 +900,23 @@ dependencies = [
 name = "axplat-x86-qemu-q35"
 version = "0.1.0"
 dependencies = [
- "axplat-x86-pc 0.2.0 (git+https://github.com/arceos-hypervisor/axplat_crates.git?tag=vmm-v0.2.0)",
+ "axplat-x86-pc",
 ]
 
 [[package]]
 name = "axruntime"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.3.1#0106ce9d36d225943acb93a86359a61346170ff2"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.4.0#ba98f3e88cd6345f31993dcfe9a2fd4426f841a9"
 dependencies = [
  "axalloc",
- "axconfig 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.3.1)",
+ "axconfig 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.4.0)",
  "axdriver",
  "axerrno",
  "axfs",
  "axhal",
  "axlog",
  "axmm",
- "axplat 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "axplat 0.2.0 (git+https://github.com/arceos-hypervisor/axplat_crates?tag=vmm-v0.3.0)",
  "axtask",
  "chrono",
  "crate_interface",
@@ -937,7 +936,7 @@ dependencies = [
 [[package]]
 name = "axstd"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.3.1#0106ce9d36d225943acb93a86359a61346170ff2"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.4.0#ba98f3e88cd6345f31993dcfe9a2fd4426f841a9"
 dependencies = [
  "arceos_api",
  "axerrno",
@@ -950,7 +949,7 @@ dependencies = [
 [[package]]
 name = "axsync"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.3.1#0106ce9d36d225943acb93a86359a61346170ff2"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.4.0#ba98f3e88cd6345f31993dcfe9a2fd4426f841a9"
 dependencies = [
  "axtask",
  "kspin",
@@ -960,9 +959,9 @@ dependencies = [
 [[package]]
 name = "axtask"
 version = "0.2.0"
-source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.3.1#0106ce9d36d225943acb93a86359a61346170ff2"
+source = "git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.4.0#ba98f3e88cd6345f31993dcfe9a2fd4426f841a9"
 dependencies = [
- "axconfig 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.3.1)",
+ "axconfig 0.2.0 (git+https://github.com/arceos-hypervisor/arceos.git?tag=hv-0.4.0)",
  "axhal",
  "axsched",
  "cfg-if",
