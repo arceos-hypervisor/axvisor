@@ -148,6 +148,18 @@ excluded_devices = [
 
 注意：此配置仅在动态生成设备树时生效，当使用预定义设备树文件时将被忽略。
 
+### 5.3 直通设备地址配置
+
+`passthrough_addresses` 定义了直通给客户机使用的地址信息：
+
+```
+passthrough_addresses = [
+  [0x28041000, 0x100_0000],
+]
+```
+
+该字段定义的地址会直通给客户机使用，这在某些情况下非常有用，例如设备树文件为非标准设备树格式或客户机系统时定制linux。
+
 ## 6. 示例配置
 
 ### 6.1 使用预定义设备树文件的配置
@@ -178,6 +190,11 @@ memory_regions = [
 passthrough_devices = [
   ["/intc"],
 ]
+# 直通地址配置
+passthrough_addresses = [
+  [0x28041000, 0x100_0000],
+]
+
 excluded_devices = [
   ["/timer"],
 ]
@@ -213,7 +230,10 @@ passthrough_devices = [
   ["/"],
   ["/intc"],
 ]
-
+# 直通地址配置
+passthrough_addresses = [
+  [0x28041000, 0x100_0000],
+]
 excluded_devices = [
   ["/timer"],
   ["/watchdog"],

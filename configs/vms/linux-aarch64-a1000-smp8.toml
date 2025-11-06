@@ -52,6 +52,13 @@ emu_devices = []
 passthrough_devices = [
 ["most-devices", 0x0, 0x0, 0x8000_0000, 0x1],
 ]
+
+# Passthrough addresses.
+# Base-GPA  Length.
+passthrough_addresses = [
+    #[0x28041000, 0x100_0000]
+]
+
 excluded_devices = [
    # ["/gic-v3"],
 ]
