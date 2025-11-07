@@ -290,6 +290,14 @@ pub fn update_fdt(fdt_src: NonNull<u8>, dtb_size: usize, vm: VMRef) {
         previous_node_level = node.level;
 
         for prop in node.propertys() {
+            if prop.name.starts_with("linux,initrd-") {
+                if node.name() == "chosen" {
+                    info!("Skipping property: {}, belonging to node: {}", prop.name, node.name());
+                    continue;
+                } else {
+                    warn!("Find property: {}, belonging to node: {}", prop.name, node.name());
+                }
+            }
             new_fdt.property(prop.name, prop.raw_value()).unwrap();
         }
     }
