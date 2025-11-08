@@ -13,10 +13,10 @@ version = "0.1.0"
 ept-level-4 = ["axaddrspace/4-level-ept"]
 fs = ["axstd/fs"]
 
-plat-aarch64-generic = ["axplat-aarch64-generic", "axstd/driver-dyn"]
-plat-aarch64-phytium-pi = ["axplat-aarch64-phytium-pi", "axstd/driver-dyn"]
-plat-aarch64-roc-rk3568-pc = ["axplat-aarch64-roc-rk3568-pc", "axstd/driver-dyn"]
-plat-x86-qemu-q35 = ["axplat-x86-qemu-q35"]
+plat-aarch64-generic = ["dep:axplat-aarch64-generic", "axstd/driver-dyn"]
+plat-aarch64-phytium-pi = ["dep:axplat-aarch64-phytium-pi", "axstd/driver-dyn"]
+plat-aarch64-roc-rk3568-pc = ["dep:axplat-aarch64-roc-rk3568-pc", "axstd/driver-dyn"]
+plat-x86-qemu-q35 = ["dep:axplat-x86-qemu-q35"]
 
 [dependencies]
 bitflags = "2.2"
