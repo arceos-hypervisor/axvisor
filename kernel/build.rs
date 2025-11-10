@@ -30,10 +30,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use anyhow::Context;
 use quote::quote;
 use toml::Table;
-
-static CONFIGS_DIR_PATH: &str = "configs/vms";
 
 /// A configuration file that has been read from disk.
 struct ConfigFile {
@@ -88,9 +87,9 @@ fn open_output_file() -> fs::File {
 }
 
 // Convert relative path to absolute path
-fn convert_to_absolute(configs_path: &str, path: &str) -> PathBuf {
+fn convert_to_absolute(configs_path: impl AsRef<Path>, path: &str) -> PathBuf {
     let path = Path::new(path);
-    let configs_path = Path::new(configs_path).join(path);
+    let configs_path = configs_path.as_ref().parent().unwrap().join(path);
     if path.is_relative() {
         fs::canonicalize(configs_path).unwrap_or_else(|_| path.to_path_buf())
     } else {
@@ -124,28 +123,28 @@ fn parse_config_file(config_file: &ConfigFile) -> Option<MemoryImage> {
 
     let kernel_path = config.get("kernel")?.as_table()?.get("kernel_path")?;
 
-    let kernel = convert_to_absolute(CONFIGS_DIR_PATH, kernel_path.as_str().unwrap());
+    let kernel = convert_to_absolute(&config_file.path, kernel_path.as_str().unwrap());
 
     let dtb = config
         .get("kernel")?
         .as_table()?
         .get("dtb_path")
         .and_then(|v| v.as_str())
-        .map(|v| convert_to_absolute(CONFIGS_DIR_PATH, v));
+        .map(|v| convert_to_absolute(&config_file.path, v));
 
     let bios = config
         .get("kernel")?
         .as_table()?
         .get("bios_path")
         .and_then(|v| v.as_str())
-        .map(|v| convert_to_absolute(CONFIGS_DIR_PATH, v));
+        .map(|v| convert_to_absolute(&config_file.path, v));
 
     let ramdisk = config
         .get("kernel")?
         .as_table()?
         .get("ramdisk_path")
         .and_then(|v| v.as_str())
-        .map(|v| convert_to_absolute(CONFIGS_DIR_PATH, v));
+        .map(|v| convert_to_absolute(&config_file.path, v));
 
     Some(MemoryImage {
         id,
@@ -161,13 +160,18 @@ fn parse_config_file(config_file: &ConfigFile) -> Option<MemoryImage> {
 fn generate_guest_img_loading_functions(
     out_file: &mut fs::File,
     config_files: Vec<ConfigFile>,
-) -> io::Result<()> {
+) -> anyhow::Result<()> {
     let mut memory_images = vec![];
 
     for config_file in config_files {
         if let Some(files) = parse_config_file(&config_file) {
             let id = files.id;
-            let kernel = files.kernel.canonicalize().unwrap().display().to_string();
+            let kernel = files
+                .kernel
+                .canonicalize()
+                .with_context(|| format!("Path {} not found", files.kernel.display()))?
+                .display()
+                .to_string();
             let dtb = match files.dtb {
                 Some(v) => {
                     let s = v.canonicalize().unwrap().display().to_string();
@@ -233,7 +237,7 @@ fn generate_guest_img_loading_functions(
     Ok(())
 }
 
-fn main() -> io::Result<()> {
+fn main() -> anyhow::Result<()> {
     let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     let mut smp = None;
     if let Ok(s) = std::env::var("AXVISOR_SMP") {

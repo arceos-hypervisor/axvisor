@@ -1062,6 +1062,7 @@ name = "axvisor"
 version = "0.0.0"
 dependencies = [
  "aarch64-cpu-ext",
+ "anyhow",
  "arm-gic-driver",
  "axaddrspace",
  "axconfig",
