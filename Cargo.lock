@@ -227,7 +227,8 @@ dependencies = [
 [[package]]
 name = "arm_vcpu"
 version = "0.1.1"
-source = "git+https://github.com/arceos-hypervisor/arm_vcpu?branch=next#b24cc3635c049302ab8d58d3b54007bb5a053a96"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32f227e99f64201b2fa5d8a0db32cf1f914b0f04225abeeb80eb10e35076be7e"
 dependencies = [
  "aarch64-cpu",
  "axaddrspace",
@@ -239,6 +240,7 @@ dependencies = [
  "numeric-enum-macro",
  "percpu",
  "spin 0.10.0",
+ "tock-registers 0.9.0",
 ]
 
 [[package]]
@@ -1129,7 +1131,6 @@ dependencies = [
 [[package]]
 name = "axvm"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/axvm.git?branch=next#22437d2b8e853bfd576f77f00308380463bd2710"
 dependencies = [
  "arm_vcpu",
  "arm_vgic 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -3454,6 +3455,10 @@ dependencies = [
  "cfg-if",
  "libc",
 ]
+
+[[package]]
+name = "nop"
+version = "0.1.0"
 
 [[package]]
 name = "ns16550a"

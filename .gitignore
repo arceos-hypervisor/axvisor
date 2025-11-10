@@ -27,7 +27,10 @@ __pycache__/
 /**/.board.*
 
 # dev env
-/crates
+/crates/*
+!/crates/nop/
+!/crates/nop/**
+
 /Cargo.toml.bk
 
 # tools should be downloaded from github
