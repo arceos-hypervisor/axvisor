@@ -5,7 +5,8 @@ dtb_file = "${env:BOARD_DTB}"
 fail_regex = []
 serial = "${env:BOARD_COMM_UART_DEV}"
 success_regex = [
-    "Welcome to AxVisor Shell!"
+    "Welcome to AxVisor Shell!",
+    "All tests passed!"
 ]
 
 [net]
