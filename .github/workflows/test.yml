@@ -15,7 +15,7 @@ jobs:
           #   vmconfigs: .github/workflows/vmconfigs/arceos.toml
           #   vmconfigs_name: ArceOS Only
           - board: roc-rk3568-pc
-            vmconfigs: .github/workflows/vmconfigs/arceos.toml
+            vmconfigs: configs/vms/arceos-aarch64-e2000-smp1.toml
             vmconfigs_name: ArceOS Only
             # Multiple image archive names separated by commas, for example, roc-rk3568-pc_arceos.tar.gz,roc-rk3568-pc_linux.tar.gz[,...]
             vmimage_name: roc-rk3568-pc_arceos.tar.gz
@@ -43,6 +43,13 @@ jobs:
             tar -xzf $img
           done
           cd ..
+
+      - name: Patch VM config files
+        run: |
+          echo "Patching ${{ matrix.vmconfigs }}..."
+          img_name="${{ matrix.vmimage_name%.tar.gz }}"
+          sed -i 's|^kernel_path[[:space:]]*=.*|kernel_path = "./images/'"$img_name"'"|' "${{ matrix.vmconfigs }}"
+          echo "Updated kernel_path in ${{ matrix.vmconfigs }}"
 
       - name: Run tests  
         run: |
