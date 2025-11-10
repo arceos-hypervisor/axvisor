@@ -110,6 +110,7 @@ impl ImageLoader {
                 _dtb_slice.len(),
                 self.vm.clone(),
             );
+            
         } else {
             info!("dtb_load_gpa not provided");
         }

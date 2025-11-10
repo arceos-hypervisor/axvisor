@@ -310,9 +310,10 @@ fn smp() -> Option<usize> {
     let mut smp = None;
     let s = option_env!("AXVISOR_SMP");
     if let Some(s) = s
-        && let Ok(n) = s.parse::<usize>() {
-            smp = Some(n);
-        }
+        && let Ok(n) = s.parse::<usize>()
+    {
+        smp = Some(n);
+    }
     smp
 }
 
@@ -329,9 +330,9 @@ pub fn cpu_count() -> usize {
         }
     }
 
-    if let Some(smp) = smp()
-        && smp > cpu_count {
-            cpu_count = smp;
-        }
+    if let Some(smp) = smp() {
+        cpu_count = smp.min(cpu_count);
+    }
+
     cpu_count
 }
