@@ -29,7 +29,7 @@ pub mod config {
         use axstd::fs;
         use axstd::io::{BufReader, Read};
 
-        let config_dir = "/guest/vm1";
+        let config_dir = "/guest/vm_default";
 
         let mut configs = Vec::new();
 
