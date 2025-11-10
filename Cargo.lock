@@ -315,9 +315,9 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "axaddrspace"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c4a11ed43c0138f48495f482ee2292f1bfdb270dbccdfa0fb5cf53dc74061cb"
+checksum = "06b129114ab36be728ef11dd6540559c30deb6332378157d22bdc0aae6803a63"
 dependencies = [
  "axerrno",
  "bit_field",
