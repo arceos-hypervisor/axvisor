@@ -73,9 +73,7 @@ pub fn inject_interrupt_gic_v3(vector: usize) {
     debug!("use free lr {free_lr} to inject irq {vector}");
 
     if free_lr == -1 {
-        warn!(
-            "No free list register to inject IRQ {vector}, checking ICH_HCR_EL2"
-        );
+        warn!("No free list register to inject IRQ {vector}, checking ICH_HCR_EL2");
 
         // Try to find and reuse an inactive LR
         for i in 0..lr_num {
@@ -106,9 +104,7 @@ pub fn inject_interrupt_gic_v3(vector: usize) {
         ICH_HCR_EL2.modify(ICH_HCR_EL2::EN::SET);
     }
 
-    debug!(
-        "Virtual interrupt {vector} injected successfully in LR{free_lr}"
-    );
+    debug!("Virtual interrupt {vector} injected successfully in LR{free_lr}");
 }
 
 pub fn hardware_check() {

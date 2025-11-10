@@ -358,9 +358,7 @@ pub fn parse_vm_interrupt(vm_cfg: &mut AxVMConfig, dtb: &[u8]) {
                             if v == 0 {
                                 trace!("node: {name}, GIC_SPI");
                             } else {
-                                debug!(
-                                    "node: {name}, intr type: {v}, not GIC_SPI, not supported!"
-                                );
+                                debug!("node: {name}, intr type: {v}, not GIC_SPI, not supported!");
                                 break;
                             }
                         }
