@@ -25,22 +25,72 @@ pub mod config {
 
     /// Read VM configs from filesystem
     #[cfg(feature = "fs")]
-    pub fn filesystem_vm_configs() -> Vec<String> {
+   pub fn filesystem_vm_configs() -> Vec<String> {
         use axstd::fs;
+        use axstd::io::{BufReader, Read};
 
-        // Try to read config files from a predefined directory
-        let config_dir = "configs/vms";
+        let config_dir = "/guest/vm1";
+
         let mut configs = Vec::new();
 
-        if let Ok(entries) = fs::read_dir(config_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                // Check if the file has a .toml extension
-                let path_str = path.as_str();
-                if path_str.ends_with(".toml")
-                    && let Ok(content) = fs::read_to_string(path_str)
-                {
-                    configs.push(content);
+        debug!("Read VM config files from filesystem.");
+
+        let entries = match fs::read_dir(config_dir) {
+            Ok(entries) => {
+                info!("Find dir: {}", config_dir);
+                entries
+            }
+            Err(_e) => {
+                info!("NOT find dir: {} in filesystem", config_dir);
+                return configs;
+            }
+        };
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            // Check if the file has a .toml extension
+            let path_str = path.as_str();
+            debug!("Considering file: {}", path_str);
+            if path_str.ends_with(".toml") {
+                let toml_file = fs::File::open(path_str).expect("Failed to open file");
+                let file_size = toml_file
+                    .metadata()
+                    .expect("Failed to get file metadata")
+                    .len() as usize;
+
+                info!("File {} size: {}", path_str, file_size);
+
+                if file_size == 0 {
+                    warn!("File {} is empty", path_str);
+                    continue;
+                }
+
+                let mut file = BufReader::new(toml_file);
+                let mut buffer = vec![0u8; file_size];
+                match file.read_exact(&mut buffer) {
+                    Ok(()) => {
+                        debug!(
+                            "Successfully read config file {} as bytes, size: {}",
+                            path_str,
+                            buffer.len()
+                        );
+                        // Convert to string
+                        let content = alloc::string::String::from_utf8(buffer)
+                            .expect("Failed to convert bytes to UTF-8 string");
+
+                        if content.contains("[base]") && content.contains("[kernel]") && content.contains("[devices]") {
+                            configs.push(content);
+                            info!("TOML config: {} is valid, start the virtual machine directly now. ", path_str);
+                        } else {
+                            warn!(
+                                "File {} does not appear to contain valid VM config structure",
+                                path_str
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to read file {}: {:?}", path_str, e);
+                    }
                 }
             }
         }
@@ -81,11 +131,18 @@ pub fn init_guest_vms() {
     // If no filesystem configs found, fallback to static configs
     if gvm_raw_configs.is_empty() {
         let static_configs = config::static_vm_configs();
+        if static_configs.is_empty() {
+            info!("Static VM configs are empty.");
+            info!("Now axvisor will entry the shell...");
+        } else {
+            info!("Using static VM configs.");
+        }
         // Convert static configs to String type
         gvm_raw_configs.extend(static_configs.into_iter().map(|s| s.into()));
     }
 
     for raw_cfg_str in gvm_raw_configs {
+        debug!("Initializing guest VM with config: {:#?}", raw_cfg_str);
         if let Err(e) = init_guest_vm(&raw_cfg_str) {
             error!("Failed to initialize guest VM: {e:?}");
         }
