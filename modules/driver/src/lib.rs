@@ -23,4 +23,3 @@ fn iomap(base: u64, size: usize) -> Result<NonNull<u8>, OnProbeError> {
         .map(|ptr| unsafe { NonNull::new_unchecked(ptr.as_mut_ptr()) })
         .map_err(|e| OnProbeError::Other(format!("{e}:?").into()))
 }
-

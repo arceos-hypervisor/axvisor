@@ -25,7 +25,7 @@ pub mod config {
 
     /// Read VM configs from filesystem
     #[cfg(feature = "fs")]
-   pub fn filesystem_vm_configs() -> Vec<String> {
+    pub fn filesystem_vm_configs() -> Vec<String> {
         use axstd::fs;
         use axstd::io::{BufReader, Read};
 
@@ -78,9 +78,15 @@ pub mod config {
                         let content = alloc::string::String::from_utf8(buffer)
                             .expect("Failed to convert bytes to UTF-8 string");
 
-                        if content.contains("[base]") && content.contains("[kernel]") && content.contains("[devices]") {
+                        if content.contains("[base]")
+                            && content.contains("[kernel]")
+                            && content.contains("[devices]")
+                        {
                             configs.push(content);
-                            info!("TOML config: {} is valid, start the virtual machine directly now. ", path_str);
+                            info!(
+                                "TOML config: {} is valid, start the virtual machine directly now. ",
+                                path_str
+                            );
                         } else {
                             warn!(
                                 "File {} does not appear to contain valid VM config structure",
