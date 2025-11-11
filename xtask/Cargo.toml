@@ -10,7 +10,7 @@ chrono = "0.4"
 clap = {version = "4.4", features = ["derive"]}
 # ostool = {path = "/home/zhourui/opensource/ostool/ostool"}
 colored = "3"
-ostool = {git = "https://github.com/ZR233/ostool.git"}
+ostool = {git = "https://github.com/Josen-B/ostool.git"}
 schemars = {version = "1", features = ["derive"]}
 serde = {version = "1.0", features = ["derive"]}
 serde_json = "1"

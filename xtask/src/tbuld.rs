@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::Context as _;
-use ostool::build::config::{Cargo, LogLevel};
+use ostool::build::config::{Cargo, Features, LogLevel};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +12,7 @@ pub struct Config {
     /// target triple
     pub target: String,
     /// features to enable
-    pub features: Vec<String>,
+    pub features: Features,
     /// log level feature
     pub log: Option<LogLevel>,
     /// other cargo args
