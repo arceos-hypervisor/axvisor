@@ -29,6 +29,7 @@ jobs:
             vmconfigs_name: Linux
             # Multiple image archive names separated by commas, for example, roc-rk3568-pc_arceos.tar.gz,roc-rk3568-pc_linux.tar.gz[,...]
             vmimage_name: roc-rk3568-pc_linux.tar.gz
+      fail-fast: false
     runs-on:
       - self-hosted
       - linux
