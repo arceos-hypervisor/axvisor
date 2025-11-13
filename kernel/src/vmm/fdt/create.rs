@@ -289,24 +289,41 @@ pub fn update_fdt(fdt_src: NonNull<u8>, dtb_size: usize, vm: VMRef) {
 
         previous_node_level = node.level;
 
-        for prop in node.propertys() {
-            if prop.name.starts_with("linux,initrd-") {
-                if node.name() == "chosen" {
+        if node.name() == "chosen" {
+            for prop in node.propertys() {
+                if prop.name.starts_with("linux,initrd-") {
                     info!(
                         "Skipping property: {}, belonging to node: {}",
                         prop.name,
                         node.name()
                     );
-                    continue;
+                } else if prop.name == "bootargs" {
+                    let bootargs_str = prop.str();
+                    let modified_bootargs = bootargs_str.replace(" ro ", " rw ");
+
+                    if modified_bootargs != bootargs_str {
+                        info!(
+                            "Modifying bootargs: {} -> {}",
+                            bootargs_str, modified_bootargs
+                        );
+                    }
+
+                    new_fdt
+                        .property_string(prop.name, &modified_bootargs)
+                        .unwrap();
                 } else {
-                    warn!(
-                        "Find property: {}, belonging to node: {}",
+                    debug!(
+                        "Found property: {}, belonging to node: {}",
                         prop.name,
                         node.name()
                     );
+                    new_fdt.property(prop.name, prop.raw_value()).unwrap();
                 }
             }
-            new_fdt.property(prop.name, prop.raw_value()).unwrap();
+        } else {
+            for prop in node.propertys() {
+                new_fdt.property(prop.name, prop.raw_value()).unwrap();
+            }
         }
     }
 
