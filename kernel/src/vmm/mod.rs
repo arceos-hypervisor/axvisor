@@ -107,7 +107,7 @@ pub fn with_vm_and_vcpu_on_pcpu(
     // Disables preemption and IRQs to prevent the current task from being preempted or re-scheduled.
     let guard = kernel_guard::NoPreemptIrqSave::new();
 
-    let current_vm = axtask::current().task_ext().vm.id();
+    let current_vm = axtask::current().task_ext().vm().id();
     let current_vcpu = axtask::current().task_ext().vcpu.id();
 
     // The target vCPU is the current task, execute the closure directly.
@@ -135,4 +135,8 @@ pub fn get_running_vm_count() -> usize {
 
 pub fn add_running_vm_count(count: usize) {
     RUNNING_VM_COUNT.fetch_add(count, Ordering::Release);
+}
+
+pub fn sub_running_vm_count(count: usize) {
+    RUNNING_VM_COUNT.fetch_sub(count, Ordering::Release);
 }
