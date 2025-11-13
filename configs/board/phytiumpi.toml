@@ -1,6 +1,6 @@
 cargo_args = []
 features = [
-    "ept-level-4",
+    # "ept-level-4",
     "axstd/myplat",
     "axstd/bus-mmio",
 ]
