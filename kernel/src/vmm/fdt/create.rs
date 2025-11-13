@@ -313,7 +313,7 @@ pub fn update_fdt(fdt_src: NonNull<u8>, dtb_size: usize, vm: VMRef) {
                         .unwrap();
                 } else {
                     debug!(
-                        "Found property: {}, belonging to node: {}",
+                        "Find property: {}, belonging to node: {}",
                         prop.name,
                         node.name()
                     );
