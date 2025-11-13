@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 mod cargo;
 mod clippy;
 mod ctx;
+mod menuconfig;
 mod tbuld;
 mod vmconfig;
 
@@ -34,6 +35,7 @@ enum Commands {
     Qemu(QemuArgs),
     Uboot(UbootArgs),
     Vmconfig,
+    Menuconfig,
 }
 
 #[derive(Parser)]
@@ -107,6 +109,9 @@ async fn main() -> Result<()> {
         }
         Commands::Vmconfig => {
             ctx.run_vmconfig().await?;
+        }
+        Commands::Menuconfig => {
+            ctx.run_menuconfig().await?;
         }
     }
 

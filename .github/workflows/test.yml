@@ -45,7 +45,7 @@ jobs:
       - name: Download images and patch VM configs
         run: |
           echo "Downloading guest images and patching VM config files..."
-          mkdir -p images
+          mkdir -p /tmp/images
           IFS=',' read -ra CONFIGS <<< "${{ matrix.vmconfigs }}"
           IFS=',' read -ra IMAGES <<< "${{ matrix.vmimage_name }}"
           for i in "${!CONFIGS[@]}"; do
@@ -56,9 +56,9 @@ jobs:
             img_name="${img%.tar.gz}"
 
             echo "Downloading $img and patching $config..."
-            wget -P ./images https://github.com/arceos-hypervisor/axvisor-guest/releases/latest/download/$img
-            tar -xzf ./images/$img -C ./images
-            sed -i 's|^kernel_path[[:space:]]*=.*|kernel_path = "./images/'"$img_name"'"|' "$config"
+            wget -P /tmp/images https://github.com/arceos-hypervisor/axvisor-guest/releases/latest/download/$img
+            tar -xzf /tmp/images/$img -C /tmp/images
+            sed -i 's|^kernel_path[[:space:]]*=.*|kernel_path = "/tmp/images/'"$img_name"'"|' "$config"
             echo "Updated kernel_path in $config"
           done
 
@@ -66,10 +66,10 @@ jobs:
         run: |
           echo $BOARD_POWER_RESET
           export RUST_LOG=debug
-          # cargo xtask uboot \
-          #   --build-config configs/board/${{ matrix.board }}.toml \
-          #   --uboot-config .github/workflows/uboot.toml \
-          #   --vmconfigs ${{ matrix.vmconfigs }}
           cargo xtask uboot \
             --build-config configs/board/${{ matrix.board }}.toml \
-            --uboot-config .github/workflows/uboot.toml
+            --uboot-config .github/workflows/uboot.toml \
+            --vmconfigs ${{ matrix.vmconfigs }}
+          # cargo xtask uboot \
+          #   --build-config configs/board/${{ matrix.board }}.toml \
+          #   --uboot-config .github/workflows/uboot.toml
