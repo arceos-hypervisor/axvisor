@@ -66,10 +66,10 @@ jobs:
         run: |
           echo $BOARD_POWER_RESET
           export RUST_LOG=debug
-          # cargo xtask uboot \
-          #   --build-config configs/board/${{ matrix.board }}.toml \
-          #   --uboot-config .github/workflows/uboot.toml \
-          #   --vmconfigs ${{ matrix.vmconfigs }}
           cargo xtask uboot \
             --build-config configs/board/${{ matrix.board }}.toml \
-            --uboot-config .github/workflows/uboot.toml
+            --uboot-config .github/workflows/uboot.toml \
+            --vmconfigs ${{ matrix.vmconfigs }}
+          # cargo xtask uboot \
+          #   --build-config configs/board/${{ matrix.board }}.toml \
+          #   --uboot-config .github/workflows/uboot.toml
