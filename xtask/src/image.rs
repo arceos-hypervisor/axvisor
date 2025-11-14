@@ -13,8 +13,8 @@
 //! xtask image ls
 //! // Download a specific image and automatically extract it
 //! xtask image download evm3588_arceos --output-dir ./images
-//! // Download a specific image without extracting
-//! xtask image download evm3588_arceos --output-dir ./images --no-extract
+//! // Pull a specific image (alias for download) and automatically extract it
+//! xtask image pull evm3588_arceos --output-dir ./images
 //! // Remove a specific image from temp directory
 //! xtask image rm evm3588_arceos
 //! ```
@@ -42,6 +42,7 @@ pub enum ImageCommands {
     /// List all available image
     Ls,
     /// Download the specified image and automatically extract it
+    #[command(alias = "pull")]
     Download {
         image_name: String,
         #[arg(short, long)]
@@ -277,8 +278,8 @@ fn image_list() -> Result<()> {
 /// ```
 /// // Download the evm3588_arceos image to the ./images directory and automatically extract it
 /// xtask image download evm3588_arceos --output-dir ./images
-/// // Download the evm3588_arceos image to the ./images directory without extracting
-/// xtask image download evm3588_arceos --output-dir ./images --no-extract
+/// // Or use the pull alias
+/// xtask image pull evm3588_arceos --output-dir ./images
 /// ```
 fn image_download(image_name: &str, output_dir: Option<String>, extract: bool) -> Result<()> {
     let image = Image::find_by_name(image_name)
@@ -458,7 +459,8 @@ fn image_remove(image_name: &str) -> Result<()> {
 /// // Run image management commands
 /// xtask image ls
 /// xtask image download evm3588_arceos --output-dir ./images
-/// xtask image download evm3588_arceos --output-dir ./images --no-extract
+/// // Or use the pull alias
+/// xtask image pull evm3588_arceos --output-dir ./images
 /// xtask image rm evm3588_arceos
 /// ```
 pub fn run_image(args: ImageArgs) -> Result<()> {
