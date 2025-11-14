@@ -117,7 +117,7 @@ async fn main() -> Result<()> {
             ctx.run_menuconfig().await?;
         }
         Commands::Image(args) => {
-            image::run_image(args)?;
+            image::run_image(args).await?;
         }
     }
 

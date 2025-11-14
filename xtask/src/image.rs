@@ -13,18 +13,22 @@
 //! xtask image ls
 //! // Download a specific image and automatically extract it
 //! xtask image download evm3588_arceos --output-dir ./images
-//! // Pull a specific image (alias for download) and automatically extract it
-//! xtask image pull evm3588_arceos --output-dir ./images
+//! // Download a specific image without extracting
+//! xtask image download evm3588_arceos --output-dir ./images --no-extract
 //! // Remove a specific image from temp directory
 //! xtask image rm evm3588_arceos
 //! ```
 
 use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand};
+use sha2::{Sha256, Digest};
 use std::path::{Path};
 use std::process::Command;
 use std::fs;
 use std::env;
+use std::io::Read;
+use tokio::fs::File;
+use tokio::io::AsyncWriteExt;
 
 /// Base URL for downloading images
 const IMAGE_URL_BASE: &str = "https://github.com/arceos-hypervisor/axvisor-guest/releases/download/v0.0.16/";
@@ -216,17 +220,20 @@ impl Image {
 /// # Errors
 /// * `anyhow::Error` - If any error occurs during the verification process
 fn image_verify_sha256(file_path: &Path, expected_sha256: &str) -> Result<bool> {
-    let output = Command::new("sha256sum")
-        .arg(file_path)
-        .output()?;
+    let mut file = fs::File::open(file_path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0; 8192];
     
-    if !output.status.success() {
-        return Err(anyhow!("Failed to calculate SHA256"));
+    loop {
+        let bytes_read = file.read(&mut buffer)?;
+        if bytes_read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..bytes_read]);
     }
     
-    let stdout = String::from_utf8(output.stdout)?;
-    let actual_sha256 = stdout.split_whitespace().next()
-        .ok_or_else(|| anyhow!("Unable to parse SHA256 output"))?;
+    let result = hasher.finalize();
+    let actual_sha256 = format!("{:x}", result);
     
     Ok(actual_sha256 == expected_sha256)
 }
@@ -281,7 +288,7 @@ fn image_list() -> Result<()> {
 /// // Or use the pull alias
 /// xtask image pull evm3588_arceos --output-dir ./images
 /// ```
-fn image_download(image_name: &str, output_dir: Option<String>, extract: bool) -> Result<()> {
+async fn image_download(image_name: &str, output_dir: Option<String>, extract: bool) -> Result<()> {
     let image = Image::find_by_name(image_name)
         .ok_or_else(|| anyhow!("Image not found: {}. Use 'xtask image ls' to view available images", image_name))?;
     
@@ -339,19 +346,19 @@ fn image_download(image_name: &str, output_dir: Option<String>, extract: bool) -
     
     println!("Downloading file from {}...", download_url);
     
-    let mut child = Command::new("curl")
-        .arg("-L") // Follow redirects
-        .arg("-o")
-        .arg(&output_path)
-        .arg(&download_url)
-        .spawn()?;
-    
-    let status = child.wait()?;
-    if !status.success() {
-        return Err(anyhow!("Download failed, curl exit code: {}", status));
+    // Use reqwest to download the file
+    let response = reqwest::get(&download_url).await?;
+    if !response.status().is_success() {
+        return Err(anyhow!("Failed to download file: HTTP {}", response.status()));
     }
     
-    println!("Download completed");
+    let bytes = response.bytes().await?;
+    
+    // Write all bytes at once
+    let mut file = File::create(&output_path).await?;
+    file.write_all(&bytes).await?;
+    
+    println!("Download completed ({} bytes)", bytes.len());
     
     // Verify downloaded file
     println!("Verifying SHA256 of downloaded file...");
@@ -463,13 +470,13 @@ fn image_remove(image_name: &str) -> Result<()> {
 /// xtask image pull evm3588_arceos --output-dir ./images
 /// xtask image rm evm3588_arceos
 /// ```
-pub fn run_image(args: ImageArgs) -> Result<()> {
+pub async fn run_image(args: ImageArgs) -> Result<()> {
     match args.command {
         ImageCommands::Ls => {
             image_list()?;
         }
         ImageCommands::Download { image_name, output_dir, extract } => {
-            image_download(&image_name, output_dir, extract.unwrap_or(true))?;
+            image_download(&image_name, output_dir, extract.unwrap_or(true)).await?;
         }
         ImageCommands::Rm { image_name } => {
             image_remove(&image_name)?;
