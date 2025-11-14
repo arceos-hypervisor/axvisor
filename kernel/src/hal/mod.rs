@@ -48,7 +48,7 @@ impl AxVMHal for AxVMHalImpl {
     }
 
     fn current_vm_id() -> usize {
-        axtask::current().task_ext().vm.id()
+        axtask::current().task_ext().vm().id()
     }
 
     fn current_vcpu_id() -> usize {

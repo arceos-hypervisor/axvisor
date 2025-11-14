@@ -37,6 +37,8 @@ pub fn console_init() {
     println!("Welcome to AxVisor Shell!");
     println!("Type 'help' to see available commands");
     println!("Use UP/DOWN arrows to navigate command history");
+    #[cfg(not(feature = "fs"))]
+    println!("Note: Running with limited features (filesystem support disabled).");
     println!();
 
     print_prompt();

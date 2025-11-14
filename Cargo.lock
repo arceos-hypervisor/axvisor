@@ -227,51 +227,18 @@ dependencies = [
 [[package]]
 name = "arm_vcpu"
 version = "0.1.1"
-dependencies = [
- "aarch64-cpu",
- "axaddrspace",
- "axdevice_base",
- "axerrno",
- "axvcpu 0.1.2 (git+https://github.com/arceos-hypervisor/axvcpu.git?branch=next)",
- "axvisor_api",
- "log",
- "numeric-enum-macro",
- "percpu",
- "spin 0.10.0",
-]
-
-[[package]]
-name = "arm_vcpu"
-version = "0.1.1"
 source = "git+https://github.com/arceos-hypervisor/arm_vcpu?branch=next#b24cc3635c049302ab8d58d3b54007bb5a053a96"
 dependencies = [
  "aarch64-cpu",
  "axaddrspace",
  "axdevice_base",
  "axerrno",
- "axvcpu 0.1.2 (git+https://github.com/arceos-hypervisor/axvcpu.git?branch=next)",
+ "axvcpu",
  "axvisor_api",
  "log",
  "numeric-enum-macro",
  "percpu",
  "spin 0.10.0",
-]
-
-[[package]]
-name = "arm_vgic"
-version = "0.1.0"
-dependencies = [
- "aarch64-cpu",
- "aarch64_sysreg",
- "axaddrspace",
- "axdevice_base",
- "axerrno",
- "axvisor_api",
- "bitmaps",
- "log",
- "memory_addr",
- "spin 0.9.8",
- "tock-registers 0.10.1",
 ]
 
 [[package]]
@@ -429,22 +396,6 @@ dependencies = [
  "tock-registers 0.9.0",
  "x86",
  "x86_64",
-]
-
-[[package]]
-name = "axdevice"
-version = "0.1.0"
-dependencies = [
- "arm_vgic 0.1.0 (git+https://github.com/arceos-hypervisor/arm_vgic.git)",
- "axaddrspace",
- "axdevice_base",
- "axerrno",
- "axvmconfig",
- "cfg-if",
- "log",
- "memory_addr",
- "range-alloc",
- "spin 0.9.8",
 ]
 
 [[package]]
@@ -1097,17 +1048,6 @@ dependencies = [
 [[package]]
 name = "axvcpu"
 version = "0.1.2"
-dependencies = [
- "axaddrspace",
- "axerrno",
- "axvisor_api",
- "memory_addr",
- "percpu",
-]
-
-[[package]]
-name = "axvcpu"
-version = "0.1.2"
 source = "git+https://github.com/arceos-hypervisor/axvcpu.git?branch=next#343ec3ccf99a86fb9c67a7b0372e9b7a745f0640"
 dependencies = [
  "axaddrspace",
@@ -1126,13 +1066,13 @@ dependencies = [
  "arm-gic-driver",
  "axaddrspace",
  "axconfig",
- "axdevice 0.1.0 (git+https://github.com/arceos-hypervisor/axdevice.git)",
+ "axdevice",
  "axdevice_base",
  "axerrno",
  "axhvc",
  "axruntime",
  "axstd",
- "axvcpu 0.1.2 (git+https://github.com/arceos-hypervisor/axvcpu.git?branch=next)",
+ "axvcpu",
  "axvisor_api",
  "axvm 0.1.0 (git+https://github.com/arceos-hypervisor/axvm.git?branch=next)",
  "bitflags 2.10.0",
@@ -1190,13 +1130,13 @@ dependencies = [
 name = "axvm"
 version = "0.1.0"
 dependencies = [
- "arm_vcpu 0.1.1 (git+https://github.com/arceos-hypervisor/arm_vcpu?branch=next)",
+ "arm_vcpu",
  "arm_vgic 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "axaddrspace",
- "axdevice 0.1.0 (git+https://github.com/arceos-hypervisor/axdevice.git)",
+ "axdevice",
  "axdevice_base",
  "axerrno",
- "axvcpu 0.1.2 (git+https://github.com/arceos-hypervisor/axvcpu.git?branch=next)",
+ "axvcpu",
  "axvmconfig",
  "cfg-if",
  "cpumask",
@@ -1213,15 +1153,15 @@ dependencies = [
 [[package]]
 name = "axvm"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/axvm.git?branch=next#22437d2b8e853bfd576f77f00308380463bd2710"
+source = "git+https://github.com/arceos-hypervisor/axvm.git?branch=next#0393f27dea948433e53285a400e356cdfd4c4fa3"
 dependencies = [
- "arm_vcpu 0.1.1 (git+https://github.com/arceos-hypervisor/arm_vcpu?branch=next)",
+ "arm_vcpu",
  "arm_vgic 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "axaddrspace",
- "axdevice 0.1.0 (git+https://github.com/arceos-hypervisor/axdevice.git)",
+ "axdevice",
  "axdevice_base",
  "axerrno",
- "axvcpu 0.1.2 (git+https://github.com/arceos-hypervisor/axvcpu.git?branch=next)",
+ "axvcpu",
  "axvmconfig",
  "cfg-if",
  "cpumask",
@@ -1436,6 +1376,12 @@ dependencies = [
  "quote",
  "syn 1.0.109",
 ]
+
+[[package]]
+name = "bytemuck"
+version = "1.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fbdf580320f38b612e485521afda1ee26d10cc9884efaaa750d383e13e3c5f4"
 
 [[package]]
 name = "byteorder"
@@ -2085,6 +2031,12 @@ dependencies = [
 
 [[package]]
 name = "dma-api"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "624f4a84cc1031cfceb56780b82570a785f6cfdcee4f34c06c4e8f1fba25c970"
+
+[[package]]
+name = "dma-api"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d51274fe946b4c27cdada87cc6de09a50c0d9192c0f30ba455b29dae09caa0b"
@@ -2119,6 +2071,7 @@ version = "0.1.0"
 dependencies = [
  "axklib 0.2.0 (git+https://github.com/arceos-hypervisor/axklib)",
  "log",
+ "phytium-mci",
  "rdif-block",
  "rdif-clk",
  "rdrive",
@@ -3876,6 +3829,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "phytium-mci"
+version = "0.1.0"
+source = "git+https://github.com/YanQD/phytium-mci.git?rev=99c9ee5#99c9ee5f66490fbf41370be3b3d7a42cf4406b0c"
+dependencies = [
+ "bare-test-macros",
+ "bitflags 2.10.0",
+ "bytemuck",
+ "dma-api 0.2.2",
+ "lazy_static",
+ "log",
+ "nb",
+ "rlsf",
+ "spin 0.10.0",
+ "tock-registers 0.9.0",
+]
+
+[[package]]
 name = "pie-boot-if"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4561,7 +4531,7 @@ checksum = "13f38f28fe6c02bb3ced43087c9667b23d18adf729becdc5adf1253f7df83904"
 dependencies = [
  "axaddrspace",
  "axerrno",
- "axvcpu 0.1.2 (git+https://github.com/arceos-hypervisor/axvcpu.git?branch=next)",
+ "axvcpu",
  "axvisor_api",
  "bit_field",
  "bitflags 2.10.0",
@@ -6575,7 +6545,7 @@ dependencies = [
  "axaddrspace",
  "axdevice_base",
  "axerrno",
- "axvcpu 0.1.2 (git+https://github.com/arceos-hypervisor/axvcpu.git?branch=next)",
+ "axvcpu",
  "axvisor_api",
  "bit_field",
  "bitflags 2.10.0",
