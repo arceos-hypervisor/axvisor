@@ -1,19 +1,22 @@
 //! xtask/src/image.rs
 //! Guest Image management commands for the Axvisor build configuration tool
 //! (https://github.com/arceos-hypervisor/xtask).
-//! 
-//! This module provides functionality to list, download, and extract
+//!
+//! This module provides functionality to list, download, and remove
 //! pre-built guest images for various supported boards and architectures. The images
-//! are downloaded from a specified URL base and verified using SHA-256 checksums. The extracted
-//! images are placed in a specified output directory.
+//! are downloaded from a specified URL base and verified using SHA-256 checksums. The downloaded
+//! images are automatically extracted to a specified output directory. Images can also be removed
+//! from the temporary directory.
 //! ! Usage examples:
 //!! ```
 //! // List available images
 //! xtask image ls
-//! // Download a specific image
+//! // Download a specific image and automatically extract it
 //! xtask image download evm3588_arceos --output-dir ./images
-//! // Extract a downloaded image
-//! xtask image extract ./images/evm3588_arceos.tar.gz --output-dir ./extracted
+//! // Download a specific image without extracting
+//! xtask image download evm3588_arceos --output-dir ./images --no-extract
+//! // Remove a specific image from temp directory
+//! xtask image rm evm3588_arceos
 //! ```
 
 use anyhow::{Result, anyhow};
@@ -21,6 +24,7 @@ use clap::{Parser, Subcommand};
 use std::path::{Path};
 use std::process::Command;
 use std::fs;
+use std::env;
 
 /// Base URL for downloading images
 const IMAGE_URL_BASE: &str = "https://github.com/arceos-hypervisor/axvisor-guest/releases/download/v0.0.16/";
@@ -37,17 +41,17 @@ pub struct ImageArgs {
 pub enum ImageCommands {
     /// List all available image
     Ls,
-    /// Download the specified image
+    /// Download the specified image and automatically extract it
     Download {
         image_name: String,
         #[arg(short, long)]
         output_dir: Option<String>,
+        #[arg(short, long, help = "Automatically extract after download (default: true)")]
+        extract: Option<bool>,
     },
-    /// Extract the specified image file
-    Extract {
-        input_file: String,
-        #[arg(short, long)]
-        output_dir: Option<String>,
+    /// Remove the specified image from temp directory
+    Rm {
+        image_name: String,
     },
 }
 
@@ -202,6 +206,30 @@ impl Image {
     }
 }
 
+/// Verify the SHA256 checksum of a file
+/// # Arguments
+/// * `file_path` - The path to the file to verify
+/// * `expected_sha256` - The expected SHA256 checksum as a hex string
+/// # Returns
+/// * `Result<bool>` - Result indicating whether the checksum matches
+/// # Errors
+/// * `anyhow::Error` - If any error occurs during the verification process
+fn image_verify_sha256(file_path: &Path, expected_sha256: &str) -> Result<bool> {
+    let output = Command::new("sha256sum")
+        .arg(file_path)
+        .output()?;
+    
+    if !output.status.success() {
+        return Err(anyhow!("Failed to calculate SHA256"));
+    }
+    
+    let stdout = String::from_utf8(output.stdout)?;
+    let actual_sha256 = stdout.split_whitespace().next()
+        .ok_or_else(|| anyhow!("Unable to parse SHA256 output"))?;
+    
+    Ok(actual_sha256 == expected_sha256)
+}
+
 /// List all available images
 /// # Returns
 /// * `Result<()>` - Result indicating success or failure
@@ -236,20 +264,23 @@ fn image_list() -> Result<()> {
     // Return Ok to indicate successful execution
 }
 
-/// Download the specified image
+/// Download the specified image and optionally extract it
 /// # Arguments
 /// * `image_name` - The name of the image to download
-/// * `output_dir` - Optional output directory to save the downloaded image 
+/// * `output_dir` - Optional output directory to save the downloaded image
+/// * `extract` - Whether to automatically extract the image after download (default: true)
 /// # Returns
 /// * `Result<()>` - Result indicating success or failure
 /// # Errors
-/// * `anyhow::Error` - If any error occurs during the download process
+/// * `anyhow::Error` - If any error occurs during the download or extraction process
 /// # Examples
 /// ```
-/// // Download the evm3588_arceos image to the ./images directory
+/// // Download the evm3588_arceos image to the ./images directory and automatically extract it
 /// xtask image download evm3588_arceos --output-dir ./images
+/// // Download the evm3588_arceos image to the ./images directory without extracting
+/// xtask image download evm3588_arceos --output-dir ./images --no-extract
 /// ```
-fn image_download(image_name: &str, output_dir: Option<String>) -> Result<()> {
+fn image_download(image_name: &str, output_dir: Option<String>, extract: bool) -> Result<()> {
     let image = Image::find_by_name(image_name)
         .ok_or_else(|| anyhow!("Image not found: {}. Use 'xtask image ls' to view available images", image_name))?;
     
@@ -267,9 +298,9 @@ fn image_download(image_name: &str, output_dir: Option<String>) -> Result<()> {
             }
         }
         None => {
-            // If not specified, use tmp directory under current working directory
-            let current_dir = std::env::current_dir()?;
-            current_dir.join("tmp").join(format!("{}.tar.gz", image_name))
+            // If not specified, use system temporary directory
+            let temp_dir = env::temp_dir();
+            temp_dir.join("axvisor").join(format!("{}.tar.gz", image_name))
         }
     };
     
@@ -335,99 +366,83 @@ fn image_download(image_name: &str, output_dir: Option<String>) -> Result<()> {
         }
     }
     
+    // If extract flag is true, extract the downloaded file
+    if extract {
+        println!("Extracting downloaded file...");
+        
+        // Determine extraction output directory
+        let extract_dir = output_path.parent()
+            .ok_or_else(|| anyhow!("Unable to determine parent directory of downloaded file"))?
+            .join(image_name);
+        
+        // Ensure extraction directory exists
+        fs::create_dir_all(&extract_dir)?;
+        
+        println!("Extracting to: {}", extract_dir.display());
+        
+        // Use tar command to extract file
+        let mut child = Command::new("tar")
+            .arg("-xzf")
+            .arg(&output_path)
+            .arg("-C")
+            .arg(&extract_dir)
+            .spawn()?;
+        
+        let status = child.wait()?;
+        if !status.success() {
+            return Err(anyhow!("Extraction failed, tar exit code: {}", status));
+        }
+        
+        println!("Extraction completed successfully");
+        println!("Image extracted to: {}", extract_dir.display());
+    }
+    
     Ok(())
 }
 
-/// Verify the SHA256 checksum of a file
+/// Remove the specified image from temp directory
 /// # Arguments
-/// * `file_path` - The path to the file to verify
-/// * `expected_sha256` - The expected SHA256 checksum as a hex string
-/// # Returns
-/// * `Result<bool>` - Result indicating whether the checksum matches
-/// # Errors
-/// * `anyhow::Error` - If any error occurs during the verification process
-fn image_verify_sha256(file_path: &Path, expected_sha256: &str) -> Result<bool> {
-    let output = Command::new("sha256sum")
-        .arg(file_path)
-        .output()?;
-    
-    if !output.status.success() {
-        return Err(anyhow!("Failed to calculate SHA256"));
-    }
-    
-    let stdout = String::from_utf8(output.stdout)?;
-    let actual_sha256 = stdout.split_whitespace().next()
-        .ok_or_else(|| anyhow!("Unable to parse SHA256 output"))?;
-    
-    Ok(actual_sha256 == expected_sha256)
-}
-
-/// Extract the specified image file
-/// # Arguments
-/// * `input_file` - The path to the input image file
-/// * `output_dir` - Optional output directory to extract the image to
+/// * `image_name` - The name of the image to remove
 /// # Returns
 /// * `Result<()>` - Result indicating success or failure
 /// # Errors
-/// * `anyhow::Error` - If any error occurs during the extraction process
+/// * `anyhow::Error` - If any error occurs during the removal process
 /// # Examples
 /// ```
-/// // Extract the image file ./images/evm3588_arceos.tar.gz to ./extracted
-/// xtask image extract ./images/evm3588_arceos.tar.gz --output-dir ./extracted
+/// // Remove the evm3588_arceos image from temp directory
+/// xtask image rm evm3588_arceos
 /// ```
-fn image_extract(input_file: &str, output_dir: Option<String>) -> Result<()> {
-    let input_path = {
-        let path = Path::new(input_file);
-        if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            let current_dir = std::env::current_dir()?;
-            current_dir.join(path)
-        }
-    };
+fn image_remove(image_name: &str) -> Result<()> {
+    // Check if the image name is valid by looking it up
+    let _image = Image::find_by_name(image_name)
+        .ok_or_else(|| anyhow!("Image not found: {}. Use 'xtask image ls' to view available images", image_name))?;
     
-    let output_path = match output_dir {
-        Some(dir) => {
-            let path = Path::new(&dir);
-            if path.is_absolute() {
-                path.to_path_buf()
-            } else {
-                let current_dir = std::env::current_dir()?;
-                current_dir.join(path)
-            }
-        }
-        None => {
-            input_path.parent()
-                .ok_or_else(|| anyhow!("Unable to determine parent directory of input file"))?
-                .to_path_buf()
-        }
-    };
+    let temp_dir = env::temp_dir().join("axvisor");
+    let tar_file = temp_dir.join(format!("{}.tar.gz", image_name));
+    let extract_dir = temp_dir.join(image_name);
     
-    // Check if input file exists
-    if !input_path.exists() {
-        return Err(anyhow!("Input file does not exist: {}", input_path.display()));
+    let mut removed = false;
+    
+    // Remove the tar file if it exists
+    if tar_file.exists() {
+        println!("Removing tar file: {}", tar_file.display());
+        fs::remove_file(&tar_file)?;
+        removed = true;
     }
     
-    // Ensure output directory exists
-    fs::create_dir_all(&output_path)?;
-    
-    println!("Extracting file: {}", input_path.display());
-    println!("Target directory: {}", output_path.display());
-    
-    // Use tar command to extract file
-    let mut child = Command::new("tar")
-        .arg("-xzf")
-        .arg(&input_path)
-        .arg("-C")
-        .arg(&output_path)
-        .spawn()?;
-    
-    let status = child.wait()?;
-    if !status.success() {
-        return Err(anyhow!("Extraction failed, tar exit code: {}", status));
+    // Remove the extracted directory if it exists
+    if extract_dir.exists() {
+        println!("Removing extracted directory: {}", extract_dir.display());
+        fs::remove_dir_all(&extract_dir)?;
+        removed = true;
     }
     
-    println!("Extraction completed");
+    if !removed {
+        println!("No files found for image: {}", image_name);
+    } else {
+        println!("Successfully removed image: {}", image_name);
+    }
+    
     Ok(())
 }
 
@@ -443,18 +458,19 @@ fn image_extract(input_file: &str, output_dir: Option<String>) -> Result<()> {
 /// // Run image management commands
 /// xtask image ls
 /// xtask image download evm3588_arceos --output-dir ./images
-/// xtask image extract ./images/evm3588_arceos.tar.gz --output-dir ./extracted
+/// xtask image download evm3588_arceos --output-dir ./images --no-extract
+/// xtask image rm evm3588_arceos
 /// ```
 pub fn run_image(args: ImageArgs) -> Result<()> {
     match args.command {
         ImageCommands::Ls => {
             image_list()?;
         }
-        ImageCommands::Download { image_name, output_dir } => {
-            image_download(&image_name, output_dir)?;
+        ImageCommands::Download { image_name, output_dir, extract } => {
+            image_download(&image_name, output_dir, extract.unwrap_or(true))?;
         }
-        ImageCommands::Extract { input_file, output_dir } => {
-            image_extract(&input_file, output_dir)?;
+        ImageCommands::Rm { image_name } => {
+            image_remove(&image_name)?;
         }
     }
     
