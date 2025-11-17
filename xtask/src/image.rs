@@ -31,7 +31,7 @@ use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
 /// Base URL for downloading images
-const IMAGE_URL_BASE: &str = "https://github.com/arceos-hypervisor/axvisor-guest/releases/download/v0.0.16/";
+const IMAGE_URL_BASE: &str = "https://github.com/arceos-hypervisor/axvisor-guest/releases/download/v0.0.17/";
 
 /// Image management command line arguments.
 #[derive(Parser)]
@@ -74,112 +74,112 @@ impl Image {
     pub const EVM3588_ARCEOS: Self = Self {
         name: "evm3588_arceos",
         description: "ArceOS for EVM3588 development board",
-        sha256: "29b776507716974b4db24cb00e1511c3d35ce90807826c7136b4761843da2eec",
+        sha256: "fb0bb9011d4997e30debdf1d6c3769d7061ae9db1c087382952401ebabe47190",
         arch: "aarch64",
     };
     
     pub const EVM3588_LINUX: Self = Self {
         name: "evm3588_linux",
         description: "Linux for EVM3588 development board",
-        sha256: "ae727f1f5febbd205e7a7804a08dd388a030d140662f07704e29a8c51a1baec8",
+        sha256: "1affd34099d648fdb29104c93e190c24769c58a4c5ee31ac4ba2a593969dfb4c",
         arch: "aarch64",
     };
     
     pub const ORANGEPI_ARCEOS: Self = Self {
         name: "orangepi_arceos",
         description: "ArceOS for Orange Pi development board",
-        sha256: "9533e22c14d6a17d663aa6afcd399711afeb29f914eb47ce6a0469e59fd5c600",
+        sha256: "f84f711f3ad735b365de292ac341ea517ec5f7068c5629a4144749e741737e1d",
         arch: "aarch64",
     };
     
     pub const ORANGEPI_LINUX: Self = Self {
         name: "orangepi_linux",
         description: "Linux for Orange Pi development board",
-        sha256: "22b96c1f582ab75b55ec86230d2403a0254a4ecf75f2bd04539824120276d76e",
+        sha256: "3e6193e1a4f78fc9f6f07f920b4678a11e0f176227ca46cb4c9cdc8e2b2a9922",
         arch: "aarch64",
     };
     
     pub const PHYTIUMPI_ARCEOS: Self = Self {
         name: "phytiumpi_arceos",
         description: "ArceOS for Phytium Pi development board",
-        sha256: "0aa08692cecf8fc19851beca119888ad315b3fa809dc31b39ce23b2f4128810f",
+        sha256: "1ad199483198fd1bccc2c0fc8bad1a00d6c14ee46a4021898e40a49654a8e26f",
         arch: "aarch64",
     };
     
     pub const PHYTIUMPI_LINUX: Self = Self {
         name: "phytiumpi_linux",
         description: "Linux for Phytium Pi development board",
-        sha256: "3f06e9f3322555203e1c0a77a43acf87b3a9e5bc7e0a72f9182b3338fac0468d",
+        sha256: "c546a575e30a604f83dea8cba660434cc5cabec4cc3ee7db3c943821e391a078",
         arch: "aarch64",
     };
     
     pub const QEMU_ARCEOS_AARCH64: Self = Self {
         name: "qemu_arceos_aarch64",
         description: "ArceOS for QEMU aarch64 virtualization",
-        sha256: "f34b94fb35cf3e2d608018672d5b081155741b70ae67988e90f6fea283a97f0e",
+        sha256: "fcad4aff7906cd6c14d41889d72cd7ce82ea78bf8c21bca19a4f3db0ac627c5b",
         arch: "aarch64",
     };
     
     pub const QEMU_ARCEOS_RISCV64: Self = Self {
         name: "qemu_arceos_riscv64",
         description: "ArceOS for QEMU riscv64 virtualization",
-        sha256: "5c69be5cad65f7258db4130ba64cd70c8127aec94e384df619d34ce1ef27af00",
+        sha256: "7f758fdfa32e1bf7e2f79b288af72500598f3fe767f4743370b6897f59e159a0",
         arch: "riscv64",
     };
     
     pub const QEMU_ARCEOS_X86_64: Self = Self {
         name: "qemu_arceos_x86_64",
         description: "ArceOS for QEMU x86_64 virtualization",
-        sha256: "b5ea91fc5bd34f8a12f63c66adc23c2d5a7bc96e1b10ea415f7a526a5301605f",
+        sha256: "c15ed57f5969b8744fec89d32cc5f5a5704f1c3ac8ea40b4df44ae33d57c2dfa",
         arch: "x86_64",
     };
     
     pub const QEMU_LINUX_AARCH64: Self = Self {
         name: "qemu_linux_aarch64",
         description: "Linux for QEMU aarch64 virtualization",
-        sha256: "a4c878633da6655acf0cc22565e8dbf05b370260ed802519897f15001f30da75",
+        sha256: "608ce5e37a5417d056cc48f7aceb4dd2179ef86cbf59ec9dd21d207f43216bb8",
         arch: "aarch64",
     };
     
     pub const QEMU_LINUX_RISCV64: Self = Self {
         name: "qemu_linux_riscv64",
         description: "Linux for QEMU riscv64 virtualization",
-        sha256: "b198759c1c99b5edb959b26ce63b77165d653227fb9451941b0bb46f0c9afc74",
+        sha256: "546676ca7d30ae63762b30a41d77dde2558b823009838fac7bae2680bc5975c0",
         arch: "riscv64",
     };
     
     pub const QEMU_LINUX_X86_64: Self = Self {
         name: "qemu_linux_x86_64",
         description: "Linux for QEMU x86_64 virtualization",
-        sha256: "bd036a6fa47c5c345ed510bae44c87ad9534a33cb08ff0a142e0b45840453922",
+        sha256: "8ceb1835814bee915fcc1a105a7403e7e883eeeb838d1abd7dac834218a48118",
         arch: "x86_64",
     };
     
     pub const ROC_RK3568_PC_ARCEOS: Self = Self {
         name: "roc-rk3568-pc_arceos",
         description: "ArceOS for ROC-RK3568-PC development board",
-        sha256: "0a239035da686e06bce68420389e9a232cae8fad7282d3f2ca4e9adead0794cc",
+        sha256: "bb1c4314c933b2eb0425c78e5b719bdfe77e9f3d002183711270b84bbb08b716",
         arch: "aarch64",
     };
     
     pub const ROC_RK3568_PC_LINUX: Self = Self {
         name: "roc-rk3568-pc_linux",
         description: "Linux for ROC-RK3568-PC development board",
-        sha256: "b2c837b864e72cc3ec1bbd4bfb9b04fa55f11109b99aee20a5dcf10d18c39678",
+        sha256: "a353a900213eaef08a1851d689bca16f26c338d7660489c26a0324b1b2922571",
         arch: "aarch64",
     };
     
     pub const TAC_E400_PLC_ARCEOS: Self = Self {
         name: "tac-e400-plc_arceos",
         description: "ArceOS for TAC-E400-PLC industrial control board",
-        sha256: "1dc8fd5aeced6a85fca144511e69f7845a27b2337e60cf282807df91bb9445fd",
+        sha256: "cbdb1ae9fd58ee9741a7dee235f94a8809f81a06f165bea89f86e394921be6ae",
         arch: "aarch64",
     };
     
     pub const TAC_E400_PLC_LINUX: Self = Self {
         name: "tac-e400-plc_linux",
         description: "Linux for TAC-E400-PLC industrial control board",
-        sha256: "78de5ce8729b6d342172de7e86cabf0b94fb7b993c1f66564eb6c66de121c17e",
+        sha256: "1459de9f11f9f6f2c97b241a1deccc02238d296577cba1b6e71004954adeaa19",
         arch: "aarch64",
     };
     
