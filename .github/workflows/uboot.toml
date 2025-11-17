@@ -7,12 +7,13 @@ fail_regex = [
 ]
 serial = "${env:BOARD_COMM_UART_DEV}"
 success_regex = [
-  "Welcome to AxVisor Shell!",
-  "All tests passed!",
+    "Welcome to AxVisor Shell!",
+    "All tests passed!",
     "Hello World!",
     "root@firefly:~#",
     "root@phytium-Ubuntu:~#",
     "Welcome to Phytium Buildroot",
+    "Last login: Fri Sep 12 15:17:20 UTC 2025 on ttyFIQ0",
 ]
 
 [net]

@@ -1074,7 +1074,7 @@ dependencies = [
  "axstd",
  "axvcpu",
  "axvisor_api",
- "axvm 0.1.0 (git+https://github.com/arceos-hypervisor/axvm.git?branch=next)",
+ "axvm",
  "bitflags 2.10.0",
  "byte-unit",
  "cfg-if",
@@ -1124,30 +1124,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.110",
-]
-
-[[package]]
-name = "axvm"
-version = "0.1.0"
-dependencies = [
- "arm_vcpu",
- "arm_vgic 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "axaddrspace",
- "axdevice",
- "axdevice_base",
- "axerrno",
- "axvcpu",
- "axvmconfig",
- "cfg-if",
- "cpumask",
- "log",
- "memory_addr",
- "page_table_entry",
- "page_table_multiarch",
- "percpu",
- "riscv_vcpu",
- "spin 0.9.8",
- "x86_vcpu",
 ]
 
 [[package]]
@@ -6608,9 +6584,11 @@ dependencies = [
  "colored",
  "jkconfig",
  "ostool",
+ "reqwest 0.11.27",
  "schemars",
  "serde",
  "serde_json",
+ "sha2",
  "tokio",
  "toml 0.9.8",
 ]
