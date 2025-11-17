@@ -1,0 +1,57 @@
+name: Test for QEMU
+
+on: [workflow_dispatch]
+
+jobs:
+  test-qemu:
+    name: "Test qemu: ${{ matrix.arch }} - ${{ matrix.vmconfigs_name }}"
+    strategy:
+      matrix:
+        include:
+          - arch: aarch64
+            vmconfigs: configs/vms/arceos-aarch64-qemu-smp1.toml
+            vmconfigs_name: ArceOS
+            vmimage_name: qemu_arceos_aarch64
+          - arch: riscv64
+            vmconfigs: configs/vms/arceos-riscv64-qemu-smp1.toml
+            vmconfigs_name: ArceOS
+            vmimage_name: qemu_arceos_riscv64
+          - arch: x86_64
+            vmconfigs: configs/vms/arceos-x86_64-qemu-smp1.toml
+            vmconfigs_name: ArceOS
+            vmimage_name: qemu_arceos_x86_64
+      fail-fast: false
+    runs-on:
+      - self-hosted
+      - linux
+      - intel
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: cargo +stable install -f --git https://github.com/ZR233/ostool  ostool
+
+      - name: Download images and patch VM configs
+        run: |
+          echo "Downloading guest images and patching VM config files..."
+          IFS=',' read -ra CONFIGS <<< "${{ matrix.vmconfigs }}"
+          IFS=',' read -ra IMAGES <<< "${{ matrix.vmimage_name }}"
+          for i in "${!CONFIGS[@]}"; do
+            img="${IMAGES[$i]}"
+            img=$(echo "$img" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+            config="${CONFIGS[$i]}"
+            config=$(echo "$config" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+            cargo xtask image download $img
+            sed -i 's|^kernel_path[[:space:]]*=.*|kernel_path = "/tmp/axvisor/'"$img"'/'"$img"'"|' "$config"
+            echo "Updated kernel_path in $config"
+          done
+
+      - name: Run tests
+        run: |
+          export RUST_LOG=debug
+          cargo xtask qemu \
+            --build-config configs/board/${{ matrix.arch }}.toml \
+            --uboot-config .github/workflows/uboot.toml \
+            --vmconfigs ${{ matrix.vmconfigs }}
