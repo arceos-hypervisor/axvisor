@@ -18,7 +18,7 @@ use axaddrspace::GuestPhysAddr;
 use axtask::{AxTaskRef, TaskExtRef, TaskInner, WaitQueue};
 use axvcpu::{AxVCpuExitReason, VCpuState};
 
-use crate::vmm::{VCpuRef, VMRef};
+use crate::vmm::{VCpuRef, VMRef, sub_running_vm_count};
 use crate::{hal::arch::inject_interrupt, task::TaskExt};
 
 const KERNEL_STACK_SIZE: usize = 0x40000; // 256 KiB
@@ -67,6 +67,11 @@ impl Queue {
         unsafe {
             (*self.0.get()).insert(vm_id, vcpus);
         }
+    }
+
+    /// Removes the VMVCpus entry for the specified VM ID.
+    fn remove(&self, vm_id: &usize) -> Option<VMVCpus> {
+        unsafe { (*self.0.get()).remove(vm_id) }
     }
 }
 
@@ -132,8 +137,16 @@ impl VMVCpus {
         self.wait_queue.wait_until(condition)
     }
 
+    #[allow(dead_code)]
     fn notify_one(&mut self) {
+        info!("Current wait queue length: {}", self.wait_queue.len());
         self.wait_queue.notify_one(false);
+    }
+
+    /// Notify all waiting vCPU threads to wake up.
+    /// This is useful when shutting down a VM to ensure all vCPUs can check the shutdown flag.
+    fn notify_all(&mut self) {
+        self.wait_queue.notify_all(false);
     }
 
     /// Increments the count of running or halting VCpus by one.
@@ -197,6 +210,61 @@ pub(crate) fn notify_primary_vcpu(vm_id: usize) {
         .get_mut(&vm_id)
         .unwrap()
         .notify_one()
+}
+
+/// Notifies all VCpu tasks associated with the specified VM to wake up.
+/// This is useful when shutting down a VM to ensure all waiting vCPUs can check the shutdown flag.
+///
+/// # Arguments
+///
+/// * `vm_id` - The ID of the VM whose VCpus should be notified.
+///
+pub(crate) fn notify_all_vcpus(vm_id: usize) {
+    if let Some(vm_vcpus) = VM_VCPU_TASK_WAIT_QUEUE.get_mut(&vm_id) {
+        vm_vcpus.notify_all();
+    }
+}
+
+/// Cleans up VCpu resources for a VM that is being deleted.
+/// This removes the VM's entry from the global VCpu wait queue.
+///
+/// # Arguments
+///
+/// * `vm_id` - The ID of the VM whose VCpu resources should be cleaned up.
+///
+/// # Note
+///
+/// This should be called after all VCpu threads have exited to avoid resource leaks.
+/// It will join all VCpu tasks to ensure they are fully cleaned up.
+pub(crate) fn cleanup_vm_vcpus(vm_id: usize) {
+    if let Some(vm_vcpus) = VM_VCPU_TASK_WAIT_QUEUE.remove(&vm_id) {
+        let task_count = vm_vcpus.vcpu_task_list.len();
+
+        info!("VM[{}] Joining {} VCpu tasks...", vm_id, task_count);
+
+        // Join all VCpu tasks to ensure they have fully exited and cleaned up
+        for (idx, task) in vm_vcpus.vcpu_task_list.iter().enumerate() {
+            debug!(
+                "VM[{}] Joining VCpu task[{}]: {}",
+                vm_id,
+                idx,
+                task.id_name()
+            );
+            if let Some(exit_code) = task.join() {
+                debug!(
+                    "VM[{}] VCpu task[{}] exited with code: {}",
+                    vm_id, idx, exit_code
+                );
+            }
+        }
+
+        info!(
+            "VM[{}] VCpu resources cleaned up, {} VCpu tasks joined successfully",
+            vm_id, task_count
+        );
+    } else {
+        warn!("VM[{}] VCpu resources not found in queue", vm_id);
+    }
 }
 
 /// Marks the VCpu of the specified VM as running.
@@ -313,7 +381,8 @@ pub fn with_vcpu_task<T, F: FnOnce(&AxTaskRef) -> T>(
 /// # Note
 ///
 /// * The task associated with the VCpu is created with a kernel stack size of 256 KiB.
-/// * The task is scheduled on the scheduler of arceos after it is spawned.
+/// * The task is created in blocked state and added to the wait queue directly,
+///   instead of being added to the ready queue. It will be woken up by notify_primary_vcpu().
 fn alloc_vcpu_task(vm: VMRef, vcpu: VCpuRef) -> AxTaskRef {
     info!("Spawning task for VM[{}] VCpu[{}]", vm.id(), vcpu.id());
     let mut vcpu_task = TaskInner::new(
@@ -325,7 +394,9 @@ fn alloc_vcpu_task(vm: VMRef, vcpu: VCpuRef) -> AxTaskRef {
     if let Some(phys_cpu_set) = vcpu.phys_cpu_set() {
         vcpu_task.set_cpumask(AxCpuMask::from_raw_bits(phys_cpu_set));
     }
-    vcpu_task.init_task_ext(TaskExt::new(vm, vcpu));
+
+    // Use Weak reference in TaskExt to avoid keeping VM alive
+    vcpu_task.init_task_ext(TaskExt::from_vm_ref(vm.clone(), vcpu));
 
     info!(
         "VCpu task {} created {:?}",
@@ -343,7 +414,7 @@ fn alloc_vcpu_task(vm: VMRef, vcpu: VCpuRef) -> AxTaskRef {
 fn vcpu_run() {
     let curr = axtask::current();
 
-    let vm = curr.task_ext().vm.clone();
+    let vm = curr.task_ext().vm();
     let vcpu = curr.task_ext().vcpu.clone();
     let vm_id = vm.id();
     let vcpu_id = vcpu.id();
@@ -473,14 +544,32 @@ fn vcpu_run() {
             }
         }
 
-        // Check if the VM is shutting down.
-        if vm.shutting_down() {
-            warn!("VM[{vm_id}] VCpu[{vcpu_id}] shutting down because of VM shutdown");
+        // Check if the VM is suspended
+        if vm.suspending() {
+            debug!(
+                "VM[{}] VCpu[{}] is suspended, waiting for resume...",
+                vm_id, vcpu_id
+            );
+            wait_for(vm_id, || !vm.suspending());
+            info!("VM[{}] VCpu[{}] resumed from suspend", vm_id, vcpu_id);
+            continue;
+        }
+
+        // Check if the VM is stopping.
+        if vm.stopping() {
+            warn!(
+                "VM[{}] VCpu[{}] stopping because of VM stopping",
+                vm_id, vcpu_id
+            );
 
             if mark_vcpu_exiting(vm_id) {
                 info!("VM[{vm_id}] VCpu[{vcpu_id}] last VCpu exiting, decreasing running VM count");
 
-                super::RUNNING_VM_COUNT.fetch_sub(1, Ordering::Release);
+                // Transition from Stopping to Stopped
+                vm.set_vm_status(axvm::VMStatus::Stopped);
+                info!("VM[{}] state changed to Stopped", vm_id);
+
+                sub_running_vm_count(1);
                 ax_wait_queue_wake(&super::VMM, 1);
             }
 
@@ -488,5 +577,5 @@ fn vcpu_run() {
         }
     }
 
-    info!("VM[{vm_id}] VCpu[{vcpu_id}] exiting...");
+    info!("VM[{}] VCpu[{}] exiting...", vm_id, vcpu_id);
 }

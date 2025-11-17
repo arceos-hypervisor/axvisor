@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 mod cargo;
 mod clippy;
 mod ctx;
+mod image;
 mod menuconfig;
 mod tbuld;
 mod vmconfig;
@@ -36,6 +37,8 @@ enum Commands {
     Uboot(UbootArgs),
     Vmconfig,
     Menuconfig,
+    /// Guest Image management
+    Image(image::ImageArgs),
 }
 
 #[derive(Parser)]
@@ -112,6 +115,9 @@ async fn main() -> Result<()> {
         }
         Commands::Menuconfig => {
             ctx.run_menuconfig().await?;
+        }
+        Commands::Image(args) => {
+            image::run_image(args).await?;
         }
     }
 

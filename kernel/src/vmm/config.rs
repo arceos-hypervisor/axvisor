@@ -155,7 +155,7 @@ pub fn init_guest_vms() {
     }
 }
 
-pub fn init_guest_vm(raw_cfg: &str) -> AxResult {
+pub fn init_guest_vm(raw_cfg: &str) -> AxResult<usize> {
     let vm_create_config =
         AxVMCrateConfig::from_toml(raw_cfg).expect("Failed to resolve VM config");
 
@@ -181,6 +181,7 @@ pub fn init_guest_vm(raw_cfg: &str) -> AxResult {
 
     // Create VM.
     let vm = VM::new(vm_config).expect("Failed to create VM");
+    let vm_id = vm.id();
     push_vm(vm.clone());
 
     vm_alloc_memorys(&vm_create_config, &vm);
@@ -203,7 +204,9 @@ pub fn init_guest_vm(raw_cfg: &str) -> AxResult {
         panic!("VM[{}] setup failed: {:?}", vm.id(), e);
     }
 
-    Ok(())
+    vm.set_vm_status(axvm::VMStatus::Loaded);
+
+    Ok(vm_id)
 }
 
 fn config_guest_address(vm: &VM, main_memory: &VMMemoryRegion) {

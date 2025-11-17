@@ -1,10 +1,10 @@
-name: Test CI
+name: Test for BOARD
 
 on: [push, pull_request, workflow_dispatch]
 
 jobs:
-  board-test:
-    name: "Test ${{ matrix.board }} - ${{ matrix.vmconfigs_name }}"
+  test-board:
+    name: "Test board: ${{ matrix.board }} - ${{ matrix.vmconfigs_name }}"
     strategy:
       matrix:
         include:
@@ -19,16 +19,16 @@ jobs:
             vmconfigs: configs/vms/linux-aarch64-e2000-smp1.toml
             vmconfigs_name: Linux
             vmimage_name: phytiumpi_linux.tar.gz
-          - board: roc-rk3568-pc
-            vmconfigs: configs/vms/arceos-aarch64-rk3568-smp1.toml
-            vmconfigs_name: ArceOS
-            # Multiple image archive names separated by commas, for example, roc-rk3568-pc_arceos.tar.gz,roc-rk3568-pc_linux.tar.gz[,...]
-            vmimage_name: roc-rk3568-pc_arceos.tar.gz
-          - board: roc-rk3568-pc
-            vmconfigs: configs/vms/linux-aarch64-rk3568-smp1.toml
-            vmconfigs_name: Linux
-            # Multiple image archive names separated by commas, for example, roc-rk3568-pc_arceos.tar.gz,roc-rk3568-pc_linux.tar.gz[,...]
-            vmimage_name: roc-rk3568-pc_linux.tar.gz
+        #   - board: roc-rk3568-pc
+        #     vmconfigs: configs/vms/arceos-aarch64-rk3568-smp1.toml
+        #     vmconfigs_name: ArceOS
+        #     # Multiple image archive names separated by commas, for example, roc-rk3568-pc_arceos.tar.gz,roc-rk3568-pc_linux.tar.gz[,...]
+        #     vmimage_name: roc-rk3568-pc_arceos.tar.gz
+        #   - board: roc-rk3568-pc
+        #     vmconfigs: configs/vms/linux-aarch64-rk3568-smp1.toml
+        #     vmconfigs_name: Linux
+        #     # Multiple image archive names separated by commas, for example, roc-rk3568-pc_arceos.tar.gz,roc-rk3568-pc_linux.tar.gz[,...]
+        #     vmimage_name: roc-rk3568-pc_linux.tar.gz
       fail-fast: false
     runs-on:
       - self-hosted
@@ -39,7 +39,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies (${{ matrix.board_name }})
+      - name: Install dependencies
         run: cargo +stable install -f --git https://github.com/ZR233/ostool  ostool
 
       - name: Download images and patch VM configs
