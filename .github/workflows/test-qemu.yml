@@ -43,6 +43,7 @@ jobs:
             img=$(echo "$img" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
             config="${CONFIGS[$i]}"
             config=$(echo "$config" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+            cargo xtask image rm $img
             cargo xtask image download $img
             sed -i 's|^kernel_path[[:space:]]*=.*|kernel_path = "/tmp/axvisor/'"$img"'/'"$img"'"|' "$config"
             echo "Updated kernel_path in $config"
