@@ -48,11 +48,6 @@ jobs:
             echo "Updated kernel_path in $config"
           done
 
-      - name: Build axvisor
-        run: |
-          cargo xtask defconfig qemu-aarch64 \
-          cargo xtask build
-
       - name: Run tests
         run: |
           export RUST_LOG=debug
