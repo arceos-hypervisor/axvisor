@@ -5,7 +5,7 @@ args = [
   "-machine",
   "virt,virtualization=on,gic-version=3",
   "-smp",
-  "1",
+  "4",
   "-device",
   "virtio-blk-device,drive=disk0",
   "-drive",
