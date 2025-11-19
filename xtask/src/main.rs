@@ -104,7 +104,7 @@ async fn main() -> Result<()> {
         Commands::Qemu(args) => {
             ctx.vmconfigs = args.vmconfigs;
             ctx.build_config_path = args.build_config;
-            ctx.run_qemu().await?;
+            ctx.run_qemu(args.qemu_config).await?;
         }
         Commands::Uboot(args) => {
             ctx.vmconfigs = args.vmconfigs;

@@ -5,7 +5,7 @@ args = [
   "-machine",
   "virt,virtualization=on,gic-version=3",
   "-smp",
-  "1",
+  "4",
   "-append",
   "root=/dev/vda rw init=/init",
   "-m",
