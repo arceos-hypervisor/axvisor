@@ -27,11 +27,10 @@ use std::process::Command;
 use std::fs;
 use std::env;
 use std::io::Read;
-use tokio::fs::File;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncWriteExt, BufWriter};
 
 /// Base URL for downloading images
-const IMAGE_URL_BASE: &str = "https://github.com/arceos-hypervisor/axvisor-guest/releases/download/v0.0.17/";
+const IMAGE_URL_BASE: &str = "https://github.com/arceos-hypervisor/axvisor-guest/releases/download/v0.0.18/";
 
 /// Image management command line arguments.
 #[derive(Parser)]
@@ -74,112 +73,112 @@ impl Image {
     pub const EVM3588_ARCEOS: Self = Self {
         name: "evm3588_arceos",
         description: "ArceOS for EVM3588 development board",
-        sha256: "fb0bb9011d4997e30debdf1d6c3769d7061ae9db1c087382952401ebabe47190",
+        sha256: "5a7a967e8d45a1dab0ae709e38e4e6855667f54cdafff323cbef02ba83bacb19",
         arch: "aarch64",
     };
     
     pub const EVM3588_LINUX: Self = Self {
         name: "evm3588_linux",
         description: "Linux for EVM3588 development board",
-        sha256: "1affd34099d648fdb29104c93e190c24769c58a4c5ee31ac4ba2a593969dfb4c",
+        sha256: "bce9f15f6afc5d442b06525d7a353c821ded36c3414c29d957700625116982c1",
         arch: "aarch64",
     };
     
     pub const ORANGEPI_ARCEOS: Self = Self {
         name: "orangepi_arceos",
         description: "ArceOS for Orange Pi development board",
-        sha256: "f84f711f3ad735b365de292ac341ea517ec5f7068c5629a4144749e741737e1d",
+        sha256: "85089cbe778d42dc6acd216768562297d00ae4ceb1fe89713851008726ca0bf1",
         arch: "aarch64",
     };
     
     pub const ORANGEPI_LINUX: Self = Self {
         name: "orangepi_linux",
         description: "Linux for Orange Pi development board",
-        sha256: "3e6193e1a4f78fc9f6f07f920b4678a11e0f176227ca46cb4c9cdc8e2b2a9922",
+        sha256: "c0f2d69b860d9d3fd9fc20c1c0b5bccdb183cf06c4f4c65ba7fceaff6e31920c",
         arch: "aarch64",
     };
     
     pub const PHYTIUMPI_ARCEOS: Self = Self {
         name: "phytiumpi_arceos",
         description: "ArceOS for Phytium Pi development board",
-        sha256: "1ad199483198fd1bccc2c0fc8bad1a00d6c14ee46a4021898e40a49654a8e26f",
+        sha256: "94f1b78498391b4dd9ddf4b56553dfd0e83deec7c6e8fb30812784a0115c5de7",
         arch: "aarch64",
     };
     
     pub const PHYTIUMPI_LINUX: Self = Self {
         name: "phytiumpi_linux",
         description: "Linux for Phytium Pi development board",
-        sha256: "c546a575e30a604f83dea8cba660434cc5cabec4cc3ee7db3c943821e391a078",
+        sha256: "e66d8caa00e0c2c1b4a793810eb8a081856eba1c7d5f2826bf7ee8dbe7a34524",
         arch: "aarch64",
     };
     
     pub const QEMU_ARCEOS_AARCH64: Self = Self {
         name: "qemu_arceos_aarch64",
         description: "ArceOS for QEMU aarch64 virtualization",
-        sha256: "fcad4aff7906cd6c14d41889d72cd7ce82ea78bf8c21bca19a4f3db0ac627c5b",
+        sha256: "cc46b6049d71593c5a5264e63a883a4e689a52af316212d751afe442034279c6",
         arch: "aarch64",
     };
     
     pub const QEMU_ARCEOS_RISCV64: Self = Self {
         name: "qemu_arceos_riscv64",
         description: "ArceOS for QEMU riscv64 virtualization",
-        sha256: "7f758fdfa32e1bf7e2f79b288af72500598f3fe767f4743370b6897f59e159a0",
+        sha256: "0907eccce7624e499395dd1fa1ff5526ee43d6009ed5947cde427d9cc6d726e0",
         arch: "riscv64",
     };
     
     pub const QEMU_ARCEOS_X86_64: Self = Self {
         name: "qemu_arceos_x86_64",
         description: "ArceOS for QEMU x86_64 virtualization",
-        sha256: "c15ed57f5969b8744fec89d32cc5f5a5704f1c3ac8ea40b4df44ae33d57c2dfa",
+        sha256: "ebb401331de9d4cf9de6bf8d7d0d0a26fcd25e2ffdb6c0b670999922efc26ebe",
         arch: "x86_64",
     };
     
     pub const QEMU_LINUX_AARCH64: Self = Self {
         name: "qemu_linux_aarch64",
         description: "Linux for QEMU aarch64 virtualization",
-        sha256: "608ce5e37a5417d056cc48f7aceb4dd2179ef86cbf59ec9dd21d207f43216bb8",
+        sha256: "6ef339d4122b8c5a0bb10a73c03506c6484131a8cd30d63ef73c4c1da402ef85",
         arch: "aarch64",
     };
     
     pub const QEMU_LINUX_RISCV64: Self = Self {
         name: "qemu_linux_riscv64",
         description: "Linux for QEMU riscv64 virtualization",
-        sha256: "546676ca7d30ae63762b30a41d77dde2558b823009838fac7bae2680bc5975c0",
+        sha256: "589fa1034fe133ab64418d54b7b70ffd818991ed943df346f49a584adfe9c001",
         arch: "riscv64",
     };
     
     pub const QEMU_LINUX_X86_64: Self = Self {
         name: "qemu_linux_x86_64",
         description: "Linux for QEMU x86_64 virtualization",
-        sha256: "8ceb1835814bee915fcc1a105a7403e7e883eeeb838d1abd7dac834218a48118",
+        sha256: "57e9221c0e61a326dee9f8950ec36a55c2bf9f5b3581bbd1282d143a36da2fe1",
         arch: "x86_64",
     };
     
     pub const ROC_RK3568_PC_ARCEOS: Self = Self {
         name: "roc-rk3568-pc_arceos",
         description: "ArceOS for ROC-RK3568-PC development board",
-        sha256: "bb1c4314c933b2eb0425c78e5b719bdfe77e9f3d002183711270b84bbb08b716",
+        sha256: "a68d4981a0053278b7f90c11ede1661c037310223dd3188ffe4a4e272a7e3cdd",
         arch: "aarch64",
     };
     
     pub const ROC_RK3568_PC_LINUX: Self = Self {
         name: "roc-rk3568-pc_linux",
         description: "Linux for ROC-RK3568-PC development board",
-        sha256: "a353a900213eaef08a1851d689bca16f26c338d7660489c26a0324b1b2922571",
+        sha256: "53a8db12bd8b5b75e1f29847cec6486c8d9e3bf58a03ca162322662ff61eb7fa",
         arch: "aarch64",
     };
     
     pub const TAC_E400_PLC_ARCEOS: Self = Self {
         name: "tac-e400-plc_arceos",
         description: "ArceOS for TAC-E400-PLC industrial control board",
-        sha256: "cbdb1ae9fd58ee9741a7dee235f94a8809f81a06f165bea89f86e394921be6ae",
+        sha256: "1ff39e83e4af2aaaae57ff6fc853f0e51efeb63463b2f4f1d425d9105d8a62f8",
         arch: "aarch64",
     };
     
     pub const TAC_E400_PLC_LINUX: Self = Self {
         name: "tac-e400-plc_linux",
         description: "Linux for TAC-E400-PLC industrial control board",
-        sha256: "1459de9f11f9f6f2c97b241a1deccc02238d296577cba1b6e71004954adeaa19",
+        sha256: "28bf16ccee10e0dae911f8c787d24a625e0e0d4071f1964e6d97c56f68b7a4ab",
         arch: "aarch64",
     };
     
@@ -233,7 +232,7 @@ fn image_verify_sha256(file_path: &Path, expected_sha256: &str) -> Result<bool> 
     }
     
     let result = hasher.finalize();
-    let actual_sha256 = format!("{:x}", result);
+    let actual_sha256 = format!("{result:x}");
     
     Ok(actual_sha256 == expected_sha256)
 }
@@ -269,7 +268,6 @@ fn image_list() -> Result<()> {
     }
     
     Ok(())
-    // Return Ok to indicate successful execution
 }
 
 /// Download the specified image and optionally extract it
@@ -290,7 +288,7 @@ fn image_list() -> Result<()> {
 /// ```
 async fn image_download(image_name: &str, output_dir: Option<String>, extract: bool) -> Result<()> {
     let image = Image::find_by_name(image_name)
-        .ok_or_else(|| anyhow!("Image not found: {}. Use 'xtask image ls' to view available images", image_name))?;
+        .ok_or_else(|| anyhow!("Image not found: {image_name}. Use 'xtask image ls' to view available images"))?;
     
     let output_path = match output_dir {
         Some(dir) => {
@@ -298,45 +296,38 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
             let path = Path::new(&dir);
             if path.is_absolute() {
                 // If it's an absolute path, use it directly
-                path.join(format!("{}.tar.gz", image_name))
+                path.join(format!("{image_name}.tar.gz"))
             } else {
                 // If it's a relative path, base on current working directory
                 let current_dir = std::env::current_dir()?;
-                current_dir.join(path).join(format!("{}.tar.gz", image_name))
+                current_dir.join(path).join(format!("{image_name}.tar.gz"))
             }
         }
         None => {
             // If not specified, use system temporary directory
             let temp_dir = env::temp_dir();
-            temp_dir.join("axvisor").join(format!("{}.tar.gz", image_name))
+            temp_dir.join("axvisor").join(format!("{image_name}.tar.gz"))
         }
     };
     
-    // Build download URL
-    let download_url = format!("{}{}.tar.gz", IMAGE_URL_BASE, image.name);
-    
-    println!("Checking image: {}", image_name);
-    println!("Download URL: {}", download_url);
-    println!("Target path: {}", output_path.display());
-    println!("Expected SHA256: {}", image.sha256);
-    
     // Check if file exists, if so verify SHA256
     if output_path.exists() {
-        println!("Local file exists, verifying SHA256...");
         match image_verify_sha256(&output_path, image.sha256) {
             Ok(true) => {
-                println!("File verification successful, SHA256 matches, no need to download");
+                println!("Image already exists and verified");
                 return Ok(());
             }
             Ok(false) => {
-                println!("File verification failed, SHA256 does not match, will re-download");
+                println!("Existing image verification failed, re-downloading");
+                // Remove the invalid file before downloading
+                let _ = fs::remove_file(&output_path);
             }
-            Err(e) => {
-                println!("Error verifying file: {}, will re-download", e);
+            Err(_) => {
+                println!("Error verifying existing image, re-downloading");
+                // Remove the potentially corrupted file before downloading
+                let _ = fs::remove_file(&output_path);
             }
         }
-    } else {
-        println!("Local file does not exist, will start download");
     }
     
     // Ensure target directory exists
@@ -344,39 +335,73 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
         fs::create_dir_all(parent)?;
     }
     
-    println!("Downloading file from {}...", download_url);
+    // Build download URL
+    let download_url = format!("{}{}.tar.gz", IMAGE_URL_BASE, image.name);
+    println!("Downloading: {download_url}");
     
     // Use reqwest to download the file
-    let response = reqwest::get(&download_url).await?;
+    let mut response = reqwest::get(&download_url).await?;
     if !response.status().is_success() {
         return Err(anyhow!("Failed to download file: HTTP {}", response.status()));
     }
     
-    let bytes = response.bytes().await?;
+    // Create file with buffered writer for efficient streaming
+    let file = tokio::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&output_path)
+        .await?;
+    let mut writer = BufWriter::new(file);
     
-    // Write all bytes at once
-    let mut file = File::create(&output_path).await?;
-    file.write_all(&bytes).await?;
+    // Get content length for progress reporting (if available)
+    let content_length = response.content_length();
+    let mut downloaded = 0u64;
     
-    println!("Download completed ({} bytes)", bytes.len());
+    // Stream the response body to file using chunks
+    while let Some(chunk) = response.chunk().await? {
+        // Write chunk to file
+        writer.write_all(&chunk).await
+            .map_err(|e| anyhow!("Error writing to file: {}", e))?;
+        
+        // Update progress
+        downloaded += chunk.len() as u64;
+        if let Some(total) = content_length {
+            let percent = (downloaded * 100) / total;
+            print!("\rDownloading: {}% ({}/{} bytes)", percent, downloaded, total);
+        } else {
+            print!("\rDownloaded: {} bytes", downloaded);
+        }
+        std::io::Write::flush(&mut std::io::stdout()).unwrap();
+    }
+    
+    // Flush the writer to ensure all data is written to disk
+    writer.flush().await
+        .map_err(|e| anyhow!("Error flushing file: {}", e))?;
+    
+    println!("\nDownload completed");
+    
     
     // Verify downloaded file
-    println!("Verifying SHA256 of downloaded file...");
     match image_verify_sha256(&output_path, image.sha256) {
         Ok(true) => {
-            println!("Download completed, file verification successful");
+            println!("Download completed and verified successfully");
         }
         Ok(false) => {
+            // Remove the invalid downloaded file
+            let _ = fs::remove_file(&output_path);
             return Err(anyhow!("Downloaded file SHA256 verification failed"));
         }
         Err(e) => {
-            return Err(anyhow!("Error verifying downloaded file: {}", e));
+            // Remove the potentially corrupted downloaded file
+            let _ = fs::remove_file(&output_path);
+            return Err(anyhow!("Error verifying downloaded file: {e}"));
         }
     }
     
     // If extract flag is true, extract the downloaded file
     if extract {
-        println!("Extracting downloaded file...");
+        println!("Extracting image...");
         
         // Determine extraction output directory
         let extract_dir = output_path.parent()
@@ -385,8 +410,6 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
         
         // Ensure extraction directory exists
         fs::create_dir_all(&extract_dir)?;
-        
-        println!("Extracting to: {}", extract_dir.display());
         
         // Use tar command to extract file
         let mut child = Command::new("tar")
@@ -398,10 +421,9 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
         
         let status = child.wait()?;
         if !status.success() {
-            return Err(anyhow!("Extraction failed, tar exit code: {}", status));
+            return Err(anyhow!("Extraction failed, tar exit code: {status}"));
         }
         
-        println!("Extraction completed successfully");
         println!("Image extracted to: {}", extract_dir.display());
     }
     
@@ -423,32 +445,30 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
 fn image_remove(image_name: &str) -> Result<()> {
     // Check if the image name is valid by looking it up
     let _image = Image::find_by_name(image_name)
-        .ok_or_else(|| anyhow!("Image not found: {}. Use 'xtask image ls' to view available images", image_name))?;
+        .ok_or_else(|| anyhow!("Image not found: {image_name}. Use 'xtask image ls' to view available images"))?;
     
     let temp_dir = env::temp_dir().join("axvisor");
-    let tar_file = temp_dir.join(format!("{}.tar.gz", image_name));
+    let tar_file = temp_dir.join(format!("{image_name}.tar.gz"));
     let extract_dir = temp_dir.join(image_name);
     
     let mut removed = false;
     
     // Remove the tar file if it exists
     if tar_file.exists() {
-        println!("Removing tar file: {}", tar_file.display());
         fs::remove_file(&tar_file)?;
         removed = true;
     }
     
     // Remove the extracted directory if it exists
     if extract_dir.exists() {
-        println!("Removing extracted directory: {}", extract_dir.display());
         fs::remove_dir_all(&extract_dir)?;
         removed = true;
     }
     
     if !removed {
-        println!("No files found for image: {}", image_name);
+        println!("No files found for image: {image_name}");
     } else {
-        println!("Successfully removed image: {}", image_name);
+        println!("Image removed successfully");
     }
     
     Ok(())

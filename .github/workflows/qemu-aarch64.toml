@@ -5,13 +5,13 @@ args = [
   "-machine",
   "virt,virtualization=on,gic-version=3",
   "-smp",
-  "1",
+  "4",
   "-append",
   "root=/dev/vda rw init=/init",
   "-m",
   "8g",
 ]
 fail_regex = []
-success_regex = []
+success_regex = ["Hello, world!"]
 to_bin = true
 uefi = false

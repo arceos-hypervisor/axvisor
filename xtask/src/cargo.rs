@@ -5,8 +5,9 @@ use ostool::run::cargo::CargoRunnerKind;
 use crate::ctx::Context;
 
 impl Context {
-    pub async fn run_qemu(&mut self) -> anyhow::Result<()> {
+    pub async fn run_qemu(&mut self, config_path: Option<PathBuf>) -> anyhow::Result<()> {
         let build_config = self.load_config()?;
+        
         let arch = if build_config.target.contains("aarch64") {
             Arch::Aarch64
         } else if build_config.target.contains("x86_64") {
@@ -17,9 +18,14 @@ impl Context {
                 build_config.target
             ));
         };
+        
+        let config_path = if let Some(path) = config_path {
+            path
+        } else {
+            PathBuf::from(format!(".qemu-{arch:?}.toml").to_lowercase())
+        };
 
-        let config_path = PathBuf::from(format!(".qemu-{arch:?}.toml").to_lowercase());
-
+        // 如果配置文件不存在，从默认位置复制
         if !config_path.exists() {
             fs::copy(
                 PathBuf::from("scripts")

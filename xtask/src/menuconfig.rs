@@ -1,7 +1,7 @@
 use crate::ctx::Context;
 use crate::tbuld::Config;
 use jkconfig::{ElemHock, ui::components::editors::show_feature_select};
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc; // HashMap is unused
 
 impl Context {
     /// Main menuconfig runner function
@@ -14,7 +14,7 @@ impl Context {
             println!("\n未找到 .build.toml 配置文件，将使用默认配置");
         }
 
-        let Some(c): Option<Config> =
+        let Some(_c): Option<Config> =
             jkconfig::run(config_path, true, &[self.default_package_feature_select()]).await?
         else {
             return Err(anyhow::anyhow!("Menuconfig was cancelled"));
