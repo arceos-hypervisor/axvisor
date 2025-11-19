@@ -27,7 +27,6 @@ use std::process::Command;
 use std::fs;
 use std::env;
 use std::io::Read;
-// use tokio::fs::File; // Unused import
 use tokio::io::{AsyncWriteExt, BufWriter};
 
 /// Base URL for downloading images
@@ -269,7 +268,6 @@ fn image_list() -> Result<()> {
     }
     
     Ok(())
-    // Return Ok to indicate successful execution
 }
 
 /// Download the specified image and optionally extract it
@@ -312,11 +310,6 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
         }
     };
     
-    // Build download URL
-    let download_url = format!("{}{}.tar.gz", IMAGE_URL_BASE, image.name);
-    
-    println!("Downloading image: {image_name}");
-    
     // Check if file exists, if so verify SHA256
     if output_path.exists() {
         match image_verify_sha256(&output_path, image.sha256) {
@@ -342,7 +335,9 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
         fs::create_dir_all(parent)?;
     }
     
-    println!("Starting download...");
+    // Build download URL
+    let download_url = format!("{}{}.tar.gz", IMAGE_URL_BASE, image.name);
+    println!("Downloading: {download_url}");
     
     // Use reqwest to download the file
     let mut response = reqwest::get(&download_url).await?;
