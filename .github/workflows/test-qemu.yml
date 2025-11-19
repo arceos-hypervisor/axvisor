@@ -44,7 +44,7 @@ jobs:
             config="${CONFIGS[$i]}"
             config=$(echo "$config" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
             cargo xtask image download $img
-            img_name="qemu-${{ matrix.board }}"
+            img_name="qemu-${{ matrix.arch }}"
             sed -i 's|^kernel_path[[:space:]]*=.*|kernel_path = "/tmp/axvisor/'"$img"'/'"$img_name"'"|' "$config"
             echo "Updated kernel_path in $config"
           done
