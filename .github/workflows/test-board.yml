@@ -14,21 +14,21 @@ jobs:
           - board: phytiumpi
             vmconfigs: configs/vms/arceos-aarch64-e2000-smp1.toml
             vmconfigs_name: ArceOS
-            vmimage_name: phytiumpi_arceos.tar.gz
+            vmimage_name: phytiumpi_arceos
           - board: phytiumpi
             vmconfigs: configs/vms/linux-aarch64-e2000-smp1.toml
             vmconfigs_name: Linux
-            vmimage_name: phytiumpi_linux.tar.gz
+            vmimage_name: phytiumpi_linux
         #   - board: roc-rk3568-pc
         #     vmconfigs: configs/vms/arceos-aarch64-rk3568-smp1.toml
         #     vmconfigs_name: ArceOS
-        #     # Multiple image archive names separated by commas, for example, roc-rk3568-pc_arceos.tar.gz,roc-rk3568-pc_linux.tar.gz[,...]
-        #     vmimage_name: roc-rk3568-pc_arceos.tar.gz
+        #     # Multiple image archive names separated by commas, for example, roc-rk3568-pc_arceos,roc-rk3568-pc_linux[,...]
+        #     vmimage_name: roc-rk3568-pc_arceos
         #   - board: roc-rk3568-pc
         #     vmconfigs: configs/vms/linux-aarch64-rk3568-smp1.toml
         #     vmconfigs_name: Linux
-        #     # Multiple image archive names separated by commas, for example, roc-rk3568-pc_arceos.tar.gz,roc-rk3568-pc_linux.tar.gz[,...]
-        #     vmimage_name: roc-rk3568-pc_linux.tar.gz
+        #     # Multiple image archive names separated by commas, for example, roc-rk3568-pc_arceos,roc-rk3568-pc_linux[,...]
+        #     vmimage_name: roc-rk3568-pc_linux
       fail-fast: false
     runs-on:
       - self-hosted
