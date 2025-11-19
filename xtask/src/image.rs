@@ -28,7 +28,7 @@ use std::fs;
 use std::env;
 use std::io::Read;
 // use tokio::fs::File; // Unused import
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncWriteExt, BufWriter};
 
 /// Base URL for downloading images
 const IMAGE_URL_BASE: &str = "https://github.com/arceos-hypervisor/axvisor-guest/releases/download/v0.0.18/";
@@ -345,21 +345,46 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
     println!("Starting download...");
     
     // Use reqwest to download the file
-    let response = reqwest::get(&download_url).await?;
+    let mut response = reqwest::get(&download_url).await?;
     if !response.status().is_success() {
         return Err(anyhow!("Failed to download file: HTTP {}", response.status()));
     }
     
-    let bytes = response.bytes().await?;
-    
-    // Write all bytes at once, ensuring we overwrite any existing file
-    let mut file = tokio::fs::OpenOptions::new()
+    // Create file with buffered writer for efficient streaming
+    let file = tokio::fs::OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
         .open(&output_path)
         .await?;
-    file.write_all(&bytes).await?;
+    let mut writer = BufWriter::new(file);
+    
+    // Get content length for progress reporting (if available)
+    let content_length = response.content_length();
+    let mut downloaded = 0u64;
+    
+    // Stream the response body to file using chunks
+    while let Some(chunk) = response.chunk().await? {
+        // Write chunk to file
+        writer.write_all(&chunk).await
+            .map_err(|e| anyhow!("Error writing to file: {}", e))?;
+        
+        // Update progress
+        downloaded += chunk.len() as u64;
+        if let Some(total) = content_length {
+            let percent = (downloaded * 100) / total;
+            print!("\rDownloading: {}% ({}/{} bytes)", percent, downloaded, total);
+        } else {
+            print!("\rDownloaded: {} bytes", downloaded);
+        }
+        std::io::Write::flush(&mut std::io::stdout()).unwrap();
+    }
+    
+    // Flush the writer to ensure all data is written to disk
+    writer.flush().await
+        .map_err(|e| anyhow!("Error flushing file: {}", e))?;
+    
+    println!("\nDownload completed");
     
     
     // Verify downloaded file
