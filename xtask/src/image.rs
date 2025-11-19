@@ -330,9 +330,19 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
             }
             Ok(false) => {
                 println!("File verification failed, SHA256 does not match, will re-download");
+                // Remove the invalid file before downloading
+                match fs::remove_file(&output_path) {
+                    Ok(_) => println!("Successfully removed invalid file"),
+                    Err(e) => println!("Warning: Failed to remove invalid file: {}, but will continue with download", e),
+                }
             }
             Err(e) => {
                 println!("Error verifying file: {}, will re-download", e);
+                // Remove the potentially corrupted file before downloading
+                match fs::remove_file(&output_path) {
+                    Ok(_) => println!("Successfully removed potentially corrupted file"),
+                    Err(remove_err) => println!("Warning: Failed to remove potentially corrupted file: {}, but will continue with download", remove_err),
+                }
             }
         }
     } else {
@@ -354,8 +364,13 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
     
     let bytes = response.bytes().await?;
     
-    // Write all bytes at once
-    let mut file = File::create(&output_path).await?;
+    // Write all bytes at once, ensuring we overwrite any existing file
+    let mut file = tokio::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&output_path)
+        .await?;
     file.write_all(&bytes).await?;
     
     println!("Download completed ({} bytes)", bytes.len());
@@ -367,9 +382,19 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
             println!("Download completed, file verification successful");
         }
         Ok(false) => {
+            // Remove the invalid downloaded file
+            match fs::remove_file(&output_path) {
+                Ok(_) => println!("Successfully removed invalid downloaded file"),
+                Err(e) => println!("Warning: Failed to remove invalid downloaded file: {}", e),
+            }
             return Err(anyhow!("Downloaded file SHA256 verification failed"));
         }
         Err(e) => {
+            // Remove the potentially corrupted downloaded file
+            match fs::remove_file(&output_path) {
+                Ok(_) => println!("Successfully removed potentially corrupted downloaded file"),
+                Err(remove_err) => println!("Warning: Failed to remove potentially corrupted downloaded file: {}", remove_err),
+            }
             return Err(anyhow!("Error verifying downloaded file: {}", e));
         }
     }
