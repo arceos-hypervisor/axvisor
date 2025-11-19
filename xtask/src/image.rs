@@ -315,38 +315,26 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
     // Build download URL
     let download_url = format!("{}{}.tar.gz", IMAGE_URL_BASE, image.name);
     
-    println!("Checking image: {image_name}");
-    println!("Download URL: {download_url}");
-    println!("Target path: {}", output_path.display());
-    println!("Expected SHA256: {}", image.sha256);
+    println!("Downloading image: {image_name}");
     
     // Check if file exists, if so verify SHA256
     if output_path.exists() {
-        println!("Local file exists, verifying SHA256...");
         match image_verify_sha256(&output_path, image.sha256) {
             Ok(true) => {
-                println!("File verification successful, SHA256 matches, no need to download");
+                println!("Image already exists and verified");
                 return Ok(());
             }
             Ok(false) => {
-                println!("File verification failed, SHA256 does not match, will re-download");
+                println!("Existing image verification failed, re-downloading");
                 // Remove the invalid file before downloading
-                match fs::remove_file(&output_path) {
-                    Ok(_) => println!("Successfully removed invalid file"),
-                    Err(e) => println!("Warning: Failed to remove invalid file: {e}, but will continue with download"),
-                }
+                let _ = fs::remove_file(&output_path);
             }
-            Err(e) => {
-                println!("Error verifying file: {e}, will re-download");
+            Err(_) => {
+                println!("Error verifying existing image, re-downloading");
                 // Remove the potentially corrupted file before downloading
-                match fs::remove_file(&output_path) {
-                    Ok(_) => println!("Successfully removed potentially corrupted file"),
-                    Err(remove_err) => println!("Warning: Failed to remove potentially corrupted file: {remove_err}, but will continue with download"),
-                }
+                let _ = fs::remove_file(&output_path);
             }
         }
-    } else {
-        println!("Local file does not exist, will start download");
     }
     
     // Ensure target directory exists
@@ -354,7 +342,7 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
         fs::create_dir_all(parent)?;
     }
     
-    println!("Downloading file from {download_url}...");
+    println!("Starting download...");
     
     // Use reqwest to download the file
     let response = reqwest::get(&download_url).await?;
@@ -373,35 +361,27 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
         .await?;
     file.write_all(&bytes).await?;
     
-    println!("Download completed ({} bytes)", bytes.len());
     
     // Verify downloaded file
-    println!("Verifying SHA256 of downloaded file...");
     match image_verify_sha256(&output_path, image.sha256) {
         Ok(true) => {
-            println!("Download completed, file verification successful");
+            println!("Download completed and verified successfully");
         }
         Ok(false) => {
             // Remove the invalid downloaded file
-            match fs::remove_file(&output_path) {
-                Ok(_) => println!("Successfully removed invalid downloaded file"),
-                Err(e) => println!("Warning: Failed to remove invalid downloaded file: {e}"),
-            }
+            let _ = fs::remove_file(&output_path);
             return Err(anyhow!("Downloaded file SHA256 verification failed"));
         }
         Err(e) => {
             // Remove the potentially corrupted downloaded file
-            match fs::remove_file(&output_path) {
-                Ok(_) => println!("Successfully removed potentially corrupted downloaded file"),
-                Err(remove_err) => println!("Warning: Failed to remove potentially corrupted downloaded file: {remove_err}"),
-            }
+            let _ = fs::remove_file(&output_path);
             return Err(anyhow!("Error verifying downloaded file: {e}"));
         }
     }
     
     // If extract flag is true, extract the downloaded file
     if extract {
-        println!("Extracting downloaded file...");
+        println!("Extracting image...");
         
         // Determine extraction output directory
         let extract_dir = output_path.parent()
@@ -410,8 +390,6 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
         
         // Ensure extraction directory exists
         fs::create_dir_all(&extract_dir)?;
-        
-        println!("Extracting to: {}", extract_dir.display());
         
         // Use tar command to extract file
         let mut child = Command::new("tar")
@@ -426,7 +404,6 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
             return Err(anyhow!("Extraction failed, tar exit code: {status}"));
         }
         
-        println!("Extraction completed successfully");
         println!("Image extracted to: {}", extract_dir.display());
     }
     
@@ -458,14 +435,12 @@ fn image_remove(image_name: &str) -> Result<()> {
     
     // Remove the tar file if it exists
     if tar_file.exists() {
-        println!("Removing tar file: {}", tar_file.display());
         fs::remove_file(&tar_file)?;
         removed = true;
     }
     
     // Remove the extracted directory if it exists
     if extract_dir.exists() {
-        println!("Removing extracted directory: {}", extract_dir.display());
         fs::remove_dir_all(&extract_dir)?;
         removed = true;
     }
@@ -473,7 +448,7 @@ fn image_remove(image_name: &str) -> Result<()> {
     if !removed {
         println!("No files found for image: {image_name}");
     } else {
-        println!("Successfully removed image: {image_name}");
+        println!("Image removed successfully");
     }
     
     Ok(())
