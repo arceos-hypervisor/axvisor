@@ -27,7 +27,7 @@ use std::process::Command;
 use std::fs;
 use std::env;
 use std::io::Read;
-use tokio::fs::File;
+// use tokio::fs::File; // Unused import
 use tokio::io::AsyncWriteExt;
 
 /// Base URL for downloading images
@@ -233,7 +233,7 @@ fn image_verify_sha256(file_path: &Path, expected_sha256: &str) -> Result<bool> 
     }
     
     let result = hasher.finalize();
-    let actual_sha256 = format!("{:x}", result);
+    let actual_sha256 = format!("{result:x}");
     
     Ok(actual_sha256 == expected_sha256)
 }
@@ -290,7 +290,7 @@ fn image_list() -> Result<()> {
 /// ```
 async fn image_download(image_name: &str, output_dir: Option<String>, extract: bool) -> Result<()> {
     let image = Image::find_by_name(image_name)
-        .ok_or_else(|| anyhow!("Image not found: {}. Use 'xtask image ls' to view available images", image_name))?;
+        .ok_or_else(|| anyhow!("Image not found: {image_name}. Use 'xtask image ls' to view available images"))?;
     
     let output_path = match output_dir {
         Some(dir) => {
@@ -298,25 +298,25 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
             let path = Path::new(&dir);
             if path.is_absolute() {
                 // If it's an absolute path, use it directly
-                path.join(format!("{}.tar.gz", image_name))
+                path.join(format!("{image_name}.tar.gz"))
             } else {
                 // If it's a relative path, base on current working directory
                 let current_dir = std::env::current_dir()?;
-                current_dir.join(path).join(format!("{}.tar.gz", image_name))
+                current_dir.join(path).join(format!("{image_name}.tar.gz"))
             }
         }
         None => {
             // If not specified, use system temporary directory
             let temp_dir = env::temp_dir();
-            temp_dir.join("axvisor").join(format!("{}.tar.gz", image_name))
+            temp_dir.join("axvisor").join(format!("{image_name}.tar.gz"))
         }
     };
     
     // Build download URL
     let download_url = format!("{}{}.tar.gz", IMAGE_URL_BASE, image.name);
     
-    println!("Checking image: {}", image_name);
-    println!("Download URL: {}", download_url);
+    println!("Checking image: {image_name}");
+    println!("Download URL: {download_url}");
     println!("Target path: {}", output_path.display());
     println!("Expected SHA256: {}", image.sha256);
     
@@ -333,15 +333,15 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
                 // Remove the invalid file before downloading
                 match fs::remove_file(&output_path) {
                     Ok(_) => println!("Successfully removed invalid file"),
-                    Err(e) => println!("Warning: Failed to remove invalid file: {}, but will continue with download", e),
+                    Err(e) => println!("Warning: Failed to remove invalid file: {e}, but will continue with download"),
                 }
             }
             Err(e) => {
-                println!("Error verifying file: {}, will re-download", e);
+                println!("Error verifying file: {e}, will re-download");
                 // Remove the potentially corrupted file before downloading
                 match fs::remove_file(&output_path) {
                     Ok(_) => println!("Successfully removed potentially corrupted file"),
-                    Err(remove_err) => println!("Warning: Failed to remove potentially corrupted file: {}, but will continue with download", remove_err),
+                    Err(remove_err) => println!("Warning: Failed to remove potentially corrupted file: {remove_err}, but will continue with download"),
                 }
             }
         }
@@ -354,7 +354,7 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
         fs::create_dir_all(parent)?;
     }
     
-    println!("Downloading file from {}...", download_url);
+    println!("Downloading file from {download_url}...");
     
     // Use reqwest to download the file
     let response = reqwest::get(&download_url).await?;
@@ -385,7 +385,7 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
             // Remove the invalid downloaded file
             match fs::remove_file(&output_path) {
                 Ok(_) => println!("Successfully removed invalid downloaded file"),
-                Err(e) => println!("Warning: Failed to remove invalid downloaded file: {}", e),
+                Err(e) => println!("Warning: Failed to remove invalid downloaded file: {e}"),
             }
             return Err(anyhow!("Downloaded file SHA256 verification failed"));
         }
@@ -393,9 +393,9 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
             // Remove the potentially corrupted downloaded file
             match fs::remove_file(&output_path) {
                 Ok(_) => println!("Successfully removed potentially corrupted downloaded file"),
-                Err(remove_err) => println!("Warning: Failed to remove potentially corrupted downloaded file: {}", remove_err),
+                Err(remove_err) => println!("Warning: Failed to remove potentially corrupted downloaded file: {remove_err}"),
             }
-            return Err(anyhow!("Error verifying downloaded file: {}", e));
+            return Err(anyhow!("Error verifying downloaded file: {e}"));
         }
     }
     
@@ -423,7 +423,7 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
         
         let status = child.wait()?;
         if !status.success() {
-            return Err(anyhow!("Extraction failed, tar exit code: {}", status));
+            return Err(anyhow!("Extraction failed, tar exit code: {status}"));
         }
         
         println!("Extraction completed successfully");
@@ -448,10 +448,10 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
 fn image_remove(image_name: &str) -> Result<()> {
     // Check if the image name is valid by looking it up
     let _image = Image::find_by_name(image_name)
-        .ok_or_else(|| anyhow!("Image not found: {}. Use 'xtask image ls' to view available images", image_name))?;
+        .ok_or_else(|| anyhow!("Image not found: {image_name}. Use 'xtask image ls' to view available images"))?;
     
     let temp_dir = env::temp_dir().join("axvisor");
-    let tar_file = temp_dir.join(format!("{}.tar.gz", image_name));
+    let tar_file = temp_dir.join(format!("{image_name}.tar.gz"));
     let extract_dir = temp_dir.join(image_name);
     
     let mut removed = false;
@@ -471,9 +471,9 @@ fn image_remove(image_name: &str) -> Result<()> {
     }
     
     if !removed {
-        println!("No files found for image: {}", image_name);
+        println!("No files found for image: {image_name}");
     } else {
-        println!("Successfully removed image: {}", image_name);
+        println!("Successfully removed image: {image_name}");
     }
     
     Ok(())
