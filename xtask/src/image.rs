@@ -329,20 +329,10 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
                 return Ok(());
             }
             Ok(false) => {
-                println!("File verification failed, SHA256 does not match, removing corrupted file and re-downloading");
-                if let Err(e) = fs::remove_file(&output_path) {
-                    println!("Warning: Failed to remove corrupted file: {}", e);
-                } else {
-                    println!("Corrupted file removed successfully");
-                }
+                println!("File verification failed, SHA256 does not match, will re-download");
             }
             Err(e) => {
-                println!("Error verifying file: {}, removing potentially corrupted file and re-downloading", e);
-                if let Err(remove_err) = fs::remove_file(&output_path) {
-                    println!("Warning: Failed to remove potentially corrupted file: {}", remove_err);
-                } else {
-                    println!("Potentially corrupted file removed successfully");
-                }
+                println!("Error verifying file: {}, will re-download", e);
             }
         }
     } else {
@@ -377,21 +367,9 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
             println!("Download completed, file verification successful");
         }
         Ok(false) => {
-            println!("SHA256 verification failed, removing corrupted file...");
-            if let Err(e) = fs::remove_file(&output_path) {
-                println!("Warning: Failed to remove corrupted file: {}", e);
-            } else {
-                println!("Corrupted file removed successfully");
-            }
             return Err(anyhow!("Downloaded file SHA256 verification failed"));
         }
         Err(e) => {
-            println!("Error verifying file, removing potentially corrupted file...");
-            if let Err(remove_err) = fs::remove_file(&output_path) {
-                println!("Warning: Failed to remove potentially corrupted file: {}", remove_err);
-            } else {
-                println!("Potentially corrupted file removed successfully");
-            }
             return Err(anyhow!("Error verifying downloaded file: {}", e));
         }
     }
