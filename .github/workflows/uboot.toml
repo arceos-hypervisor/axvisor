@@ -13,6 +13,7 @@ success_regex = [
     "root@firefly:~#",
     "root@phytium-Ubuntu:~#",
     "Welcome to Phytium Buildroot",
+    "Last login: *",
 ]
 
 [net]
