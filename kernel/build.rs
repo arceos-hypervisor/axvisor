@@ -26,7 +26,7 @@ use std::{
     env,
     ffi::OsString,
     fs,
-    io::{self, Write},
+    io::Write,
     path::{Path, PathBuf},
 };
 
@@ -239,10 +239,6 @@ fn generate_guest_img_loading_functions(
 
 fn main() -> anyhow::Result<()> {
     let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
-    let mut smp = None;
-    if let Ok(s) = std::env::var("AXVISOR_SMP") {
-        smp = Some(s.parse::<usize>().unwrap_or(1));
-    }
 
     // let platform = env::var("AX_PLATFORM").unwrap_or("".to_string());
 
@@ -255,10 +251,6 @@ fn main() -> anyhow::Result<()> {
     };
 
     println!("cargo:rustc-cfg=platform=\"{platform}\"");
-
-    if platform != "dummy" {
-        gen_linker_script(&arch, platform.as_str(), smp.unwrap_or(1)).unwrap();
-    }
 
     let config_files = get_configs();
     let mut output_file = open_output_file();
@@ -296,29 +288,5 @@ fn main() -> anyhow::Result<()> {
             writeln!(output_file, "}}\n")?;
         }
     }
-    Ok(())
-}
-
-fn gen_linker_script(arch: &str, platform: &str, smp: usize) -> io::Result<()> {
-    let fname = format!("linker_{platform}.lds");
-    let output_arch = if arch == "x86_64" {
-        "i386:x86-64"
-    } else if arch.contains("riscv") {
-        "riscv" // OUTPUT_ARCH of both riscv32/riscv64 is "riscv"
-    } else {
-        arch
-    };
-    let ld_content = std::fs::read_to_string("../scripts/lds/linker.lds.S")?;
-    let ld_content = ld_content.replace("%ARCH%", output_arch);
-    let ld_content = ld_content.replace("%KERNEL_BASE%", &format!("{:#x}", 0x800000000000usize));
-    let ld_content = ld_content.replace("%SMP%", &format!("{smp}",));
-
-    // target/<target_triple>/<mode>/build/axvisor-xxxx/out
-    let out_dir = std::env::var("OUT_DIR").unwrap();
-    // target/<target_triple>/<mode>/linker_xxxx.lds
-    let out_path = Path::new(&out_dir).join("../../../").join(fname);
-
-    println!("writing linker script to {}", out_path.display());
-    std::fs::write(out_path, ld_content)?;
     Ok(())
 }

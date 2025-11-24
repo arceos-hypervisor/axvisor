@@ -9,12 +9,13 @@ fn main() {
 
     let ld_content = include_str!("linker.lds.S");
     let ld_content = ld_content.replace("%ARCH%", "i386:x86-64");
-    let ld_content = ld_content.replace("%KERNEL_BASE%", &format!("{:#x}", 0x800000000000usize));
+    let ld_content =
+        ld_content.replace("%KERNEL_BASE%", &format!("{:#x}", 0xffff800000200000usize));
     let ld_content = ld_content.replace("%SMP%", &format!("{smp}",));
 
     // target/<target_triple>/<mode>/build/axvisor-xxxx/out
     let out_dir = std::env::var("OUT_DIR").unwrap();
     let out_path = std::path::Path::new(&out_dir).join("link.x");
-
+    println!("cargo:rustc-link-search={out_dir}");
     std::fs::write(out_path, ld_content).unwrap();
 }
