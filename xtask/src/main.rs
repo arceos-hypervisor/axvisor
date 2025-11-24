@@ -1,5 +1,6 @@
-#![cfg_attr(target_os = "none", no_main)]
-#![cfg(not(target_os = "none"))]
+#![cfg_attr(not(any(windows, unix)), no_main)]
+#![cfg_attr(not(any(windows, unix)), no_std)]
+#![cfg(any(windows, unix))]
 
 use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
