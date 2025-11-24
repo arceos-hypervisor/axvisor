@@ -38,8 +38,6 @@ axstd = {git = "https://github.com/arceos-hypervisor/arceos.git", tag = "hv-0.4.
   "irq",
   "multitask",
   "smp", # "page-alloc-64g",
-  "myplat",
-  "driver-dyn",
 ]}
 
 axalloc = {git = "https://github.com/arceos-hypervisor/arceos.git", tag = "hv-0.4.1"}

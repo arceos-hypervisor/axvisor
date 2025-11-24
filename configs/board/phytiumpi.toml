@@ -1,7 +1,7 @@
 cargo_args = []
 features = [
     # "ept-level-4",
-    "axstd/myplat",
+    "dyn-plat",
     "axstd/bus-mmio",
 ]
 log = "Info"

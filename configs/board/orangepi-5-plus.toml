@@ -1,11 +1,11 @@
 cargo_args = []
 features = [
-    # "ept-level-4",
-    "axstd/myplat",
-    "axstd/bus-mmio",
-    "driver/sdmmc",
-    "driver/rk3588-clk",
-    "fs",
+  # "ept-level-4",
+  "dyn-plat",
+  "axstd/bus-mmio",
+  "driver/sdmmc",
+  "driver/rk3588-clk",
+  "fs",
 ]
 log = "Info"
 target = "aarch64-unknown-none-softfloat"

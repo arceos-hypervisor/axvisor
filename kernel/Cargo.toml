@@ -7,6 +7,7 @@ name = "axvisor"
 [features]
 ept-level-4 = ["axaddrspace/4-level-ept"]
 fs = ["axstd/fs", "axruntime/fs"]
+dyn-plat = ["axstd/myplat", "axstd/driver-dyn", "axruntime/driver-dyn"]
 
 [dependencies]
 bitflags.workspace = true
@@ -27,14 +28,12 @@ axstd = {workspace = true, features = [
   "irq",
   "multitask",
   "smp",
-  "myplat",
-  "driver-dyn",
 ]}
 
 # System dependent modules provided by ArceOS-Hypervisor.
 axaddrspace.workspace = true
 axhvc.workspace = true
-axruntime = {workspace = true, features = ["alloc", "irq", "paging", "smp", "driver-dyn", "multitask"]}
+axruntime = {workspace = true, features = ["alloc", "irq", "paging", "smp", "multitask"]}
 axvcpu.workspace = true
 axvm.workspace = true
 
