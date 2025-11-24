@@ -256,9 +256,9 @@ fn main() -> anyhow::Result<()> {
 
     println!("cargo:rustc-cfg=platform=\"{platform}\"");
 
-    if platform != "dummy" {
-        gen_linker_script(&arch, platform.as_str(), smp.unwrap_or(1)).unwrap();
-    }
+    // if platform != "dummy" {
+        // gen_linker_script(&arch, platform.as_str(), smp.unwrap_or(1)).unwrap();
+    // }
 
     let config_files = get_configs();
     let mut output_file = open_output_file();
@@ -299,8 +299,8 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn gen_linker_script(arch: &str, platform: &str, smp: usize) -> io::Result<()> {
-    let fname = format!("linker_{platform}.lds");
+fn gen_linker_script(arch: &str, _platform: &str, smp: usize) -> io::Result<()> {
+    let fname = "link.x";
     let output_arch = if arch == "x86_64" {
         "i386:x86-64"
     } else if arch.contains("riscv") {
@@ -310,15 +310,16 @@ fn gen_linker_script(arch: &str, platform: &str, smp: usize) -> io::Result<()> {
     };
     let ld_content = std::fs::read_to_string("../scripts/lds/linker.lds.S")?;
     let ld_content = ld_content.replace("%ARCH%", output_arch);
-    let ld_content = ld_content.replace("%KERNEL_BASE%", &format!("{:#x}", 0x800000000000usize));
+    let ld_content = ld_content.replace("%KERNEL_BASE%", &format!("{:#x}", 0xffff800000200000usize));
     let ld_content = ld_content.replace("%SMP%", &format!("{smp}",));
 
-    // target/<target_triple>/<mode>/build/axvisor-xxxx/out
     let out_dir = std::env::var("OUT_DIR").unwrap();
-    // target/<target_triple>/<mode>/linker_xxxx.lds
-    let out_path = Path::new(&out_dir).join("../../../").join(fname);
+    println!("cargo:rerun-if-changed=../scripts/lds/linker.lds.S");
+    println!("cargo:rustc-link-search={out_dir}");
+
+    let out_path = Path::new(&out_dir).join(fname);
 
     println!("writing linker script to {}", out_path.display());
-    std::fs::write(out_path, ld_content)?;
+    // std::fs::write(out_path, ld_content)?;
     Ok(())
 }
