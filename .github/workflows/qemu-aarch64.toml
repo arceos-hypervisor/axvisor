@@ -6,16 +6,12 @@ args = [
   "virt,virtualization=on,gic-version=3",
   "-smp",
   "4",
-  "-device",
-  "virtio-blk-device,drive=disk0",
-  "-drive",
-  "id=disk0,if=none,format=raw,file=${ROOTFS_DIR}/rootfs.img",
   "-append",
   "root=/dev/vda rw init=/init",
   "-m",
   "8g",
 ]
 fail_regex = []
-success_regex = []
+success_regex = ["Hello, world!"]
 to_bin = true
 uefi = false
