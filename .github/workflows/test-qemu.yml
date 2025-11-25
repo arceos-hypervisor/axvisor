@@ -47,13 +47,6 @@ jobs:
             img_name="qemu-${{ matrix.arch }}"
             sed -i 's|^kernel_path[[:space:]]*=.*|kernel_path = "/tmp/axvisor/'"$img"'/'"$img_name"'"|' "$config"
             echo "Updated kernel_path in $config"
-            
-            # Check if rootfs.img exists and export ROOTFS_DIR if it does
-            if [ -f "/tmp/axvisor/$img/rootfs.img" ]; then
-              ROOTFS_DIR="/tmp/axvisor/$img"
-              echo "ROOTFS_DIR=$ROOTFS_DIR" >> $GITHUB_ENV
-              echo "Found rootfs.img at /tmp/axvisor/$img/, exported ROOTFS_DIR=$ROOTFS_DIR"
-            fi
           done
 
       - name: Run tests
