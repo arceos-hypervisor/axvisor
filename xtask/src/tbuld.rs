@@ -45,8 +45,15 @@ impl Context {
 
         self.ctx.build_config_path = Some(config_path);
 
-        let mut vm_configs = config.vm_configs.to_vec();
-        vm_configs.extend(self.vmconfigs.iter().cloned());
+        let vm_configs = if !self.vmconfigs.is_empty() {
+            self.vmconfigs
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        } else {
+            vec![]
+        };
 
         let mut vm_config_paths = vec![];
         for vm_config in &vm_configs {

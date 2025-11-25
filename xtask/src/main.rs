@@ -44,12 +44,15 @@ enum Commands {
 
 #[derive(Parser)]
 struct QemuArgs {
+    /// Path to the build configuration file
     #[arg(long)]
     build_config: Option<PathBuf>,
+    /// Path to the QEMU configuration file
     #[arg(long)]
     qemu_config: Option<PathBuf>,
+    /// VM configuration files (comma-separated paths)
     #[arg(long)]
-    vmconfigs: Vec<String>,
+    vmconfigs: String,
 }
 
 #[derive(Parser)]
@@ -76,12 +79,15 @@ struct ClippyArgs {
 
 #[derive(Parser)]
 struct UbootArgs {
+    /// Path to the build configuration file
     #[arg(long)]
     build_config: Option<PathBuf>,
+    /// Path to the uboot configuration file
     #[arg(long)]
     uboot_config: Option<PathBuf>,
+    /// VM configuration files (comma-separated paths)
     #[arg(long)]
-    vmconfigs: Vec<String>,
+    vmconfigs: String,
 }
 
 #[tokio::main]

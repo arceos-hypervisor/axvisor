@@ -3,7 +3,7 @@ use ostool::ctx::AppContext;
 pub struct Context {
     pub ctx: AppContext,
     pub build_config_path: Option<std::path::PathBuf>,
-    pub vmconfigs: Vec<String>,
+    pub vmconfigs: String,
 }
 
 impl Context {
@@ -18,7 +18,7 @@ impl Context {
         Context {
             ctx,
             build_config_path: None,
-            vmconfigs: vec![],
+            vmconfigs: String::new(),
         }
     }
 }

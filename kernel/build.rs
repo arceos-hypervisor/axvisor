@@ -42,13 +42,18 @@ struct ConfigFile {
     pub content: String,
 }
 
-/// Gets the paths (colon-separated) from the `AXVISOR_VM_CONFIGS` environment variable.
+/// Gets the paths (semicolon-separated) from the `AXVISOR_VM_CONFIGS` environment variable.
 ///
 /// Returns `None` if the environment variable is not set.
 fn get_config_paths() -> Option<Vec<OsString>> {
     env::var("AXVISOR_VM_CONFIGS")
         .ok()
-        .map(|paths| env::split_paths(&paths).map(OsString::from).collect())
+        .map(|paths| {
+            paths
+                .split(';')
+                .map(|s| OsString::from(s.trim()))
+                .collect()
+        })
 }
 
 /// Gets the paths and contents of the configuration files specified by the `AXVISOR_VM_CONFIGS` environment variable.
