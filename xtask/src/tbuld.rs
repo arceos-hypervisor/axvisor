@@ -78,11 +78,12 @@ impl Context {
         }
 
         if !vm_config_paths.is_empty() {
+            let sep = if cfg!(target_os = "windows") { ";" } else { ":" };
             let value = vm_config_paths
                 .iter()
                 .map(|p| format!("{}", p.display()))
                 .collect::<Vec<_>>()
-                .join(";");
+                .join(&sep);
             cargo.env.insert("AXVISOR_VM_CONFIGS".to_string(), value);
         }
 
