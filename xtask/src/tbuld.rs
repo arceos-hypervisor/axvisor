@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{env, path::PathBuf};
 
 use anyhow::Context as _;
 use ostool::build::config::{Cargo, LogLevel};
@@ -85,12 +85,12 @@ impl Context {
         }
 
         if !vm_config_paths.is_empty() {
-            let value = vm_config_paths
-                .iter()
-                .map(|p| format!("{}", p.display()))
-                .collect::<Vec<_>>()
-                .join(";");
-            cargo.env.insert("AXVISOR_VM_CONFIGS".to_string(), value);
+            if let Ok(joined) = env::join_paths(&vm_config_paths) {
+                cargo.env.insert(
+                    "AXVISOR_VM_CONFIGS".to_string(),
+                    joined.to_string_lossy().into_owned()
+                );
+            }
         }
 
         Ok(cargo)
