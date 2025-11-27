@@ -44,8 +44,21 @@ jobs:
             config=$(echo "$config" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
             cargo xtask image download $img
             img_name="qemu-${{ matrix.arch }}"
-            sed -i 's|^kernel_path[[:space:]]*=.*|kernel_path = "/tmp/axvisor/'"$img"'/'"$img_name"'"|' "$config"
-            echo "Updated kernel_path in $config"
+            image_location=$(sed -n 's/^image_location[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$config")
+
+            case "$image_location" in
+            "fs")
+              echo "Filesystem storage mode - no config update needed"
+              ;;
+            "memory")
+              sed -i 's|^kernel_path[[:space:]]*=.*|kernel_path = "/tmp/axvisor/'"$img"'/'"$img_name"'"|' "$config"
+              echo "Memory storage mode - updating kernel_path"
+              ;;
+            *)
+              echo "Unknown image_location: $image_location"
+              exit 1
+              ;;
+            esac
 
             ROOTFS_IMG_PATH="/tmp/axvisor/$img/rootfs.img"
 
