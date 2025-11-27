@@ -16,9 +16,6 @@ args = [
   "host",
 ]
 fail_regex = ["System will reboot, press any key to continue ..."]
-success_regex = [
-    "usertests passed!",
-    "/bin/sh: can't access tty; job control turned off",
-]
+success_regex = ["usertests passed!"]
 to_bin = false
 uefi = false
