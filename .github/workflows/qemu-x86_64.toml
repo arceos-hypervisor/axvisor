@@ -13,7 +13,8 @@ args = [
 #   "-accel",
 #   "kvm",
   "-cpu",
-  "host",
+  "max"
+#   "host",
 ]
 fail_regex = []
 success_regex = ["usertests passed!"]
