@@ -50,17 +50,9 @@ jobs:
 
       - name: Download IMAGES
         run: |
-          IMAGES_URL="https://github.com/arceos-hypervisor/axvisor-guest/releases/download/v0.0.20/${{ matrix.vmimage_name }}.tar.gz"
-          IMAGES_DIR="/tmp/axvisor/images/${{ matrix.vmimage_name }}"
+          IMAGES_DIR="/tmp/axvisor/${{ matrix.vmimage_name }}"
           ROOTFS_IMG_PATH="${IMAGES_DIR}/rootfs.img"
-          mkdir -p "${IMAGES_DIR}"
-          echo "Downloading rootfs from ${IMAGES_URL}"
-          curl -L "${IMAGES_URL}" -o "${IMAGES_DIR}/${{ matrix.vmimage_name }}.tar.gz"
-          
-          # Extract the tar.gz file
-          echo "Extracting archive to ${IMAGES_DIR}"
-          tar -xzf "${IMAGES_DIR}/${{ matrix.vmimage_name }}.tar.gz" -C "${IMAGES_DIR}"
-          
+
           # Check if rootfs.img exists after extraction
           if [ -f "${ROOTFS_IMG_PATH}" ]; then
             echo "Found rootfs.img, patching qemu-aarch64.toml file..."
