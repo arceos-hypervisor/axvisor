@@ -30,7 +30,7 @@ use std::io::Read;
 use tokio::io::{AsyncWriteExt, BufWriter};
 
 /// Base URL for downloading images
-const IMAGE_URL_BASE: &str = "https://github.com/arceos-hypervisor/axvisor-guest/releases/download/v0.0.19/";
+const IMAGE_URL_BASE: &str = "https://github.com/arceos-hypervisor/axvisor-guest/releases/download/v0.0.20/";
 
 /// Image management command line arguments.
 #[derive(Parser)]
@@ -112,45 +112,66 @@ impl Image {
         arch: "aarch64",
     };
     
-    pub const QEMU_ARCEOS_AARCH64: Self = Self {
-        name: "qemu_arceos_aarch64",
+    pub const QEMU_AARCH64_ARCEOS: Self = Self {
+        name: "qemu_aarch64_arceos",
         description: "ArceOS for QEMU aarch64 virtualization",
-        sha256: "3bddc02f9ddfd4918b34334688ba391a86591e11cc69996cb1d25d3aad7e677b",
+        sha256: "56c1f517444dcd6668f0d4bc280543d6f236728c4ec5b81e7e5b5a06cf012690",
         arch: "aarch64",
     };
-    
-    pub const QEMU_ARCEOS_RISCV64: Self = Self {
-        name: "qemu_arceos_riscv64",
+
+    pub const QEMU_AARCH64_LINUX: Self = Self {
+        name: "qemu_aarch64_linux",
+        description: "Linux for QEMU aarch64 virtualization",
+        sha256: "ffccd4f89ee84def89ab66e23249d30723fd4a9af7896d7ef4d6f6d75d34225b",
+        arch: "aarch64",
+    };
+
+    pub const QEMU_AARCH64_NIMBOS: Self = Self {
+        name: "qemu_aarch64_nimbos",
+        description: "NIMBOS for QEMU aarch64 virtualization",
+        sha256: "283681356af35e141bcf050dd56aa698966477289c21ac49941bb68d9a9ad1b8",
+        arch: "aarch64",
+    };
+
+    pub const QEMU_RISCV64_ARCEOS: Self = Self {
+        name: "qemu_riscv64_arceos",
         description: "ArceOS for QEMU riscv64 virtualization",
-        sha256: "a2ea268bf97dda3531366db46f3e5a80891ae7b8d84641fb4ec4b76349d4e782",
+        sha256: "19248561c242a06a893a6a4debfc05ba5ca3e438347814c10351eecef88e54be",
+        arch: "riscv64",
+    };
+
+    pub const QEMU_RISCV64_LINUX: Self = Self {
+        name: "qemu_riscv64_linux",
+        description: "Linux for QEMU riscv64 virtualization",
+        sha256: "34a355907bf3b05ea3949207fd98aad05d91c21d3b724d345f54576ef6e12eba",
+        arch: "riscv64",
+    };
+
+    pub const QEMU_RISCV64_NIMBOS: Self = Self {
+        name: "qemu_riscv64_nimbos",
+        description: "NIMBOS for QEMU riscv64 virtualization",
+        sha256: "064f75df290905687221b2554dd4e4efc077a6a95cafcbf7f98e2181441c24e3",
         arch: "riscv64",
     };
     
-    pub const QEMU_ARCEOS_X86_64: Self = Self {
-        name: "qemu_arceos_x86_64",
+    pub const QEMU_X86_64_ARCEOS: Self = Self {
+        name: "qemu_x86_64_arceos",
         description: "ArceOS for QEMU x86_64 virtualization",
-        sha256: "36637e2eb3d7b0b2b364e34f6656429e90e84e73e801c5705e17d9ec76564e84",
+        sha256: "ee9bdd4f6ae3ef2ee807ac712b82318329eeb6d1cffdf737f98a393ad730b5d9",
         arch: "x86_64",
     };
-    
-    pub const QEMU_LINUX_AARCH64: Self = Self {
-        name: "qemu_linux_aarch64",
-        description: "Linux for QEMU aarch64 virtualization",
-        sha256: "83e8829fb3b0a10e1b7de68a3f6e55675430a06f2d06ae878ee9f8b498b35a51",
-        arch: "aarch64",
-    };
-    
-    pub const QEMU_LINUX_RISCV64: Self = Self {
-        name: "qemu_linux_riscv64",
-        description: "Linux for QEMU riscv64 virtualization",
-        sha256: "27bf9ebb224514211387f12dbbb563ffdbd59e1ba1f7e40593315f374e5a13fa",
-        arch: "riscv64",
-    };
-    
-    pub const QEMU_LINUX_X86_64: Self = Self {
-        name: "qemu_linux_x86_64",
+
+    pub const QEMU_X86_64_LINUX: Self = Self {
+        name: "qemu_x86_64_linux",
         description: "Linux for QEMU x86_64 virtualization",
-        sha256: "19a3edb499c210cb3f35414855ebacd9115ce7264ce078dab723d1920c40332d",
+        sha256: "1a27da24b02f836b259462d5c73dc550553ea708d24af299378137beedc46c51",
+        arch: "x86_64",
+    };
+
+    pub const QEMU_X86_64_NIMBOS: Self = Self {
+        name: "qemu_x86_64_nimbos",
+        description: "NIMBOS for QEMU x86_64 virtualization",
+        sha256: "55d73898f9f98fca80e15387b1e5149ba6bbf74d3631281ea1ece75de3529078",
         arch: "x86_64",
     };
     
@@ -191,12 +212,15 @@ impl Image {
             Self::ORANGEPI_LINUX,
             Self::PHYTIUMPI_ARCEOS,
             Self::PHYTIUMPI_LINUX,
-            Self::QEMU_ARCEOS_AARCH64,
-            Self::QEMU_ARCEOS_RISCV64,
-            Self::QEMU_ARCEOS_X86_64,
-            Self::QEMU_LINUX_AARCH64,
-            Self::QEMU_LINUX_RISCV64,
-            Self::QEMU_LINUX_X86_64,
+            Self::QEMU_AARCH64_ARCEOS,
+            Self::QEMU_RISCV64_ARCEOS,
+            Self::QEMU_X86_64_ARCEOS,
+            Self::QEMU_AARCH64_LINUX,
+            Self::QEMU_RISCV64_LINUX,
+            Self::QEMU_X86_64_LINUX,
+            Self::QEMU_AARCH64_NIMBOS,
+            Self::QEMU_RISCV64_NIMBOS,
+            Self::QEMU_X86_64_NIMBOS,
             Self::ROC_RK3568_PC_ARCEOS,
             Self::ROC_RK3568_PC_LINUX,
             Self::TAC_E400_PLC_ARCEOS,
