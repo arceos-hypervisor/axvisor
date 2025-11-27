@@ -50,7 +50,7 @@ jobs:
 
       - name: Download IMAGES
         run: |
-          IMAGES_URL="https://github.com/arceos-hypervisor/axvisor-guest/releases/download/v0.0.19/${{ matrix.vmimage_name }}.tar.gz"
+          IMAGES_URL="https://github.com/arceos-hypervisor/axvisor-guest/releases/download/v0.0.20/${{ matrix.vmimage_name }}.tar.gz"
           IMAGES_DIR="/tmp/axvisor/images/${{ matrix.vmimage_name }}"
           ROOTFS_IMG_PATH="${IMAGES_DIR}/rootfs.img"
           mkdir -p "${IMAGES_DIR}"
