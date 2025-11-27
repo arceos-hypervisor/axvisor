@@ -1,48 +1,63 @@
+[workspace]
+members = [
+  "crates/*",
+  "modules/*",
+  "platform/*",
+  "xtask",
+  "kernel",
+]
+resolver = "3"
+
 [profile.release]
 lto = true
 
-[package]
-authors = ["Keyang Hu <keyang.hu@qq.com>"]
+[workspace.package]
+
+authors = ["Keyang Hu <keyang.hu@qq.com>", "周睿 <zrufo747@outlook.com>"]
 edition = "2024"
-exclude = ["crates"]
 license = "GPL-3.0-or-later OR Apache-2.0 OR MulanPubL-2.0 OR MulanPSL2"
-name = "axvisor"
 version = "0.1.0"
 
-[features]
-ept-level-4 = ["axaddrspace/4-level-ept"]
-fs = ["axstd/fs"]
-
-plat-aarch64-generic = ["dep:axplat-aarch64-generic", "axstd/driver-dyn"]
-plat-aarch64-phytium-pi = ["dep:axplat-aarch64-phytium-pi", "axstd/driver-dyn"]
-plat-aarch64-roc-rk3568-pc = ["dep:axplat-aarch64-roc-rk3568-pc", "axstd/driver-dyn"]
-plat-x86-qemu-q35 = ["dep:axplat-x86-qemu-q35"]
-
-[dependencies]
+[workspace.dependencies]
 bitflags = "2.2"
 cfg-if = "1.0"
 cpumask = "0.1.0"
 kernel_guard = "0.1"
 kspin = "0.1"
+lazy_static = {version = "1.5", default-features = false, features = ["spin_no_std"]}
 lazyinit = "0.2"
-log = "=0.4.21"
+log = "0.4"
 spin = "0.9"
-timer_list = "0.1.0"
-lazy_static = { version = "1.5", default-features = false, features = ["spin_no_std"] }
+timer_list = "0.1"
+toml = "0.9"
 
 # System dependent modules provided by ArceOS.
-axstd = {git = "https://github.com/arceos-hypervisor/arceos.git", tag = "hv-0.4.0", features = [
+axstd = {git = "https://github.com/arceos-hypervisor/arceos.git", tag = "hv-0.4.1", features = [
   "alloc-level-1",
   "paging",
   "irq",
   "multitask",
   "smp", # "page-alloc-64g",
-  "myplat",
 ]}
+
+axalloc = {git = "https://github.com/arceos-hypervisor/arceos.git", tag = "hv-0.4.1"}
+axconfig = {git = "https://github.com/arceos-hypervisor/arceos.git", tag = "hv-0.4.1"}
+axdisplay = {git = "https://github.com/arceos-hypervisor/arceos.git", tag = "hv-0.4.1"}
+axdriver = {git = "https://github.com/arceos-hypervisor/arceos.git", tag = "hv-0.4.1"}
+axfs = {git = "https://github.com/arceos-hypervisor/arceos.git", tag = "hv-0.4.1"}
+axhal = {git = "https://github.com/arceos-hypervisor/arceos.git", tag = "hv-0.4.1"}
+axipi = {git = "https://github.com/arceos-hypervisor/arceos.git", tag = "hv-0.4.1"}
+axlog = {git = "https://github.com/arceos-hypervisor/arceos.git", tag = "hv-0.4.1"}
+axmm = {git = "https://github.com/arceos-hypervisor/arceos.git", tag = "hv-0.4.1"}
+axnet = {git = "https://github.com/arceos-hypervisor/arceos.git", tag = "hv-0.4.1"}
+axtask = {git = "https://github.com/arceos-hypervisor/arceos.git", tag = "hv-0.4.1"}
+
+axplat = {git = "https://github.com/arceos-hypervisor/axplat_crates.git", tag = "vmm-v0.3.0"}
 
 # System dependent modules provided by ArceOS-Hypervisor.
 axaddrspace = "0.1.1"
 axhvc = {git = "https://github.com/arceos-hypervisor/axhvc.git"}
+axruntime = {path = "modules/axruntime"}
 axvcpu = "0.1"
 axvm = {git = "https://github.com/arceos-hypervisor/axvm.git", branch = "next"}
 
@@ -63,32 +78,16 @@ vm-fdt = {git = "https://github.com/bullhh/vm-fdt.git", default-features = false
 axdevice = {git = "https://github.com/arceos-hypervisor/axdevice.git"}
 axdevice_base = "0.1"
 axvisor_api = "0.1"
+driver = {path = "modules/driver"}
 
 # platform
-axplat-aarch64-generic = {path = "platform/aarch64-generic", optional = true}
-axplat-x86-qemu-q35 = {path = "platform/x86-qemu-q35", optional = true}
-axplat-aarch64-phytium-pi = {path = "platform/aarch64-phytium-pi", optional = true}
-axplat-aarch64-roc-rk3568-pc = {path = "platform/aarch64-roc-rk3568-pc", optional = true}
-
-[target.'cfg(target_arch = "aarch64")'.dependencies]
-aarch64-cpu-ext = "0.1"
-arm-gic-driver = {version = "0.15.5", features = ["rdif"]}
-
-[build-dependencies]
-axconfig = {git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm-dev"}
-prettyplease = "0.2"
-quote = "1.0"
-syn = "2.0"
-toml = {version = "0.9"}
-
-# [workspace]
-# exclude = ["crates/arceos"]
-# members = [
-#   "platform/*",
-#   "crates/*",
-# ]
+axplat-x86-qemu-q35 = {path = "platform/x86-qemu-q35"}
+axvmconfig = {git = "https://github.com/arceos-hypervisor/axvmconfig.git", branch = "next"}
 
 [patch.crates-io]
 axvcpu = {git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "next"}
-axvmconfig = { git = "https://github.com/arceos-hypervisor/axvmconfig.git", branch = "next" }
+axvmconfig = {git = "https://github.com/arceos-hypervisor/axvmconfig.git", branch = "next"}
 
+[patch."https://github.com/arceos-hypervisor/arceos"]
+axconfig = {path = "modules/axconfig"}
+axruntime = {path = "modules/axruntime"}

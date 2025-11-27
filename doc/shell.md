@@ -87,6 +87,22 @@ pub struct CommandNode {
 - **选项解析**: 支持短选项(-x)和长选项(--option)
 - **参数验证**: 自动验证必需选项和参数格式
 - **错误处理**: 详细的错误信息和使用提示
+- **灵活格式**: 支持 `--option=value` 和 `--option value` 两种格式
+
+#### 分词示例
+
+```rust
+// src/shell/command/mod.rs:186-215
+fn tokenize(input: &str) -> Vec<String> {
+    // 支持引号包围的参数
+    // 例: echo "hello world" -> ["echo", "hello world"]
+
+    // 支持转义字符
+    // 例: echo \"quoted\" -> ["echo", "\"quoted\""]
+
+    // 自动处理空白符分隔
+}
+```
 
 #### 解析错误类型
 ```rust
@@ -148,27 +164,37 @@ fn file_type_to_char(ty: FileType) -> char {
 - **vm start**: 启动虚拟机
   - 不带参数：启动所有虚拟机
   - 指定VM ID：启动特定虚拟机
-  - 支持 `--detach` 后台模式运行(**有计划实现**)
+  - 支持 `--detach` 后台模式运行
+  - 支持 `--console` 连接到控制台(计划实现)
 - **vm stop**: 停止虚拟机
   - 必须指定VM ID
   - 支持 `--force` 强制停止
-- **vm restart**: 重启虚拟机，必须指定VM ID
+  - 支持 `--graceful` 优雅关闭
+- **vm suspend**: 暂停(挂起)运行中的虚拟机 (功能不完善)
+  - 必须指定VM ID
+  - 所有VCpu将在下次VMExit时进入等待队列
+  - VM状态转换为Suspended
+- **vm resume**: 恢复已暂停的虚拟机 (功能不完善)
+  - 必须指定VM ID
+  - 唤醒所有VCpu任务，恢复执行
+  - VM状态从Suspended转换回Running
+- **vm restart**: 重启虚拟机，必须指定VM ID (功能不完善)
+  - 支持 `--force` 强制重启
+  - 自动等待VM完全停止后再启动
 - **vm delete**: 删除虚拟机
   - 必须指定VM ID
   - 需要 `--force` 确认删除
   - 支持 `--keep-data` 保留数据选项
 - **vm list**: 列出虚拟机
-  - 默认只显示运行中的虚拟机
-  - `--all` 显示所有虚拟机(包括已停止)
+  - 显示所有已创建的虚拟机
   - `--format json` 支持JSON格式输出
+  - 表格模式显示：ID、名称、状态、VCPU列表、内存、VCPU状态汇总
 - **vm show**: 显示虚拟机详细信息
   - 必须指定VM ID
-  - `--config` 显示配置信息
-  - `--stats` 显示统计信息
-- **vm status**: 显示虚拟机状态
-  - 不带参数：显示所有VM的状态概览
-  - 指定VM ID：显示特定VM的详细状态
-  - 支持 `--watch` 实时监控(计划实现)
+  - 默认模式：显示基本信息和摘要
+  - `--full` / `-f`: 显示完整详细信息(内存区域、设备、配置等)
+  - `--config` / `-c`: 显示配置信息(入口点、中断模式、直通设备等)
+  - `--stats` / `-s`: 显示统计信息(EPT、内存区域、设备数量等)
 
 #### 功能特性
 ``` rust
@@ -199,23 +225,33 @@ let state = if vm.running() {
   - 虚拟机整体状态 (运行中/停止中/已停止)
 
 #### 支持的选项和标志
-- `--all` / `-a`: 显示所有虚拟机(包括已停止的)
-- `--format json`: JSON格式输出
-- `--config` / `-c`: 显示配置信息
-- `--stats` / `-s`: 显示统计信息
-- `--force` / `-f`: 强制操作(无需确认)
-- `--detach` / `-d`: 后台运行
-- `--watch` / `-w`: 实时监控(计划实现)
-- `--keep-data`: 保留VM数据
+- `--all` / `-a`: (vm list) 显示所有虚拟机(默认已包含所有VM)
+- `--format json`: (vm list) JSON格式输出
+- `--full` / `-f`: (vm show) 显示完整详细信息
+- `--config` / `-c`: (vm show) 显示配置信息
+- `--stats` / `-s`: (vm show) 显示统计信息
+- `--force` / `-f`: (vm stop/delete/restart) 强制操作(无需确认)
+- `--graceful` / `-g`: (vm stop) 优雅关闭
+- `--console` / `-c`: (vm start) 连接到控制台(计划实现)
+- `--watch` / `-w`: (vm status) 实时监控(已移除,功能未实现)
+- `--keep-data`: (vm delete) 保留VM数据(功能未实现)
 
 #### 输出格式示例
 
 **Table格式** (默认):
 ```
+VM ID  NAME            STATUS       VCPU            MEMORY     VCPU STATE
+------ --------------- ------------ --------------- ---------- --------------------
+0      linux-vm        Running      0,1             512MB      Run:2
+1      test-vm         Stopped      0               256MB      Free:1
+```
+
+**简化表格** (vm list 输出):
+```
 ID    NAME           STATE      VCPU   MEMORY
 ----  -----------    -------    ----   ------
-0     linux-vm       🟢 running    2    512MB
-1     test-vm        🔴 stopped    1    256MB
+0     linux-vm       Running       2    512MB
+1     test-vm        Stopped       1    256MB
 ```
 
 **JSON格式** (`--format json`):
@@ -284,6 +320,33 @@ pub fn clear_line_and_redraw(
 - **clear**: 清屏 (发送ANSI清屏序列 `\x1b[2J\x1b[H`)
 - **exit/quit**: 退出shell
 
+### VM 管理命令列表
+
+执行 `help vm` 可以看到完整的 VM 命令列表：
+
+```
+VM - virtual machine management
+
+Most commonly used vm commands:
+  create    Create a new virtual machine
+  start     Start a virtual machine
+  stop      Stop a virtual machine
+  suspend   Suspend (pause) a running virtual machine
+  resume    Resume a suspended virtual machine
+  restart   Restart a virtual machine
+  delete    Delete a virtual machine
+
+Information commands:
+  list      Show table of all VMs
+  show      Show VM details (requires VM_ID)
+            - Default: basic information
+            - --full: complete detailed information
+            - --config: show configuration
+            - --stats: show statistics
+
+Use 'vm <command> --help' for more information on a specific command.
+```
+
 ### 错误处理
 Shell会对命令解析和执行错误提供友好的提示信息：
 ```bash
@@ -305,6 +368,240 @@ Usage: vm create [CONFIG_FILE]
 $ vm stop
 Error: No VM specified
 Usage: vm stop [OPTIONS] <VM_ID>
+```
+
+## VM 生命周期和状态管理
+
+### VM 状态机
+
+AxVisor 的 VM 状态遵循严格的状态机模型：
+
+```
+                   ┌──────────┐
+                   │ Loading  │ (VM 正在创建/加载)
+                   └────┬─────┘
+                        │ create complete
+                        ▼
+                   ┌──────────┐
+            ┌─────▶│  Loaded  │ (VM 已加载，未启动)
+            │      └────┬─────┘
+            │           │ start
+            │           ▼
+            │      ┌──────────┐
+            │  ┌───┤ Running  │ (VM 正在运行)
+            │  │   └────┬─────┘
+            │  │        │
+            │  │        ├─── suspend ────▶ ┌───────────┐
+            │  │        │                  │ Suspended │ (VM 已暂停)
+            │  │        │                  └─────┬─────┘
+            │  │        │                        │ resume
+            │  │        │ ◀──────────────────────┘
+            │  │        │
+            │  │        │ shutdown/stop
+            │  │        ▼
+            │  │   ┌──────────┐
+            │  │   │ Stopping │ (VM 正在关闭)
+            │  │   └────┬─────┘
+            │  │        │ all vcpus exited
+            │  │        ▼
+            │  │   ┌──────────┐
+            │  └──▶│ Stopped  │ (VM 已停止)
+            │      └────┬─────┘
+            │           │ delete
+            │           ▼
+            │      [Resources Freed]
+            │           │
+            └───────────┘ restart
+```
+
+### VM 状态定义
+
+```rust
+pub enum VMStatus {
+    Loading,    // VM 正在创建/加载
+    Loaded,     // VM 已加载但未启动
+    Running,    // VM 正在运行
+    Suspended,  // VM 已暂停（可恢复）
+    Stopping,   // VM 正在关闭中
+    Stopped,    // VM 已完全停止
+}
+```
+
+#### 状态转换规则
+
+| 当前状态 | 可执行操作 | 目标状态 | 说明 |
+|---------|-----------|---------|------|
+| Loading | - | Loaded | 创建完成后自动转换 |
+| Loaded | `vm start` | Running | 启动 VCpu 任务开始执行 |
+| Loaded | `vm delete` | Stopped | 直接删除未启动的 VM |
+| Running | `vm stop` | Stopping | 发送关闭信号给所有 VCpu |
+| Running | `vm suspend` | Suspended | 暂停所有 VCpu 执行 |
+| Suspended | `vm resume` | Running | 恢复 VCpu 执行 |
+| Suspended | `vm stop` | Stopping | 从暂停状态直接关闭 |
+| Stopping | - | Stopped | 所有 VCpu 退出后自动转换 |
+| Stopped | `vm delete` | [释放资源] | 清理并释放 VM 资源 |
+| Stopped | `vm start` | Running | 重新启动已停止的 VM |
+
+### VCpu 生命周期
+
+每个 VM 包含一个或多个 VCpu（虚拟 CPU），它们的生命周期与 VM 状态紧密关联：
+
+```
+VM Start
+   │
+   ├─▶ 创建 VCpu 任务 (alloc_vcpu_task)
+   │     │
+   │     ├─ 设置 CPU 亲和性
+   │     ├─ 初始化 TaskExt (Weak 引用 VM)
+   │     └─ spawn_task 到调度器
+   │
+   ├─▶ VCpu 任务运行 (vcpu_run)
+   │     │
+   │     ├─ 等待 VM Running 状态
+   │     ├─ mark_vcpu_running()
+   │     └─ 进入运行循环
+   │           │
+   │           ├─ vm.run_vcpu() - 执行 Guest 代码
+   │           ├─ 处理 VM Exit (hypercall, interrupt, halt...)
+   │           ├─ 检查 VM 暂停状态
+   │           └─ 检查 VM 关闭状态 ──┐
+   │                                 │
+   │                                 ▼ vm.stopping() == true
+   ├─▶ VCpu 任务退出                │
+   │     │◀───────────────────────┘
+   │     ├─ mark_vcpu_exiting() - 递减运行计数
+   │     ├─ 最后一个 VCpu 设置 VM 为 Stopped
+   │     └─ 任务函数返回，进入 Exited 状态
+   │
+   └─▶ VCpu 清理 (cleanup_vm_vcpus)
+         │
+         ├─ 遍历所有 VCpu 任务
+         ├─ 调用 task.join() 等待退出
+         ├─ 释放 VM 的 Arc 引用
+         └─ 清理等待队列资源
+```
+
+#### VCpu 任务特性
+
+1. **Weak 引用**：VCpu 任务通过 `TaskExt` 持有 VM 的 `Weak` 引用，避免循环引用
+2. **CPU 亲和性**：可配置 VCpu 绑定到特定物理 CPU
+3. **协作式退出**：VCpu 检测到 `vm.stopping()` 后主动退出
+4. **引用计数管理**：退出前释放所有对 VM 的引用
+
+#### VCpu 任务生命周期扩展
+
+```
+VM Running
+   │
+   ├─▶ VCpu 任务运行循环
+   │     │
+   │     ├─ vm.run_vcpu() - 执行 Guest 代码
+   │     ├─ 处理 VM Exit
+   │     ├─ 检查 VM 状态
+   │     │    │
+   │     │    ├─ vm.stopping() == true ──▶ 退出循环
+   │     │    │
+   │     │    └─ vm.vm_status() == Suspended ──▶ 进入等待队列
+   │     │                                          │
+   │     │                                          │ wait for notify
+   │     │                                          │
+   │     │                                          ▼
+   │     │                                     被唤醒 (resume)
+   │     │                                          │
+   │     │    ◀────────────────────────────────────┘
+   │     │
+   │     └─ 继续执行
+```
+
+### VM 删除流程详解
+
+`vm delete` 命令执行完整的资源清理流程，确保没有资源泄漏：
+
+#### 删除流程步骤
+
+```
+1. 状态检查和关闭信号
+   ├─ 检查 VM 当前状态
+   ├─ 如果 Running/Suspended/Stopping
+   │    ├─ 设置状态为 Stopping
+   │    └─ 调用 vm.shutdown() 通知 Guest
+   └─ 如果 Loaded
+        └─ 直接设置为 Stopped
+
+2. 从全局列表移除
+   ├─ 调用 vm_list::remove_vm(vm_id)
+   ├─ 获得 VM 的 Arc<AxVM> 引用
+   └─ 打印当前 Arc 引用计数 (调试信息)
+
+3. VCpu 任务清理 ⭐ (核心步骤)
+   ├─ 调用 cleanup_vm_vcpus(vm_id)
+   │    ├─ 从全局队列移除 VM 的 VCpu 列表
+   │    ├─ 遍历所有 VCpu 任务
+   │    │    ├─ task.join() - 阻塞等待任务退出
+   │    │    └─ 释放 VCpu 持有的 VM Arc 引用
+   │    └─ 清理等待队列资源
+   └─ 打印清理后的 Arc 引用计数
+
+4. 验证引用计数
+   ├─ 期望：Arc count == 1 (仅剩当前函数持有)
+   ├─ 实际：检查并打印 Arc::strong_count(&vm)
+   └─ 如果 count > 1：警告可能的引用泄漏
+
+5. 资源释放
+   ├─ 函数返回时 vm (Arc) 被 drop
+   ├─ 如果 count == 1，触发 AxVM::drop()
+   │    ├─ 释放 EPT 页表
+   │    ├─ 释放内存区域
+   │    └─ 释放设备资源
+   └─ VM 对象完全销毁
+```
+
+#### 关键实现代码片段
+
+```rust
+// src/vmm/vcpus.rs:241-260
+pub(crate) fn cleanup_vm_vcpus(vm_id: usize) {
+    if let Some(vm_vcpus) = VM_VCPU_TASK_WAIT_QUEUE.remove(&vm_id) {
+        let task_count = vm_vcpus.vcpu_task_list.len();
+
+        info!("VM[{}] Joining {} VCpu tasks...", vm_id, task_count);
+
+        // ⭐ 关键：真正 join 所有 VCpu 任务
+        for (idx, task) in vm_vcpus.vcpu_task_list.iter().enumerate() {
+            debug!("VM[{}] Joining VCpu task[{}]: {}", vm_id, idx, task.id_name());
+            if let Some(exit_code) = task.join() {
+                debug!("VM[{}] VCpu task[{}] exited with code: {}", vm_id, idx, exit_code);
+            }
+        }
+
+        info!("VM[{}] VCpu resources cleaned up, {} VCpu tasks joined successfully",
+              vm_id, task_count);
+    }
+}
+```
+
+#### 删除示例输出
+
+```bash
+$ vm delete 2
+Deleting stopped VM[2]...
+  [Debug] VM Arc strong_count: 2
+✓ VM[2] removed from VM list
+  Waiting for vCPU threads to exit...
+  [Debug] VM Arc count before cleanup: 1
+  Cleaning up VCpu resources...
+[ 67.812092 0:2 axvisor::vmm::vcpus:243] VM[2] Joining 1 VCpu tasks...
+[ 67.819730 0:2 axvisor::vmm::vcpus:253] VM[2] VCpu resources cleaned up, 1 VCpu tasks joined successfully
+  [Debug] VM Arc count after final wait: 1
+✓ VM[2] deleted completely
+  [Debug] VM Arc strong_count: 1
+  ✓ Perfect! VM will be freed immediately when function returns
+  VM[2] will be freed now
+[ 67.848026 0:2 axvm::vm:884] Dropping VM[2]
+[ 67.853407 0:2 axvm::vm:775] Cleaning up VM[2] resources...
+[ 67.860698 0:2 axvm::vm:878] VM[2] resources cleanup completed
+[ 67.867209 0:2 axvm::vm:889] VM[2] dropped
+✓ VM[2] deletion completed
 ```
 
 ### 命令提示符
@@ -730,8 +1027,7 @@ touch file.txt             # 创建空文件
 
 ### 虚拟机管理
 ```bash
-vm list                    # 列出运行中的虚拟机
-vm list -a                 # 列出所有虚拟机(包括已停止)
+vm list                    # 列出所有虚拟机
 vm list --format json      # JSON格式输出
 vm create config.toml      # 创建虚拟机
 vm create vm1.toml vm2.toml # 批量创建虚拟机
@@ -739,10 +1035,15 @@ vm start                   # 启动所有虚拟机
 vm start 1                 # 启动VM（ID=1）
 vm start -d 1              # 后台启动VM
 vm stop -f 1               # 强制停止VM
+vm suspend 1               # 暂停VM（ID=1）
+vm resume 1                # 恢复暂停的VM
 vm restart 1               # 重启VM
+vm restart -f 1            # 强制重启VM
 vm delete -f 1             # 删除VM(需要确认)
-vm status                  # 显示所有VM状态概览
-vm status 1                # 查看特定VM状态
+vm status                  # 显示所有VM状态概览（已移除）
+vm status 1                # 查看特定VM状态（已移除）
+vm show 1                  # 查看VM基本信息
+vm show -f 1               # 查看VM完整详细信息
 vm show -c 1               # 查看VM配置
 vm show -s 1               # 查看VM统计信息
 vm show -c -s 1            # 查看VM配置和统计信息

@@ -3,14 +3,13 @@
 /.vscode
 /tmp
 /.arceos
-/.cargo
+
 .DS_Store
 *.asm
 *.img
 *.bin
 *.elf
 *.tmp_its
-*.dtb
 *guest.S
 actual.out
 qemu.log
@@ -28,7 +27,10 @@ __pycache__/
 /**/.board.*
 
 # dev env
-/crates
+/crates/*
+!/crates/nop/
+!/crates/nop/**
+
 /Cargo.toml.bk
 
 # tools should be downloaded from github
@@ -59,3 +61,12 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+*-schema.json
+.qemu*
+.build*
+.uboot*
+
+# AI tools
+.spec-workflow/
+.claude/
