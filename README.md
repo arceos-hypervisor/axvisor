@@ -61,7 +61,7 @@ AxVisor is built based on the Rust ecosystem, providing complete project build, 
 
 ## Build Environment
 
-First, in a Linux environment, you need to install basic development tool packages such as `libssl-dev libssl-dev gcc libudev-dev pkg-config`.
+First, in a Linux environment, you need to install basic development tool packages such as `libssl-dev gcc libudev-dev pkg-config`.
 
 Second, AxVisor is written in the Rust programming language, so you need to install the Rust development environment according to the official Rust website instructions, and use the `cargo install cargo-binutils` command to install [cargo-binutils](https://github.com/rust-embedded/cargo-binutils) to use tools like `rust-objcopy` and `rust-objdump`.
 
