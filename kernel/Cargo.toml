@@ -62,7 +62,7 @@ aarch64-cpu-ext = "0.1"
 arm-gic-driver = {version = "0.15.5", features = ["rdif"]}
 
 [build-dependencies]
-axconfig = {git = "https://github.com/arceos-hypervisor/arceos.git", branch = "vmm-dev"}
+axconfig.workspace = true
 prettyplease = "0.2"
 quote = "1.0"
 syn = "2.0"
