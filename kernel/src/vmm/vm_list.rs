@@ -1,9 +1,8 @@
-use alloc::collections::BTreeMap;
-use alloc::vec::Vec;
+use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 
 use spin::Mutex;
 
-use crate::vmm::VMRef;
+pub type VMRef = Arc<axvm::Vm>;
 
 /// Represents a list of VMs,
 /// stored in a BTreeMap where the key is the VM ID and the value is a reference to the VM.
@@ -71,8 +70,10 @@ static GLOBAL_VM_LIST: Mutex<VMList> = Mutex::new(VMList::new());
 /// # Arguments
 ///
 /// * `vm` - A reference to the VM instance.
-pub fn push_vm(vm: VMRef) {
-    GLOBAL_VM_LIST.lock().push_vm(vm.id(), vm)
+pub fn push_vm(vm: axvm::Vm) -> VMRef {
+    let vm = Arc::new(vm);
+    GLOBAL_VM_LIST.lock().push_vm(vm.id().into(), vm.clone());
+    vm
 }
 
 /// Removes a VM from the global VM list by its ID.

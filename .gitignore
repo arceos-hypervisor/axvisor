@@ -30,7 +30,6 @@ __pycache__/
 /crates/*
 !/crates/nop/
 !/crates/nop/**
-.devspace/
 
 /Cargo.toml.bk
 
