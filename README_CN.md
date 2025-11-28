@@ -42,7 +42,7 @@ AxVisor 已在多种硬件平台上完成验证，涵盖从虚拟化环境到实
 | Orange Pi 5 Plus | ARM64 | 基于 Rockchip RK3588 的开发板，高性能 ARM 平台 |
 | 飞腾派 | ARM64 | 基于飞腾 E2000Q 处理器的开发板，国产 ARM 平台 |
 | ROC-RK3568-PC | ARM64 | 基于 Rockchip RK3568 的开发板，适合工业应用 |
-| EVM3588 | ARM64| 基于 Rockchip RK3588 的评估板，企业级应用 |
+| EVM3588 | ARM64 | 基于 Rockchip RK3588 的评估板，企业级应用 |
 
 ## 客户机系统
 
