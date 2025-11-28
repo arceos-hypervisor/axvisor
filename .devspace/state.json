@@ -1,0 +1,86 @@
+{
+  "modules": {
+    "axvisor_api": {
+      "name": "axvisor_api",
+      "path": "modules/axvisor_api"
+    },
+    "x86_vlapic": {
+      "name": "x86_vlapic",
+      "path": "modules/x86_vlapic"
+    },
+    "axvmconfig": {
+      "name": "axvmconfig",
+      "path": "modules/axvmconfig"
+    },
+    "arm_vcpu": {
+      "name": "arm_vcpu",
+      "path": "modules/arm_vcpu"
+    },
+    "arm_vgic": {
+      "name": "arm_vgic",
+      "path": "modules/arm_vgic"
+    },
+    "x86_vcpu": {
+      "name": "x86_vcpu",
+      "path": "modules/x86_vcpu"
+    },
+    "axdevice_base": {
+      "name": "axdevice_base",
+      "path": "modules/axdevice_base"
+    },
+    "axaddrspace": {
+      "name": "axaddrspace",
+      "path": "modules/axaddrspace"
+    },
+    "axvcpu": {
+      "name": "axvcpu",
+      "path": "modules/axvcpu"
+    },
+    "axdevice": {
+      "name": "axdevice",
+      "path": "modules/axdevice"
+    }
+  },
+  "patches": [
+    {
+      "source": "crates-io",
+      "crate_name": "axaddrspace"
+    },
+    {
+      "source": "crates-io",
+      "crate_name": "axdevice_base"
+    },
+    {
+      "source": "crates-io",
+      "crate_name": "axvisor_api"
+    },
+    {
+      "source": "crates-io",
+      "crate_name": "x86_vcpu"
+    },
+    {
+      "source": "crates-io",
+      "crate_name": "x86_vlapic"
+    },
+    {
+      "source": "https://github.com/arceos-hypervisor/arm_vcpu",
+      "crate_name": "arm_vcpu"
+    },
+    {
+      "source": "https://github.com/arceos-hypervisor/arm_vgic",
+      "crate_name": "arm_vgic"
+    },
+    {
+      "source": "https://github.com/arceos-hypervisor/axdevice",
+      "crate_name": "axdevice"
+    },
+    {
+      "source": "https://github.com/arceos-hypervisor/axvcpu",
+      "crate_name": "axvcpu"
+    },
+    {
+      "source": "https://github.com/arceos-hypervisor/axvmconfig",
+      "crate_name": "axvmconfig"
+    }
+  ]
+}

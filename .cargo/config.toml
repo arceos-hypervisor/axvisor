@@ -18,3 +18,28 @@ rustflags = [
 [alias]
 xtask = "run --package xtask --"
 
+# >>> devspace patches >>>
+# Managed by `cargo xtask devspace`
+[patch."crates-io"]
+axaddrspace = { path = "modules/axaddrspace" }
+axdevice_base = { path = "modules/axdevice_base" }
+axvisor_api = { path = "modules/axvisor_api" }
+x86_vcpu = { path = "modules/x86_vcpu" }
+x86_vlapic = { path = "modules/x86_vlapic" }
+
+[patch."https://github.com/arceos-hypervisor/arm_vcpu"]
+arm_vcpu = { path = "modules/arm_vcpu/" }
+
+[patch."https://github.com/arceos-hypervisor/arm_vgic"]
+arm_vgic = { path = "modules/arm_vgic/" }
+
+[patch."https://github.com/arceos-hypervisor/axdevice"]
+axdevice = { path = "modules/axdevice/" }
+
+[patch."https://github.com/arceos-hypervisor/axvcpu"]
+axvcpu = { path = "modules/axvcpu/" }
+
+[patch."https://github.com/arceos-hypervisor/axvmconfig"]
+axvmconfig = { path = "modules/axvmconfig/" }
+
+# <<< devspace patches <<<

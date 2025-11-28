@@ -1,0 +1,36 @@
+[submodule "modules/axvm"]
+	path = modules/axvm
+	url = https://github.com/arceos-hypervisor/axvm.git
+[submodule "modules/axvcpu"]
+	path = modules/axvcpu
+	url = https://github.com/arceos-hypervisor/axvcpu.git
+[submodule "modules/axdevice"]
+	path = modules/axdevice
+	url = https://github.com/arceos-hypervisor/axdevice.git
+[submodule "modules/arm_vcpu"]
+	path = modules/arm_vcpu
+	url = https://github.com/arceos-hypervisor/arm_vcpu
+[submodule "modules/arm_vgic"]
+	path = modules/arm_vgic
+	url = https://github.com/arceos-hypervisor/arm_vgic.git
+[submodule "modules/axaddrspace"]
+	path = modules/axaddrspace
+	url = https://github.com/arceos-hypervisor/axaddrspace
+[submodule "modules/axdevice_base"]
+	path = modules/axdevice_base
+	url = https://github.com/arceos-hypervisor/axdevice_base.git
+[submodule "modules/axvisor_api"]
+	path = modules/axvisor_api
+	url = https://github.com/arceos-hypervisor/axvisor_api
+[submodule "modules/x86_vcpu"]
+	path = modules/x86_vcpu
+	url = https://github.com/arceos-hypervisor/x86_vcpu
+[submodule "modules/x86_vlapic"]
+	path = modules/x86_vlapic
+	url = https://github.com/arceos-hypervisor/x86_vlapic
+[submodule "modules/axvmconfig"]
+	path = modules/axvmconfig
+	url = https://github.com/arceos-hypervisor/axvmconfig.git
+[submodule "platform/axplat-aarch64-dyn"]
+	path = platform/axplat-aarch64-dyn
+	url = https://github.com/arceos-hypervisor/axplat-aarch64-dyn
