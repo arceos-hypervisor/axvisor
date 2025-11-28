@@ -14,12 +14,17 @@ const PATCH_END_MARKER: &str = "# <<< devspace patches <<<";
 const CRATES_IO_SOURCE_KEY: &str = "crates-io";
 
 const DEVSPACE_REPOS: &[&str] = &[
+    "axvm",
+    "axvcpu",
+    "axdevice",
     "arm_vcpu",
     "arm_vgic",
     "axaddrspace",
     "axdevice_base",
+    "axvisor_api",
     "x86_vcpu",
     "x86_vlapic",
+    "axvmconfig",
 ];
 
 const DEVSPACE_REPO_OVERRIDES: &[(&str, &str)] = &[(
