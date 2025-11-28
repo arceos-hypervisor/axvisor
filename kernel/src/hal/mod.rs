@@ -64,7 +64,7 @@ impl AxVMHal for AxVMHalImpl {
             .ok_or_else(|| ax_err_type!(NotFound))
     }
 
-    fn inject_irq_to_vcpu(vm_id: usize, vcpu_id: usize, irq: usize) -> axerrno::AxResult {
+    fn inject_irq_to_vcpu(vm_id: usize, vcpu_id: usize, irq: usize) -> AxResult {
         vmm::with_vm_and_vcpu_on_pcpu(vm_id, vcpu_id, move |_, vcpu| {
             vcpu.inject_interrupt(irq).unwrap();
         })
