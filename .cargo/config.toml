@@ -39,9 +39,6 @@ axdevice = { path = "modules/axdevice/" }
 [patch."https://github.com/arceos-hypervisor/axvcpu"]
 axvcpu = { path = "modules/axvcpu/" }
 
-[patch."https://github.com/arceos-hypervisor/axvm"]
-axvm = { path = "modules/axvm/" }
-
 [patch."https://github.com/arceos-hypervisor/axvmconfig"]
 axvmconfig = { path = "modules/axvmconfig/" }
 

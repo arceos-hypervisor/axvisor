@@ -42,6 +42,7 @@ axtask = {workspace = true, optional = true}
 
 log = "0.4"
 
+memory_addr = "0.4"
 crate_interface = "0.1"
 ctor_bare = "0.2"
 percpu = {version = "0.2", optional = true}
@@ -53,5 +54,5 @@ chrono = {version = "0.4.38", default-features = false}
 axplat-x86-qemu-q35 = {workspace = true}
 
 [target.'cfg(target_arch = "aarch64")'.dependencies]
-axplat-aarch64-dyn = {git = "https://github.com/arceos-hypervisor/axplat-aarch64-dyn", tag = "v0.3.3", features = ["irq", "smp", "hv"]}
+axplat-aarch64-dyn.workspace = true
 somehal = "0.4"

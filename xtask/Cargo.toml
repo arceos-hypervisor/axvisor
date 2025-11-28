@@ -21,3 +21,6 @@ tokio = {version = "1", features = ["full"]}
 toml.workspace = true
 
 axvmconfig = {workspace = true, features = ["std"]}
+
+# rust 2025-05-19 compat
+zerocopy = "=0.8.28"
