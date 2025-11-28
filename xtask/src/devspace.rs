@@ -117,12 +117,12 @@ fn remove_submodules(modules: &HashMap<String, ManagedModule>) -> Result<()> {
         let git_modules_dir = Path::new(".git/modules").join(path);
         if git_modules_dir.exists() {
             fs::remove_dir_all(&git_modules_dir)
-                .with_context(|| format!("Failed to remove {:?}", git_modules_dir))?;
+                .with_context(|| format!("Failed to remove {git_modules_dir:?}"))?;
         }
         if Path::new(path).exists() {
             let _ = run_git(&["rm", "-f", "--", path]);
             if Path::new(path).exists() {
-                fs::remove_dir_all(path).with_context(|| format!("Failed to remove {}", path))?;
+                fs::remove_dir_all(path).with_context(|| format!("Failed to remove {path}"))?;
             }
         }
     }
@@ -134,7 +134,7 @@ fn compute_patch_specs(metadata: &Metadata, repos: &[DevRepo]) -> Result<Vec<Pat
     let mut specs = BTreeMap::new();
 
     for pkg in &metadata.packages {
-        if let Some(spec) = package_patch_spec(&pkg, &repo_map) {
+        if let Some(spec) = package_patch_spec(pkg, &repo_map) {
             specs
                 .entry((spec.source.clone(), spec.crate_name.clone()))
                 .or_insert(spec);
@@ -154,10 +154,7 @@ fn compute_patch_specs(metadata: &Metadata, repos: &[DevRepo]) -> Result<Vec<Pat
     Ok(specs.into_values().collect())
 }
 
-fn package_patch_spec<'a>(
-    pkg: &Package,
-    repo_map: &HashMap<String, &'a DevRepo>,
-) -> Option<PatchSpec> {
+fn package_patch_spec(pkg: &Package, repo_map: &HashMap<String, &DevRepo>) -> Option<PatchSpec> {
     let source_raw = pkg.source.as_ref()?.to_string();
     let normalized = normalize_source(&source_raw)?;
     let key = repo_lookup_key(&normalized, pkg.name.as_str());
@@ -182,7 +179,7 @@ fn apply_patches(specs: &[PatchSpec]) -> Result<()> {
     let config_path = Path::new(".cargo/config.toml");
     let mut contents = if config_path.exists() {
         fs::read_to_string(config_path)
-            .with_context(|| format!("Failed to read {:?}", config_path))?
+            .with_context(|| format!("Failed to read {config_path:?}"))?
     } else {
         String::new()
     };
@@ -202,8 +199,7 @@ fn apply_patches(specs: &[PatchSpec]) -> Result<()> {
         contents.push('\n');
     }
 
-    fs::write(config_path, contents)
-        .with_context(|| format!("Failed to write {:?}", config_path))?;
+    fs::write(config_path, contents).with_context(|| format!("Failed to write {config_path:?}"))?;
     Ok(())
 }
 
@@ -214,12 +210,12 @@ fn remove_patches(_: &[PatchRecord]) -> Result<()> {
     }
 
     let original = fs::read_to_string(config_path)
-        .with_context(|| format!("Failed to read {:?}", config_path))?;
+        .with_context(|| format!("Failed to read {config_path:?}"))?;
     let (cleaned, removed) = strip_devspace_section(&original);
 
     if removed {
         fs::write(config_path, cleaned)
-            .with_context(|| format!("Failed to write {:?}", config_path))?;
+            .with_context(|| format!("Failed to write {config_path:?}"))?;
     }
     Ok(())
 }
@@ -230,10 +226,9 @@ fn load_state() -> Result<DevspaceState> {
         return Ok(DevspaceState::default());
     }
 
-    let contents =
-        fs::read_to_string(path).with_context(|| format!("Failed to read {:?}", path))?;
+    let contents = fs::read_to_string(path).with_context(|| format!("Failed to read {path:?}"))?;
     let state =
-        serde_json::from_str(&contents).with_context(|| format!("Failed to parse {:?}", path))?;
+        serde_json::from_str(&contents).with_context(|| format!("Failed to parse {path:?}"))?;
     Ok(state)
 }
 
@@ -260,8 +255,7 @@ fn resolve_dev_repos(metadata: &Metadata) -> Result<Vec<DevRepo>> {
 
             if matches.is_empty() {
                 return Err(anyhow!(
-                    "crate {} not found in workspace metadata",
-                    crate_name
+                    "crate {crate_name} not found in workspace metadata"
                 ));
             }
 
@@ -280,7 +274,7 @@ fn resolve_dev_repos(metadata: &Metadata) -> Result<Vec<DevRepo>> {
                 .source
                 .as_ref()
                 .map(|s| s.to_string())
-                .ok_or_else(|| anyhow!("crate {} has no source information", crate_name))?;
+                .ok_or_else(|| anyhow!("crate {crate_name} has no source information"))?;
 
             let (patch_source, git_url) = if source_raw.starts_with("git+") {
                 let normalized = normalize_source(&source_raw).ok_or_else(|| {
@@ -303,22 +297,18 @@ fn resolve_dev_repos(metadata: &Metadata) -> Result<Vec<DevRepo>> {
                     url
                 } else if let Some(url) = override_url {
                     println!(
-                        "crate {} is missing repository metadata; using override {}",
-                        crate_name, url
+                        "crate {crate_name} is missing repository metadata; using override {url}"
                     );
                     url.to_string()
                 } else {
                     return Err(anyhow!(
-                        "crate {} is from crates.io but missing repository metadata",
-                        crate_name
+                        "crate {crate_name} is from crates.io but missing repository metadata"
                     ));
                 };
                 (CRATES_IO_SOURCE_KEY.to_string(), repo_url)
             } else {
                 return Err(anyhow!(
-                    "crate {} uses unsupported source {}",
-                    crate_name,
-                    source_raw
+                    "crate {crate_name} uses unsupported source {source_raw}"
                 ));
             };
 
@@ -326,13 +316,13 @@ fn resolve_dev_repos(metadata: &Metadata) -> Result<Vec<DevRepo>> {
                 name: crate_name.to_string(),
                 git_url,
                 source: patch_source,
-                dest: format!("modules/{}", crate_name),
+                dest: format!("modules/{crate_name}"),
             })
         })
         .collect()
 }
 
-fn build_repo_lookup<'a>(repos: &'a [DevRepo]) -> HashMap<String, &'a DevRepo> {
+fn build_repo_lookup(repos: &[DevRepo]) -> HashMap<String, &DevRepo> {
     repos
         .iter()
         .map(|repo| (repo_lookup_key(&repo.source, &repo.name), repo))
@@ -364,8 +354,7 @@ fn manifest_relative_dir(path: &Path) -> Option<PathBuf> {
 }
 
 fn normalize_source(raw: &str) -> Option<String> {
-    if raw.starts_with("git+") {
-        let trimmed = &raw[4..];
+    if let Some(trimmed) = raw.strip_prefix("git+") {
         let no_fragment = trimmed.split('#').next().unwrap_or(trimmed);
         let no_query = no_fragment.split('?').next().unwrap_or(no_fragment);
         let without_git = no_query.trim_end_matches(".git");
@@ -405,9 +394,9 @@ fn render_devspace_section(specs: &[PatchSpec]) -> String {
 
     let mut iter = grouped.iter().peekable();
     while let Some((source, crates)) = iter.next() {
-        section.push_str(&format!("[patch.\"{}\"]\n", source));
+        section.push_str(&format!("[patch.\"{source}\"]\n"));
         for (crate_name, path) in crates {
-            section.push_str(&format!("{} = {{ path = \"{}\" }}\n", crate_name, path));
+            section.push_str(&format!("{crate_name} = {{ path = \"{path}\" }}\n"));
         }
         if iter.peek().is_some() {
             section.push('\n');
@@ -421,21 +410,21 @@ fn render_devspace_section(specs: &[PatchSpec]) -> String {
 }
 
 fn strip_devspace_section(contents: &str) -> (String, bool) {
-    if let Some(start_idx) = contents.find(PATCH_BEGIN_MARKER) {
-        if let Some(end_rel) = contents[start_idx..].find(PATCH_END_MARKER) {
-            let end_idx = start_idx + end_rel + PATCH_END_MARKER.len();
-            let mut removal_end = end_idx;
-            let tail = &contents[removal_end..];
-            if tail.starts_with("\r\n") {
-                removal_end += 2;
-            } else if tail.starts_with('\n') {
-                removal_end += 1;
-            }
-            let mut result = String::with_capacity(contents.len());
-            result.push_str(&contents[..start_idx]);
-            result.push_str(&contents[removal_end..]);
-            return (result, true);
+    if let Some(start_idx) = contents.find(PATCH_BEGIN_MARKER)
+        && let Some(end_rel) = contents[start_idx..].find(PATCH_END_MARKER)
+    {
+        let end_idx = start_idx + end_rel + PATCH_END_MARKER.len();
+        let mut removal_end = end_idx;
+        let tail = &contents[removal_end..];
+        if tail.starts_with("\r\n") {
+            removal_end += 2;
+        } else if tail.starts_with('\n') {
+            removal_end += 1;
         }
+        let mut result = String::with_capacity(contents.len());
+        result.push_str(&contents[..start_idx]);
+        result.push_str(&contents[removal_end..]);
+        return (result, true);
     }
     (contents.to_string(), false)
 }
@@ -494,5 +483,5 @@ struct DevRepo {
 }
 
 fn repo_lookup_key(source: &str, crate_name: &str) -> String {
-    format!("{}::{}", source, crate_name)
+    format!("{source}::{crate_name}")
 }

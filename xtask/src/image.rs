@@ -402,18 +402,15 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
         writer
             .write_all(&chunk)
             .await
-            .map_err(|e| anyhow!("Error writing to file: {}", e))?;
+            .map_err(|e| anyhow!("Error writing to file: {e}"))?;
 
         // Update progress
         downloaded += chunk.len() as u64;
         if let Some(total) = content_length {
             let percent = (downloaded * 100) / total;
-            print!(
-                "\rDownloading: {}% ({}/{} bytes)",
-                percent, downloaded, total
-            );
+            print!("\rDownloading: {percent}% ({downloaded}/{total} bytes)");
         } else {
-            print!("\rDownloaded: {} bytes", downloaded);
+            print!("\rDownloaded: {downloaded} bytes");
         }
         std::io::Write::flush(&mut std::io::stdout()).unwrap();
     }
@@ -422,7 +419,7 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
     writer
         .flush()
         .await
-        .map_err(|e| anyhow!("Error flushing file: {}", e))?;
+        .map_err(|e| anyhow!("Error flushing file: {e}"))?;
 
     println!("\nDownload completed");
 
