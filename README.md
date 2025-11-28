@@ -95,7 +95,7 @@ AxVisor uses the xtask tool for build management, supporting multiple hardware p
 
 # Contributing
 
-Welcome to fork this repository and submit pull requests. The existence and development of this project thanks to the support of all contributors.
+Welcome to fork this repository and submit pull requests. The existence and development of this project is thanks to the support of all contributors.
 
 <a href="https://github.com/arceos-hypervisor/axvisor/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=arceos-hypervisor/axvisor" />
