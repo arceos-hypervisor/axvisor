@@ -61,7 +61,7 @@ AxVisor 基于 Rust 生态系统构建，通过扩展的 xtask 工具链提供�
 
 ## 构建环境
 
-首先，在 Linux 环境下，需要安装 `libssl-dev libssl-dev gcc libudev-dev pkg-config` 等基本开发工具包。
+首先，在 Linux 环境下，需要安装 `libssl-dev gcc libudev-dev pkg-config` 等基本开发工具包。
 
 其次，AxVisor 是使用 Rust 编程语言编写的，因此，需要根据 Rust 官方网站的说明安装 Rust 开发环境，并使用 `cargo install cargo-binutils` 命令安装 [cargo-binutils](https://github.com/rust-embedded/cargo-binutils) 以便使用 `rust-objcopy` 和 `rust-objdump` 等工具
 
