@@ -31,3 +31,6 @@
 [submodule "modules/axvmconfig"]
 	path = modules/axvmconfig
 	url = https://github.com/arceos-hypervisor/axvmconfig.git
+[submodule "platform/axplat-aarch64-dyn"]
+	path = platform/axplat-aarch64-dyn
+	url = https://github.com/arceos-hypervisor/axplat-aarch64-dyn
