@@ -11,7 +11,7 @@
 //!! ```
 //! // List available images
 //! xtask image ls
-//! // Download a specific image and automatically extract it
+//! // Download a specific image and automatically extract it (default behavior)
 //! xtask image download evm3588_arceos --output-dir ./images
 //! // Download a specific image without extracting
 //! xtask image download evm3588_arceos --output-dir ./images --no-extract
@@ -56,13 +56,9 @@ pub enum ImageCommands {
         #[arg(short, long)]
         output_dir: Option<String>,
         
-        /// Automatically extract after download (default: true)
-        #[arg(
-            short,
-            long,
-            help = "Automatically extract after download (default: true)"
-        )]
-        extract: Option<bool>,
+        /// Do not extract after download
+        #[arg(long, help = "Do not extract after download")]
+        no_extract: bool,
     },
     
     /// Remove the specified image from temp directory
@@ -540,9 +536,11 @@ pub async fn run_image(args: ImageArgs) -> Result<()> {
         ImageCommands::Download {
             image_name,
             output_dir,
-            extract,
+            no_extract,
         } => {
-            image_download(&image_name, output_dir, extract.unwrap_or(true)).await?;
+            // Determine if extraction should be performed
+            let should_extract = !no_extract;
+            image_download(&image_name, output_dir, should_extract).await?;
         }
         ImageCommands::Rm { image_name } => {
             image_remove(&image_name)?;
