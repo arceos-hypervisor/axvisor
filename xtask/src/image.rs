@@ -48,7 +48,6 @@ pub enum ImageCommands {
     Ls,
     
     /// Download the specified image and automatically extract it
-    #[command(alias = "pull")]
     Download {
         /// Name of the image to download
         image_name: String,
@@ -326,8 +325,6 @@ fn image_list() -> Result<()> {
 /// ```
 /// // Download the evm3588_arceos image to the ./images directory and automatically extract it
 /// xtask image download evm3588_arceos --output-dir ./images
-/// // Or use the pull alias
-/// xtask image pull evm3588_arceos --output-dir ./images
 /// ```
 async fn image_download(image_name: &str, output_dir: Option<String>, extract: bool) -> Result<()> {
     let image = Image::find_by_name(image_name).ok_or_else(|| {
@@ -432,8 +429,6 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
         .await
         .map_err(|e| anyhow!("Error flushing file: {e}"))?;
 
-    println!("\nDownload completed");
-
     // Verify downloaded file
     match image_verify_sha256(&output_path, image.sha256) {
         Ok(true) => {
@@ -442,12 +437,12 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
         Ok(false) => {
             // Remove the invalid downloaded file
             let _ = fs::remove_file(&output_path);
-            return Err(anyhow!("Downloaded file SHA256 verification failed"));
+            return Err(anyhow!("Download completed but file SHA256 verification failed"));
         }
         Err(e) => {
             // Remove the potentially corrupted downloaded file
             let _ = fs::remove_file(&output_path);
-            return Err(anyhow!("Error verifying downloaded file: {e}"));
+            return Err(anyhow!("Download completed but error verifying downloaded file: {e}"));
         }
     }
 
@@ -535,8 +530,6 @@ fn image_remove(image_name: &str) -> Result<()> {
 /// // Run image management commands
 /// xtask image ls
 /// xtask image download evm3588_arceos --output-dir ./images
-/// // Or use the pull alias
-/// xtask image pull evm3588_arceos --output-dir ./images
 /// xtask image rm evm3588_arceos
 /// ```
 pub async fn run_image(args: ImageArgs) -> Result<()> {
