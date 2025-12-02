@@ -43,14 +43,20 @@ pub struct ImageArgs {
 /// Image management commands
 #[derive(Subcommand)]
 pub enum ImageCommands {
-    /// List all available image
+    /// List all available images
     Ls,
+    
     /// Download the specified image and automatically extract it
     #[command(alias = "pull")]
     Download {
+        /// Name of the image to download
         image_name: String,
+        
+        /// Output directory for the downloaded image
         #[arg(short, long)]
         output_dir: Option<String>,
+        
+        /// Automatically extract after download (default: true)
         #[arg(
             short,
             long,
@@ -58,8 +64,12 @@ pub enum ImageCommands {
         )]
         extract: Option<bool>,
     },
+    
     /// Remove the specified image from temp directory
-    Rm { image_name: String },
+    Rm {
+        /// Name of the image to remove
+        image_name: String
+    },
 }
 
 /// Representation of a guest image
