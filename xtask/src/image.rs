@@ -21,12 +21,13 @@
 
 use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand};
+use flate2::read::GzDecoder;
 use sha2::{Digest, Sha256};
 use std::env;
 use std::fs;
 use std::io::Read;
 use std::path::Path;
-use std::process::Command;
+use tar::Archive;
 use tokio::io::{AsyncWriteExt, BufWriter};
 
 /// Base URL for downloading images
@@ -463,18 +464,13 @@ async fn image_download(image_name: &str, output_dir: Option<String>, extract: b
         // Ensure extraction directory exists
         fs::create_dir_all(&extract_dir)?;
 
-        // Use tar command to extract file
-        let mut child = Command::new("tar")
-            .arg("-xzf")
-            .arg(&output_path)
-            .arg("-C")
-            .arg(&extract_dir)
-            .spawn()?;
+        // Open the compressed tar file
+        let tar_gz = fs::File::open(&output_path)?;
+        let decoder = GzDecoder::new(tar_gz);
+        let mut archive = Archive::new(decoder);
 
-        let status = child.wait()?;
-        if !status.success() {
-            return Err(anyhow!("Extraction failed, tar exit code: {status}"));
-        }
+        // Extract the archive
+        archive.unpack(&extract_dir)?;
 
         println!("Image extracted to: {}", extract_dir.display());
     }
