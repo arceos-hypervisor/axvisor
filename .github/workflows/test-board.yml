@@ -65,8 +65,8 @@ jobs:
           cargo xtask uboot \
             --build-config configs/board/${{ matrix.board }}.toml \
             --uboot-config .github/workflows/uboot.toml \
-            --vmconfigs ${{ matrix.vmconfigs }}
-            --bin-dir /home/runner/test/${{ matrix.board }}
+            --vmconfigs ${{ matrix.vmconfigs }} \
+            --bin-dir /home/runner/tftp/${{ matrix.board }}
           # cargo xtask uboot \
           #   --build-config configs/board/${{ matrix.board }}.toml \
           #   --uboot-config .github/workflows/uboot.toml
