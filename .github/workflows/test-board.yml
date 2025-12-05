@@ -15,20 +15,24 @@ jobs:
             vmconfigs: configs/vms/arceos-aarch64-e2000-smp1.toml
             vmconfigs_name: ArceOS
             vmimage_name: phytiumpi_arceos
+            tftp_dir: phytiumpi
           - board: phytiumpi
             vmconfigs: configs/vms/linux-aarch64-e2000-smp1.toml
             vmconfigs_name: Linux
             vmimage_name: phytiumpi_linux
+            tftp_dir: phytiumpi
           - board: roc-rk3568-pc
             vmconfigs: configs/vms/arceos-aarch64-rk3568-smp1.toml
             vmconfigs_name: ArceOS
             # Multiple image archive names separated by commas, for example, roc-rk3568-pc_arceos,roc-rk3568-pc_linux[,...]
             vmimage_name: roc-rk3568-pc_arceos
+            tftp_dir: roc-rk3568-pc
           - board: roc-rk3568-pc
             vmconfigs: configs/vms/linux-aarch64-rk3568-smp1.toml
             vmconfigs_name: Linux
             # Multiple image archive names separated by commas, for example, roc-rk3568-pc_arceos,roc-rk3568-pc_linux[,...]
             vmimage_name: roc-rk3568-pc_linux
+            tftp_dir: roc-rk3568-pc
       fail-fast: false
     runs-on:
       - self-hosted
@@ -66,6 +70,7 @@ jobs:
             --build-config configs/board/${{ matrix.board }}.toml \
             --uboot-config .github/workflows/uboot.toml \
             --vmconfigs ${{ matrix.vmconfigs }}
+            --build-dir 
           # cargo xtask uboot \
           #   --build-config configs/board/${{ matrix.board }}.toml \
           #   --uboot-config .github/workflows/uboot.toml
