@@ -2,10 +2,10 @@
 //!
 //! TODO: it doesn't work very well if the mount points have containment relationships.
 
-use alloc::{borrow::ToOwned, format, string::String, sync::Arc, vec::Vec};
+use alloc::{borrow::ToOwned, string::String, sync::Arc, vec::Vec};
 use axerrno::{AxError, AxResult, ax_err};
 use axfs_vfs::{VfsNodeAttr, VfsNodeOps, VfsNodeRef, VfsNodeType, VfsOps, VfsResult};
-use axsync::Mutex;
+use spin::Mutex;
 use lazyinit::LazyInit;
 
 use crate::{
@@ -171,7 +171,7 @@ pub(crate) fn init_rootfs_with_ramfs() {
     info!("Initializing root filesystem with ramfs");
     let main_fs = mounts::ramfs();
     let root_dir = RootDirectory::new(main_fs);
-    mounted_on_root_dir(root_dir);
+    init_root_dir(root_dir);
 }
 
 /// Find and create root filesystem from partitions
@@ -285,23 +285,26 @@ fn mount_additional_partitions(
             continue;
         }
 
-        // Only mount partitions with supported filesystems
+        // Mount boot partition
         if partition.filesystem_type.is_some() {
-            mount_single_partition(disk, root_dir, partition, i);
+            mount_boot_partition(disk, root_dir, partition);
         }
     }
 }
 
-/// Mount a single partition
-fn mount_single_partition(
+/// Mount boot partition
+fn mount_boot_partition(
     disk: &Arc<crate::dev::Disk>,
     root_dir: &mut RootDirectory,
     partition: &PartitionInfo,
-    index: usize,
 ) {
+    if partition.name != "boot" {
+        return;
+    }
+
     match create_filesystem_for_partition((**disk).clone(), partition) {
         Ok(fs) => {
-            let mount_path = format!("/boot/sda{}", index);
+            let mount_path = String::from("/boot");
             info!(
                 "Mounting partition '{}' at '{}'",
                 partition.name, mount_path
@@ -368,20 +371,11 @@ pub(crate) fn init_rootfs_with_partitions(
         actual_root_partition_index,
     );
 
-    mounted_on_root_dir(root_dir);
+    init_root_dir(root_dir);
     true
 }
 
-pub fn mounted_on_root_dir(mut root_dir: RootDirectory) {
-    // Mount virtual filesystems
-    if let Err(e) = root_dir
-        .mount("/dev", mounts::devfs())
-        .and_then(|_| root_dir.mount("/proc", mounts::procfs().unwrap()))
-        .and_then(|_| root_dir.mount("/sys", mounts::sysfs().unwrap()))
-    {
-        panic!("Failed to mount virtual filesystems: {:?}", e);
-    }
-
+pub fn init_root_dir(mut root_dir: RootDirectory) {
     // Initialize global state
     let root_dir = Arc::new(root_dir);
     ROOT_DIR.init_once(root_dir.clone());

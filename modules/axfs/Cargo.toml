@@ -16,12 +16,12 @@ axfs_devfs = {version = "0.1"}
 axfs_ramfs = {version = "0.1"}
 axfs_vfs = "0.1"
 axio = {version = "0.1", features = ["alloc"]}
-axsync = {workspace = true}
 cap_access = "0.1"
 cfg-if = "1.0"
 lazyinit = "0.2"
+spin = "0.9"
 log = "0.4"
-lwext4_rust = {git = "https://github.com/Josen-B/lwext4_rust.git"}
+lwext4_rust = {path = "/code/axvisor/crates/lwext4_rust"}
 
 [dependencies.fatfs]
 default-features = false
@@ -32,11 +32,9 @@ features = [
   "log_level_trace",
   "unicode",
 ]
-git = "https://github.com/rafalh/rust-fatfs"
-rev = "4eccb50"
+git = "https://github.com/Josen-B/rust-fatfs.git"
+rev = "41122ef"
 
 [dev-dependencies]
 axdriver = {workspace = true, features = ["block", "ramdisk"]}
 axdriver_block = {git = "https://github.com/arceos-org/axdriver_crates.git", tag = "v0.1.2", features = ["ramdisk"]}
-axsync = {workspace = true, features = ["multitask"]}
-axtask = {workspace = true, features = ["test"]}
