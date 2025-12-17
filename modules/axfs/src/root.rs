@@ -2,9 +2,9 @@
 //!
 //! TODO: it doesn't work very well if the mount points have containment relationships.
 
-use alloc::{borrow::ToOwned, string::String, sync::Arc, vec::Vec};
+use alloc::{borrow::ToOwned, collections::BTreeMap, format, string::{String, ToString}, sync::Arc, vec::Vec};
 use axerrno::{AxError, AxResult, ax_err};
-use axfs_vfs::{VfsNodeAttr, VfsNodeOps, VfsNodeRef, VfsNodeType, VfsOps, VfsResult};
+use axfs_vfs::{VfsNodeAttr, VfsNodeOps, VfsNodeRef, VfsNodeType, VfsOps, VfsResult, VfsDirEntry};
 use spin::Mutex;
 use lazyinit::LazyInit;
 
@@ -156,14 +156,47 @@ impl VfsNodeOps for RootDirectory {
         })
     }
 
-    fn rename(&self, src_path: &str, dst_path: &str) -> VfsResult {
-        self.lookup_mounted_fs(src_path, |fs, rest_path| {
-            if rest_path.is_empty() {
-                ax_err!(PermissionDenied) // cannot rename mount points
-            } else {
-                fs.root_dir().rename(rest_path, dst_path)
+    fn read_dir(&self, start_idx: usize, dirents: &mut [VfsDirEntry]) -> VfsResult<usize> {
+        let mut all_entries = Vec::new();
+
+        // Add mount points
+        for mp in &self.mounts {
+            let name = &mp.path[1..];
+            all_entries.push((name.to_string(), VfsNodeType::Dir));
+        }
+
+        // Add from main_fs
+        let mut main_dirents = Vec::with_capacity(64);
+        for _ in 0..64 {
+            main_dirents.push(VfsDirEntry::default());
+        }
+        let main_count = self.main_fs.root_dir().read_dir(0, &mut main_dirents)?;
+        for i in 0..main_count {
+            let name_bytes = main_dirents[i].name_as_bytes();
+            if let Ok(name_str) = core::str::from_utf8(name_bytes) {
+                if !name_str.is_empty() {
+                    let ty = main_dirents[i].entry_type();
+                    all_entries.push((name_str.to_string(), ty));
+                }
             }
-        })
+        }
+
+        // Unique
+        let mut unique = BTreeMap::new();
+        for (name, ty) in all_entries {
+            unique.insert(name, ty);
+        }
+
+        let unique_vec: Vec<_> = unique.into_iter().collect();
+        let mut count = 0;
+        for (name, ty) in unique_vec.iter().skip(start_idx) {
+            if count >= dirents.len() {
+                break;
+            }
+            dirents[count] = VfsDirEntry::new(name, *ty);
+            count += 1;
+        }
+        Ok(count)
     }
 }
 
@@ -171,7 +204,7 @@ pub(crate) fn init_rootfs_with_ramfs() {
     info!("Initializing root filesystem with ramfs");
     let main_fs = mounts::ramfs();
     let root_dir = RootDirectory::new(main_fs);
-    init_root_dir(root_dir);
+    mounted_on_root_dir(root_dir);
 }
 
 /// Find and create root filesystem from partitions
@@ -285,26 +318,29 @@ fn mount_additional_partitions(
             continue;
         }
 
-        // Mount boot partition
+        // Only mount partitions with supported filesystems
         if partition.filesystem_type.is_some() {
-            mount_boot_partition(disk, root_dir, partition);
+            mount_single_partition(disk, root_dir, partition, i);
         }
     }
 }
 
-/// Mount boot partition
-fn mount_boot_partition(
+/// Mount a single partition
+fn mount_single_partition(
     disk: &Arc<crate::dev::Disk>,
     root_dir: &mut RootDirectory,
     partition: &PartitionInfo,
+    index: usize,
 ) {
-    if partition.name != "boot" {
-        return;
-    }
-
     match create_filesystem_for_partition((**disk).clone(), partition) {
         Ok(fs) => {
-            let mount_path = String::from("/boot");
+            // Determine mount path based on partition name
+            let mount_path = if partition.name.to_lowercase().contains("boot") {
+                String::from("/boot")
+            } else {
+                format!("/{}", partition.name)
+            };
+            
             info!(
                 "Mounting partition '{}' at '{}'",
                 partition.name, mount_path
@@ -371,11 +407,20 @@ pub(crate) fn init_rootfs_with_partitions(
         actual_root_partition_index,
     );
 
-    init_root_dir(root_dir);
+    mounted_on_root_dir(root_dir);
     true
 }
 
-pub fn init_root_dir(mut root_dir: RootDirectory) {
+pub fn mounted_on_root_dir(mut root_dir: RootDirectory) {
+    // Mount virtual filesystems
+    if let Err(e) = root_dir
+        .mount("/dev", mounts::devfs())
+        .and_then(|_| root_dir.mount("/proc", mounts::procfs().unwrap()))
+        .and_then(|_| root_dir.mount("/sys", mounts::sysfs().unwrap()))
+    {
+        panic!("Failed to mount virtual filesystems: {:?}", e);
+    }
+
     // Initialize global state
     let root_dir = Arc::new(root_dir);
     ROOT_DIR.init_once(root_dir.clone());

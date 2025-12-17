@@ -219,13 +219,29 @@ fn parse_gpt_partitions(disk: &mut Disk) -> AxResult<Vec<PartitionInfo>> {
 
         // Convert partition name from UTF-16LE to UTF-8
         let name_str = {
+            // First, copy the partition name to a local array to avoid packed field reference
             let mut name_utf16 = [0u16; 36];
             for j in 0..36 {
                 name_utf16[j] = entry.partition_name[j];
             }
-            String::from_utf16_lossy(&name_utf16)
-                .trim_end_matches('\0')
-                .to_owned()
+            
+            // Find the null terminator
+            let mut name_len = 36;
+            for j in 0..36 {
+                if name_utf16[j] == 0 {
+                    name_len = j;
+                    break;
+                }
+            }
+            
+            // Convert only the valid portion
+            let name_slice = &name_utf16[..name_len];
+            let name_str = String::from_utf16_lossy(name_slice);
+            debug!(
+                "Partition {}: UTF-16LE name (len={}): {:?}, UTF-8 name: '{}'",
+                i, name_len, name_slice, name_str
+            );
+            name_str
         };
 
         if name_str.is_empty() {
@@ -285,13 +301,6 @@ fn detect_filesystem_type(disk: &mut Disk, start_lba: u64) -> Option<FilesystemT
 
     // Restore position
     disk.set_position(original_position);
-
-    // Debug: print first bytes of boot sector
-    debug!(
-        "Boot sector at LBA {}: first 64 bytes: {:?}",
-        start_lba,
-        &boot_sector[..64]
-    );
 
     // Check for FAT filesystem
     if is_fat_filesystem(&boot_sector) {
