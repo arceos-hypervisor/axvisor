@@ -15,7 +15,7 @@ axerrno = "0.1"
 axfs_devfs = {version = "0.1"}
 axfs_ramfs = {version = "0.1"}
 axfs_vfs = "0.1"
-axio = {version = "0.1", features = ["alloc"]}
+axio = {version = "0.2", features = ["alloc"]}
 cap_access = "0.1"
 cfg-if = "1.0"
 lazyinit = "0.2"

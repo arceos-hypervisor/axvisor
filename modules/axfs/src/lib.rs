@@ -1,22 +1,6 @@
-//! [ArceOS](https://github.com/arceos-org/arceos) filesystem module.
-//!
-//! It provides unified filesystem operations for various filesystems.
-//!
-//! # Cargo Features
-//!
-//! - `fatfs`: Use [FAT] as the main filesystem and mount it on `/`. This feature
-//!   is **enabled** by default.
-//! - `devfs`: Mount [`axfs_devfs::DeviceFileSystem`] on `/dev`. This feature is
-//!   **enabled** by default.
-//! - `ramfs`: Mount [`axfs_ramfs::RamFileSystem`] on `/tmp`. This feature is
-//!   **enabled** by default.
-//!
-//! [FAT]: https://en.wikipedia.org/wiki/File_Allocation_Table
-//! [`MyFileSystemIf`]: fops::MyFileSystemIf
+//! AXFS - ArceOS eXtended File System
 
 #![cfg_attr(all(not(test), not(doc)), no_std)]
-#![feature(doc_auto_cfg)]
-
 #[macro_use]
 extern crate log;
 extern crate alloc;

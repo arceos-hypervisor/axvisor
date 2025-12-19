@@ -211,7 +211,7 @@ pub(crate) fn init_rootfs_with_ramfs() {
     info!("Initializing root filesystem with ramfs");
     let main_fs = mounts::ramfs();
     let root_dir = RootDirectory::new(main_fs);
-    mounted_on_root_dir(root_dir);
+    mount_virtual_fs(root_dir);
 }
 
 /// Find and create root filesystem from partitions
@@ -413,11 +413,11 @@ pub(crate) fn init_rootfs_with_partitions(
         actual_root_partition_index,
     );
 
-    mounted_on_root_dir(root_dir);
+    mount_virtual_fs(root_dir);
     true
 }
 
-pub fn mounted_on_root_dir(mut root_dir: RootDirectory) {
+pub fn mount_virtual_fs(mut root_dir: RootDirectory) {
     // Mount virtual filesystems
     if let Err(e) = root_dir
         .mount("/dev", mounts::devfs())
