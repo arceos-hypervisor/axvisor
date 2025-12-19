@@ -1,11 +1,10 @@
-use alloc::collections::BTreeMap;
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
-
-use alloc::format;
-use alloc::sync::Arc;
-pub use axdriver_block::DevError;
-use axerrno::AxError;
+use alloc::{
+    collections::BTreeMap,
+    format,
+    string::{String, ToString},
+    sync::Arc,
+    vec::Vec,
+};
 use axfs_vfs::{
     VfsDirEntry, VfsError, VfsNodeAttr, VfsNodeOps, VfsNodePerm, VfsNodeRef, VfsNodeType, VfsOps,
     VfsResult,
@@ -43,11 +42,13 @@ unsafe impl Send for Ext4FileSystemPartition {}
 
 impl Ext4FileSystem {
     #[cfg(feature = "use-ramdisk")]
+    #[allow(dead_code)]
     pub fn new(mut disk: Disk) -> Self {
         unimplemented!()
     }
 
     #[cfg(not(feature = "use-ramdisk"))]
+    #[allow(dead_code)]
     pub fn new(disk: Disk) -> Self {
         info!(
             "Got Disk size:{}, position:{}",
@@ -161,7 +162,7 @@ impl VfsNodeOps for FileWrapper {
     fn get_attr(&self) -> VfsResult<VfsNodeAttr> {
         let mut fs = self.fs.lock();
         let perm = VfsNodePerm::from_bits_truncate(0o755);
-        let (inode_num, inode) = match self.inner {
+        let (_inode_num, inode) = match self.inner {
             Ext4Inner::Disk(ref inner) => {
                 let mut inner = inner.lock();
                 get_inode_with_num(&mut *fs, &mut *inner, &self.path)
@@ -232,7 +233,7 @@ impl VfsNodeOps for FileWrapper {
         assert!(!fpath.is_empty()); // already check at `root.rs`
 
         let mut fs = self.fs.lock();
-        let (inode_num, inode) = match self.inner {
+        let (_inode_num, inode) = match self.inner {
             Ext4Inner::Disk(ref inner) => {
                 let mut inner = inner.lock();
                 get_inode_with_num(&mut *fs, &mut *inner, &fpath)
@@ -287,7 +288,7 @@ impl VfsNodeOps for FileWrapper {
     /// Read directory entries into `dirents`, starting from `start_idx`.
     fn read_dir(&self, start_idx: usize, dirents: &mut [VfsDirEntry]) -> VfsResult<usize> {
         let mut fs = self.fs.lock();
-        let (inode_num, mut inode) = match self.inner {
+        let (_inode_num, mut inode) = match self.inner {
             Ext4Inner::Disk(ref inner) => {
                 let mut inner = inner.lock();
                 get_inode_with_num(&mut *fs, &mut *inner, &self.path)

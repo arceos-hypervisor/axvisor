@@ -101,6 +101,7 @@ unsafe impl Sync for DirWrapper<'_> {}
 
 impl FatFileSystem {
     #[cfg(feature = "use-ramdisk")]
+    #[allow(dead_code)]
     pub fn new(mut disk: Disk) -> Self {
         let opts = fatfs::FormatVolumeOptions::new();
         fatfs::format_volume(&mut disk, opts).expect("failed to format volume");
@@ -114,6 +115,7 @@ impl FatFileSystem {
     }
 
     #[cfg(not(feature = "use-ramdisk"))]
+    #[allow(dead_code)]
     pub fn new(disk: Disk) -> Self {
         let disk_size = disk.size();
         let wrapper = PartitionWrapper::new(crate::dev::Partition::new(disk, 0, disk_size / 512));
@@ -136,6 +138,7 @@ impl FatFileSystem {
         }
     }
 
+    #[allow(dead_code)]
     pub fn init(&'static self) {
         // root_dir is already initialized in new(), so nothing to do here
     }

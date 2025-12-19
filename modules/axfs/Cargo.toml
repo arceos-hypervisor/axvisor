@@ -21,7 +21,7 @@ cfg-if = "1.0"
 lazyinit = "0.2"
 spin = "0.9"
 log = "0.4"
-rsext4 = {path = "/code/axvisor/crates/RVlwext4"}
+rsext4 = {git = "https://github.com/Josen-B/RVlwext4.git"}
 
 [dependencies.fatfs]
 default-features = false

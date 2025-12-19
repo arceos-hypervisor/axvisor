@@ -133,11 +133,6 @@ impl Partition {
         self.position = pos.min(self.size());
     }
 
-    /// Get the starting LBA of the partition.
-    pub fn start_lba(&self) -> u64 {
-        self.start_lba
-    }
-
     /// Read within one block, returns the number of bytes read.
     pub fn read_one(&mut self, buf: &mut [u8]) -> DevResult<usize> {
         if self.position >= self.size() {

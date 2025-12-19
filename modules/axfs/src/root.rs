@@ -2,11 +2,18 @@
 //!
 //! TODO: it doesn't work very well if the mount points have containment relationships.
 
-use alloc::{borrow::ToOwned, collections::BTreeMap, format, string::{String, ToString}, sync::Arc, vec::Vec};
+use alloc::{
+    borrow::ToOwned,
+    collections::BTreeMap,
+    format,
+    string::{String, ToString},
+    sync::Arc,
+    vec::Vec,
+};
 use axerrno::{AxError, AxResult, ax_err};
-use axfs_vfs::{VfsNodeAttr, VfsNodeOps, VfsNodeRef, VfsNodeType, VfsOps, VfsResult, VfsDirEntry};
-use spin::Mutex;
+use axfs_vfs::{VfsDirEntry, VfsNodeAttr, VfsNodeOps, VfsNodeRef, VfsNodeType, VfsOps, VfsResult};
 use lazyinit::LazyInit;
+use spin::Mutex;
 
 use crate::{
     api::FileType,
@@ -320,7 +327,7 @@ fn mount_additional_partitions(
 
         // Only mount partitions with supported filesystems
         if partition.filesystem_type.is_some() {
-            mount_single_partition(disk, root_dir, partition, i);
+            mount_single_partition(disk, root_dir, partition);
         }
     }
 }
@@ -330,7 +337,6 @@ fn mount_single_partition(
     disk: &Arc<crate::dev::Disk>,
     root_dir: &mut RootDirectory,
     partition: &PartitionInfo,
-    index: usize,
 ) {
     match create_filesystem_for_partition((**disk).clone(), partition) {
         Ok(fs) => {
@@ -340,7 +346,7 @@ fn mount_single_partition(
             } else {
                 format!("/{}", partition.name)
             };
-            
+
             info!(
                 "Mounting partition '{}' at '{}'",
                 partition.name, mount_path

@@ -3,7 +3,7 @@
 //! This module provides functionality to scan GPT partition tables and detect
 //! filesystem types on each partition.
 
-use alloc::{borrow::ToOwned, format, string::String, sync::Arc, vec, vec::Vec};
+use alloc::{format, string::String, sync::Arc, vec, vec::Vec};
 use axerrno::{AxResult, ax_err};
 use axfs_vfs::VfsOps;
 use log::{debug, info, warn};
@@ -18,6 +18,7 @@ pub struct PartitionInfo {
     /// Partition name
     pub name: String,
     /// Partition type GUID
+    #[allow(dead_code)]
     pub partition_type_guid: [u8; 16],
     /// Unique partition GUID
     pub unique_partition_guid: [u8; 16],
