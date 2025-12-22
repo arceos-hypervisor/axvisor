@@ -420,8 +420,7 @@ pub(crate) fn init_rootfs_with_partitions(
 pub fn mount_virtual_fs(mut root_dir: RootDirectory) {
     // Mount virtual filesystems
     if let Err(e) = root_dir
-        .mount("/dev", mounts::devfs())
-        .and_then(|_| root_dir.mount("/proc", mounts::procfs().unwrap()))
+        .mount("/proc", mounts::procfs().unwrap())
         .and_then(|_| root_dir.mount("/sys", mounts::sysfs().unwrap()))
     {
         panic!("Failed to mount virtual filesystems: {:?}", e);

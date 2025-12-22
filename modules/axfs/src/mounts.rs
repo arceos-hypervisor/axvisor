@@ -3,20 +3,6 @@ use axfs_vfs::{VfsNodeType, VfsOps, VfsResult};
 
 use crate::fs;
 
-pub(crate) fn devfs() -> Arc<fs::devfs::DeviceFileSystem> {
-    let null = fs::devfs::NullDev;
-    let zero = fs::devfs::ZeroDev;
-    let urandom = fs::devfs::UrandomDev::default();
-    let bar = fs::devfs::ZeroDev;
-    let devfs = fs::devfs::DeviceFileSystem::new();
-    let foo_dir = devfs.mkdir("foo");
-    devfs.add("null", Arc::new(null));
-    devfs.add("zero", Arc::new(zero));
-    devfs.add("urandom", Arc::new(urandom));
-    foo_dir.add("bar", Arc::new(bar));
-    Arc::new(devfs)
-}
-
 pub(crate) fn ramfs() -> Arc<fs::ramfs::RamFileSystem> {
     Arc::new(fs::ramfs::RamFileSystem::new())
 }

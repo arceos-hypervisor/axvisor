@@ -12,12 +12,10 @@ use-ramdisk = []
 axdriver = {workspace = true, features = ["block"]}
 axdriver_block = {git = "https://github.com/arceos-org/axdriver_crates.git", tag = "v0.1.2"}
 axerrno = "0.1"
-axfs_devfs = {version = "0.1"}
 axfs_ramfs = {version = "0.1"}
 axfs_vfs = "0.1"
 axio = {version = "0.2", features = ["alloc"]}
 cap_access = "0.1"
-cfg-if = "1.0"
 lazyinit = "0.2"
 spin = "0.9"
 log = "0.4"
