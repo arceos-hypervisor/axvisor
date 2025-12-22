@@ -208,7 +208,7 @@ impl VfsNodeOps for FileWrapper {
                         mkdir(&mut *inner, &mut *fs, &fpath);
                     }
                     _ => {
-                        mkfile(&mut *inner, &mut *fs, &fpath, None);
+                        mkfile(&mut *inner, &mut *fs, &fpath, None, None);
                     }
                 }
             }
@@ -219,7 +219,7 @@ impl VfsNodeOps for FileWrapper {
                         mkdir(&mut *inner, &mut *fs, &fpath);
                     }
                     _ => {
-                        mkfile(&mut *inner, &mut *fs, &fpath, None);
+                        mkfile(&mut *inner, &mut *fs, &fpath, None, None);
                     }
                 }
             }
@@ -321,18 +321,18 @@ impl VfsNodeOps for FileWrapper {
         };
 
         let mut data = Vec::new();
-        for phys in blocks {
+        for (_, phys_block) in blocks {
             let cached = match self.inner {
                 Ext4Inner::Disk(ref inner) => {
                     let mut inner = inner.lock();
                     fs.datablock_cache
-                        .get_or_load(&mut *inner, phys)
+                        .get_or_load(&mut *inner, phys_block)
                         .map_err(|_| VfsError::Io)?
                 }
                 Ext4Inner::Partition(ref inner) => {
                     let mut inner = inner.lock();
                     fs.datablock_cache
-                        .get_or_load(&mut *inner, phys)
+                        .get_or_load(&mut *inner, phys_block)
                         .map_err(|_| VfsError::Io)?
                 }
             };
@@ -418,7 +418,7 @@ impl VfsNodeOps for FileWrapper {
 
         if let Some(ref mut file) = *file_guard {
             let mut fs = self.fs.lock();
-            lseek(file, offset as usize);
+            lseek(file, offset);
             let data = match self.inner {
                 Ext4Inner::Disk(ref inner) => {
                     let mut inner = inner.lock();
@@ -442,12 +442,12 @@ impl VfsNodeOps for FileWrapper {
         match self.inner {
             Ext4Inner::Disk(ref inner) => {
                 let mut inner = inner.lock();
-                write_file(&mut *inner, &mut *fs, &self.path, offset as usize, buf)
+                write_file(&mut *inner, &mut *fs, &self.path, offset, buf)
                     .map_err(|_| VfsError::Io)?;
             }
             Ext4Inner::Partition(ref inner) => {
                 let mut inner = inner.lock();
-                write_file(&mut *inner, &mut *fs, &self.path, offset as usize, buf)
+                write_file(&mut *inner, &mut *fs, &self.path, offset, buf)
                     .map_err(|_| VfsError::Io)?;
             }
         };

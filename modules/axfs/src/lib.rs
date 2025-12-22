@@ -1,5 +1,4 @@
-//! AXFS - ArceOS eXtended File System
-
+//! AXFS - Axvisor Filesystem Module
 #![cfg_attr(all(not(test), not(doc)), no_std)]
 #[macro_use]
 extern crate log;

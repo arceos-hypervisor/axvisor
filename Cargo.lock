@@ -617,7 +617,7 @@ dependencies = [
  "fatfs",
  "lazyinit",
  "log",
- "rsext4 0.1.0 (git+https://github.com/Josen-B/RVlwext4.git)",
+ "rsext4 0.1.0 (git+https://github.com/Dirinkbottle/rsext4.git?tag=dev-251222)",
  "spin 0.9.8",
 ]
 
@@ -5072,7 +5072,7 @@ dependencies = [
 [[package]]
 name = "rsext4"
 version = "0.1.0"
-source = "git+https://github.com/Josen-B/RVlwext4.git#3fed0bf5b7ab5d1b54b8aa285592d5641c747707"
+source = "git+https://github.com/Dirinkbottle/rsext4.git?tag=dev-251222#376e253cc6b8767bc14ca5054fbc1ae49f7a8c8d"
 dependencies = [
  "bitflags 2.10.0",
  "lazy_static",
