@@ -8,14 +8,15 @@ extern crate log;
 extern crate alloc;
 
 extern crate axstd as std;
-
-// extern crate axruntime;
 extern crate driver;
 
+// extern crate axruntime;
+
 mod logo;
-// mod shell;
 mod task;
-mod vmm;
+
+pub use axvisor_vmm::*;
+pub use axvisor_shell::*;
 
 #[unsafe(no_mangle)]
 fn main() {
@@ -24,11 +25,11 @@ fn main() {
     info!("Starting virtualization...");
     // info!("Hardware support: {:?}", axvm::has_hardware_support());
 
-    vmm::init();
-    vmm::start_preconfigured_vms().unwrap();
+    axvisor_vmm::init();
+    axvisor_vmm::start_preconfigured_vms().unwrap();
 
     info!("[OK] Default guest initialized");
-    vmm::wait_for_all_vms_exit();
+    axvisor_vmm::wait_for_all_vms_exit();
     info!("All guest VMs exited.");
-    // shell::console_init();
+    axvisor_shell::console_init();
 }

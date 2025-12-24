@@ -1078,10 +1078,11 @@ name = "axvisor"
 version = "0.3.0"
 dependencies = [
  "anyhow",
- "axconfig",
  "axerrno 0.2.2",
  "axhvc",
  "axstd",
+ "axvisor-shell",
+ "axvisor-vmm",
  "axvm",
  "axvmconfig",
  "bitflags 2.10.0",
@@ -1092,15 +1093,37 @@ dependencies = [
  "extern-trait",
  "kernel_guard",
  "kspin",
- "lazy_static",
  "lazyinit",
  "log",
  "memory_addr",
+ "timer_list",
+ "toml 0.9.10+spec-1.1.0",
+]
+
+[[package]]
+name = "axvisor-shell"
+version = "0.1.0"
+dependencies = [
+ "axstd",
+ "axvisor-vmm",
+ "axvm",
+ "lazy_static",
+ "log",
+]
+
+[[package]]
+name = "axvisor-vmm"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axconfig",
+ "axvm",
+ "axvmconfig",
+ "log",
  "prettyplease",
  "quote",
  "spin 0.9.8",
  "syn 2.0.111",
- "timer_list",
  "toml 0.9.10+spec-1.1.0",
 ]
 

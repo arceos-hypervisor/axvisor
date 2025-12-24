@@ -6,7 +6,7 @@ use std::io::{self, Read, Write};
 use std::println;
 use std::string::{String, ToString};
 
-use crate::shell::command::{CommandNode, FlagDef, ParsedCommand};
+use crate::command::{CommandNode, FlagDef, ParsedCommand};
 
 #[cfg(feature = "fs")]
 macro_rules! print_err {

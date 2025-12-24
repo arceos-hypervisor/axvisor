@@ -1,17 +1,17 @@
-use std::{
-    collections::btree_map::BTreeMap,
-    println,
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::collections::BTreeMap;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+use core::println;
 
 use axvm::VMStatus;
 #[cfg(feature = "fs")]
-use std::fs::read_to_string;
+use axstd::fs::read_to_string;
+
+use axvisor_vmm::vm_list;
 
 use crate::{
-    shell::command::{CommandNode, FlagDef, OptionDef, ParsedCommand},
-    vmm::{add_running_vm_count, vcpus, vm_list, with_vm},
+    command::{CommandNode, FlagDef, OptionDef, ParsedCommand},
+    vmm::{add_running_vm_count, vcpus, with_vm},
 };
 
 /// Check if a VM can transition to Running state.
@@ -392,7 +392,7 @@ fn restart_vm_by_id(vm_id: usize, force: bool) {
                                 return;
                             }
                             // Sleep for 100ms
-                            std::os::arceos::modules::axhal::time::busy_wait(
+                            axhal::time::busy_wait(
                                 core::time::Duration::from_millis(100),
                             );
                         }
@@ -510,7 +510,7 @@ fn suspend_vm_by_id(vm_id: usize) {
                 }
 
                 iterations += 1;
-                std::os::arceos::modules::axhal::time::busy_wait(
+                axhal::time::busy_wait(
                     core::time::Duration::from_millis(100),
                 );
             }
@@ -848,7 +848,7 @@ fn vm_list(cmd: &ParsedCommand) {
             let vcpu_id_list = vcpu_ids.join(",");
 
             // Get VCpu state summary
-            let mut state_counts = std::collections::BTreeMap::new();
+            let mut state_counts = BTreeMap::new();
             for vcpu in vm.vcpu_list() {
                 let state = match vcpu.state() {
                     axvcpu::VCpuState::Free => "Free",

@@ -4,7 +4,7 @@ use axvm::GuestPhysAddr;
 use axvm::config::{AxVMCrateConfig, VMImageConfig, VMImagesConfig};
 use axvmconfig::ImageLocation;
 
-use crate::vmm::config::config::MemoryImage;
+use crate::config::config::MemoryImage;
 
 mod linux;
 

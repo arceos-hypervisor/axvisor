@@ -1,16 +1,18 @@
 mod base;
 mod history;
-mod vm;
+// TODO: Re-enable vm command after vmm module is properly implemented
+// mod vm;
 
 pub use base::*;
 pub use history::*;
-pub use vm::*;
+// pub use vm::*;
 
-use std::io::prelude::*;
-use std::string::String;
-use std::vec::Vec;
-use std::{collections::BTreeMap, string::ToString};
-use std::{print, println};
+use alloc::collections::BTreeMap;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+
+use axstd::io::Write;
+use axstd::{print, println};
 
 lazy_static::lazy_static! {
     pub static ref COMMAND_TREE: BTreeMap<String, CommandNode> = build_command_tree();
@@ -387,7 +389,8 @@ fn build_command_tree() -> BTreeMap<String, CommandNode> {
     let mut tree = BTreeMap::new();
 
     build_base_cmd(&mut tree);
-    build_vm_cmd(&mut tree);
+    // TODO: Re-enable vm command after vmm module is properly implemented
+    // build_vm_cmd(&mut tree);
 
     tree
 }
@@ -467,10 +470,10 @@ pub fn show_help(command_path: &[String]) -> Result<(), ParseError> {
 
 pub fn print_prompt() {
     #[cfg(feature = "fs")]
-    print!("axvisor:{}$ ", std::env::current_dir().unwrap());
+    print!("axvisor:{}$ ", axstd::env::current_dir().unwrap());
     #[cfg(not(feature = "fs"))]
     print!("axvisor:$ ");
-    std::io::stdout().flush().unwrap();
+    axstd::io::stdout().flush().unwrap();
 }
 
 pub fn run_cmd_bytes(cmd_bytes: &[u8]) {
@@ -518,11 +521,11 @@ pub fn handle_builtin_commands(input: &str) -> bool {
         }
         "exit" | "quit" => {
             println!("Goodbye!");
-            std::process::exit(0);
+            axstd::process::exit(0);
         }
         "clear" => {
             print!("\x1b[2J\x1b[H"); // ANSI clear screen sequence
-            std::io::stdout().flush().unwrap();
+            axstd::io::stdout().flush().unwrap();
             true
         }
         _ if input.starts_with("help ") => {
