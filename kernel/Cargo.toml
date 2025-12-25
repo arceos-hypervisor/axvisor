@@ -29,8 +29,8 @@ axhvc.workspace = true
 axvm.workspace = true
 axvmconfig = { workspace = true }
 
-axvisor-vmm = { path = "/home/yanlien/Workspace/QCL/console/axvisor/modules/axvisor-vmm", default-features = false }
-axvisor-shell = { path = "/home/yanlien/Workspace/QCL/console/axvisor/modules/axvisor-shell", default-features = false }
+axvisor-vmm = { path = "../modules/axvisor-vmm", default-features = false }
+axvisor-shell = { path = "../modules/axvisor-shell", default-features = false }
 
 # System independent crates provided by ArceOS, these crates could be imported by remote url. 
 axerrno.workspace = true
