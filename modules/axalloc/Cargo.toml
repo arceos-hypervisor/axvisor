@@ -1,0 +1,22 @@
+[package]
+name = "axalloc"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+version = "0.2.0"
+
+[features]
+buddy = []
+default = []
+level-1 = []
+page-alloc-4g = [] # Support up to 4G memory capacity
+page-alloc-64g = [] # Support up to 64G memory capacity
+slab = []
+tlsf = []
+
+
+[dependencies]
+buddy_system_allocator = "0.11"
+log = "0.4"
+kspin = "0.1"
+axerrno = "0.1"

@@ -48,7 +48,7 @@ const LOGO: &str = r#"
 d88P     888 888      "Y8888P  "Y8888   "Y88888P"   "Y8888P"
 "#;
 
-unsafe extern {
+unsafe extern "C" {
     /// Application's entry point.
     fn main();
 }
@@ -172,7 +172,7 @@ pub fn rust_main(cpu_id: usize, arg: usize) -> ! {
     axhal::init_later(cpu_id, arg);
 
     #[cfg(feature = "multitask")]
-    axtask::init_scheduler();
+    axtask::init_scheduler_with_cpu_num(cpu_count());
 
     #[cfg(any(feature = "fs", feature = "net", feature = "display"))]
     {
@@ -227,6 +227,7 @@ pub fn rust_main(cpu_id: usize, arg: usize) -> ! {
 #[cfg(feature = "alloc")]
 fn init_allocator() {
     use axhal::mem::{MemRegionFlags, memory_regions, phys_to_virt};
+    use memory_addr::MemoryAddr;
 
     info!("Initialize global memory allocator...");
     info!("  use {} allocator.", axalloc::global_allocator().name());
@@ -250,7 +251,10 @@ fn init_allocator() {
     }
     for r in memory_regions() {
         if r.flags.contains(MemRegionFlags::FREE) && r.paddr == max_region_paddr {
-            axalloc::global_init(phys_to_virt(r.paddr).as_usize(), r.size);
+            let end = r.paddr + r.size;
+            let start = r.paddr.align_up(0x8000usize);
+            let size = end - start;
+            axalloc::global_init(phys_to_virt(start).as_usize(), size);
             break;
         }
     }

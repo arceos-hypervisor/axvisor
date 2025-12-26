@@ -31,8 +31,9 @@ jobs:
       - intel
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          submodules: "recursive"
 
       - name: Install dependencies
         run: cargo +stable install ostool --version ^0.8

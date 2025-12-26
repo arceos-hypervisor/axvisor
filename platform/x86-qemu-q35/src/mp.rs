@@ -12,7 +12,7 @@ core::arch::global_asm!(
 );
 
 unsafe fn setup_startup_page(stack_top: PhysAddr) {
-    unsafe extern {
+    unsafe extern "C" {
         fn ap_entry32();
         fn ap_start();
         fn ap_end();
@@ -25,7 +25,7 @@ unsafe fn setup_startup_page(stack_top: PhysAddr) {
         core::ptr::copy_nonoverlapping(
             ap_start as *const u64,
             start_page_ptr,
-            (ap_end as usize - ap_start as usize) / 8,
+            (ap_end as *const () as usize - ap_start as *const () as usize) / 8,
         );
     }
     start_page[U64_PER_PAGE - 2] = stack_top.as_usize() as u64; // stack_top

@@ -10,7 +10,7 @@ vm_type = 1
 # The number of virtual CPUs.
 cpu_num = 1
 # Guest vm physical cpu sets.
-phys_cpu_sets = [1]
+# cpu_ids = [0]
 
 #
 # Vm kernel configs

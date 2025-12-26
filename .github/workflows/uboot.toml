@@ -10,6 +10,7 @@ success_regex = [
     "Welcome to AxVisor Shell!",
     "All tests passed!",
     "Hello World!",
+    "Hello, world!",
     "root@firefly:~#",
     "root@phytium-Ubuntu:~#",
     "Welcome to Phytium Buildroot",
