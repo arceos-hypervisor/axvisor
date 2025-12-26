@@ -60,23 +60,25 @@
 
 新的设计理念：从"vCPU层抹除差异"转变为"VM层抹除差异，vCPU求同存异"。核心相似功能抽象，架构特性独立，最小公约的函数组合，最终在VM层抹除架构差异
 
-### 1. 单一配置源（Single Source of Truth）
+### 单一配置源（Single Source of Truth）
 
 所有运行参数（arch、平台、设备编排、资源限制等）在 axvisor 中构建并冻结。
 
-### 2. 明确数据流方向
+### Arch 隔离, 模块化设计
 
 配置只“下行”到 axvm、axdevice；运行期状态可“上行”以供监控。
 
-### 3. Arch 隔离, 模块化设计
+循环依赖（crate-interface）被限制在 `axplat <-> axplat-dyn` 最小范围内。
 
-arch 专属代码集中于 axvm::arch::*。
+对 `arceos` 的依赖仅包括 `std` 兼容部分，以此使 `AxVisor` 本体和所有组件做到 OS 无关，后续可方便支持其他单内核甚至宏内核，微内核等不同宿主环境。
+
+`Arch` 专属代码集中于 `axvm::arch::*`。对于 `Arch` 相关的功能，通过 `axplat-dyn` 透传 `somehal` 的 `Arch` 实现，使得 `Arch` 相关功能限制在 `AxVm` 内部，避免其他组件产生对 `Arch` 的依赖。
 
 `common` 提供跨架构通用逻辑、模块与接口定义。
 
 每个架构实现其特定的 VCPU、内存模型、中断注入等，组合`common`中的模块，如 `device`、`addrspace` 等。最终通过 `trait ArchVm` 适配器暴露统一接口供上层调用。从而实现增加或修改某个架构时不影响其他架构。
 
-### 4. `AxVm` 通过状态机管理虚拟机生命周期与资源分配
+### 通过状态机管理虚拟机生命周期与资源分配
 
 - `AxVisor` 内核维护 `vmm` 容器，承载多个 `Vm` 实例。
 - `VmData` 记录基础信息（ID、Name）与状态机 `VmMachineState`。
