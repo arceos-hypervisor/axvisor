@@ -17,7 +17,6 @@
 //! All the features are optional and disabled by default.
 
 #![cfg_attr(not(test), no_std)]
-#![feature(doc_auto_cfg)]
 #![allow(missing_abi)]
 
 #[macro_use]
@@ -181,7 +180,7 @@ pub fn rust_main(cpu_id: usize, arg: usize) -> ! {
         let all_devices = axdriver::init_drivers();
 
         #[cfg(feature = "fs")]
-        axfs::init_filesystems(all_devices.block);
+        axfs::init_filesystems(all_devices.block, axhal::dtb::get_chosen_bootargs());
 
         #[cfg(feature = "net")]
         axnet::init_network(all_devices.net);
