@@ -28,6 +28,9 @@ extern crate axplat_x86_qemu_q35;
 #[cfg(target_arch = "aarch64")]
 extern crate axplat_aarch64_dyn;
 
+#[cfg(target_arch = "riscv64")]
+extern crate axplat_riscv64_qemu_virt;
+
 #[cfg(all(target_os = "none", not(test)))]
 mod lang_items;
 
@@ -324,6 +327,8 @@ pub fn cpu_count() -> usize {
             cpu_count = axplat_x86_qemu_q35::cpu_count()
         } else if #[cfg(target_arch = "aarch64")] {
             cpu_count = somehal::mem::cpu_id_list().count()
+        } else if #[cfg(target_arch = "riscv64")] {
+            cpu_count = axplat_riscv64_qemu_virt::cpu_count() 
         } else {
             cpu_count = 1;
         }
@@ -334,4 +339,9 @@ pub fn cpu_count() -> usize {
     }
 
     cpu_count
+}
+
+#[cfg(target_arch = "riscv64")]
+pub fn plic_base() -> usize {
+    axplat_riscv64_qemu_virt::plic_base()
 }

@@ -86,13 +86,22 @@ driver = {path = "modules/driver"}
 
 # platform
 axplat-x86-qemu-q35 = {path = "platform/x86-qemu-q35"}
+axplat-riscv64-qemu-virt = {path = "platform/riscv64-qemu-virt"}
 axvmconfig = {git = "https://github.com/arceos-hypervisor/axvmconfig.git", branch = "next"}
 
 [patch.crates-io]
 axvcpu = {git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "next"}
-axvmconfig = {git = "https://github.com/arceos-hypervisor/axvmconfig.git", branch = "next"}
+axvmconfig = {git = "https://github.com/liulog/axvmconfig.git", branch = "next"}
+axvisor_api = {git = "https://github.com/liulog/axvisor_api.git", branch = "master"}
+riscv_vcpu = {git= "https://github.com/liulog/riscv_vcpu.git", branch = "master"}
 
 [patch."https://github.com/arceos-org/arceos"]
 axconfig = {path = "modules/axconfig"}
 axruntime = {path = "modules/axruntime"}
 axfs = {path = "modules/axfs"}
+
+[patch."https://github.com/arceos-hypervisor/axvm.git"]
+axvm = {git="https://github.com/liulog/axvm.git", branch = "next"}
+
+[patch."https://github.com/arceos-hypervisor/axdevice.git"]
+axdevice = {git="https://github.com/liulog/axdevice.git", branch = "master"}
