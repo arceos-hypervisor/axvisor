@@ -5,7 +5,7 @@
 
 use alloc::{format, string::String, sync::Arc, vec, vec::Vec};
 use axerrno::{AxResult, ax_err};
-use axfs_vfs::VfsOps;
+use axfs_ng_vfs::FilesystemOps;
 use log::{debug, info, warn};
 
 use crate::dev::Disk;
@@ -390,7 +390,7 @@ fn is_ext4_filesystem(disk: &mut Disk, start_lba: u64) -> bool {
 pub fn create_filesystem_for_partition(
     disk: Disk,
     partition: &PartitionInfo,
-) -> AxResult<Arc<dyn VfsOps>> {
+) -> AxResult<Arc<dyn FilesystemOps>> {
     match partition.filesystem_type {
         Some(FilesystemType::Fat) => {
             info!("Creating FAT filesystem for partition '{}'", partition.name);

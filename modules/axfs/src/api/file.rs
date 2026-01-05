@@ -1,4 +1,5 @@
 use axio::{Result, SeekFrom, prelude::*};
+use axfs_ng_vfs::NodeType;
 use core::fmt;
 
 use crate::fops;
@@ -16,7 +17,9 @@ pub struct File {
 }
 
 /// Metadata information about a file.
-pub struct Metadata(fops::FileAttr);
+pub struct Metadata {
+    inner: fops::FileAttr,
+}
 
 /// Options and flags which can be used to configure how a file is opened.
 #[derive(Clone, Debug)]
@@ -79,42 +82,42 @@ impl OpenOptions {
 impl Metadata {
     /// Returns the file type for this metadata.
     pub const fn file_type(&self) -> FileType {
-        self.0.file_type()
+        self.inner.node_type
     }
 
     /// Returns `true` if this metadata is for a directory. The
     /// result is mutually exclusive to the result of
     /// [`Metadata::is_file`].
     pub const fn is_dir(&self) -> bool {
-        self.0.is_dir()
+        matches!(self.inner.node_type, NodeType::Directory)
     }
 
     /// Returns `true` if this metadata is for a regular file. The
     /// result is mutually exclusive to the result of
     /// [`Metadata::is_dir`].
     pub const fn is_file(&self) -> bool {
-        self.0.is_file()
+        matches!(self.inner.node_type, NodeType::RegularFile)
     }
 
     /// Returns the size of the file, in bytes, this metadata is for.
     #[allow(clippy::len_without_is_empty)]
     pub const fn len(&self) -> u64 {
-        self.0.size()
+        self.inner.size
     }
 
     /// Returns the permissions of the file this metadata is for.
     pub const fn permissions(&self) -> Permissions {
-        self.0.perm()
+        self.inner.mode
     }
 
     /// Returns the total size of this file in bytes.
     pub const fn size(&self) -> u64 {
-        self.0.size()
+        self.inner.size
     }
 
     /// Returns the number of blocks allocated to the file, in 512-byte units.
     pub const fn blocks(&self) -> u64 {
-        self.0.blocks()
+        self.inner.blocks
     }
 }
 
@@ -166,7 +169,7 @@ impl File {
 
     /// Queries metadata about the underlying file.
     pub fn metadata(&self) -> Result<Metadata> {
-        self.inner.get_attr().map(Metadata)
+        self.inner.get_attr().map(|inner| Metadata { inner })
     }
 }
 

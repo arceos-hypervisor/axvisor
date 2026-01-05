@@ -19,10 +19,10 @@ phys_cpu_ids = [0]
 # The entry point of the kernel image.
 entry_point = 0x8020_0000
 # The location of image: "memory" | "fs".
-# load from memory.
-image_location = "memory"
+# load from filesystem.
+image_location = "fs"
 # The file path of the kernel image.
-kernel_path = "path/arceos-aarch64-dyn-smp1.bin"
+kernel_path = "/arceos-aarch64-dyn-smp1.bin"
 # The load address of the kernel image.
 kernel_load_addr = 0x8020_0000
 # The file path of the device tree blob (DTB).

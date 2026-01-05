@@ -53,7 +53,7 @@ rdrive = "0.18"
 vm-fdt = {workspace = true, default-features = false, features = ["alloc"]}
 
 axdevice.workspace = true
-axdevice_base = "0.1"
+axdevice_base.workspace = true
 axvisor_api = "0.1"
 driver.workspace = true
 

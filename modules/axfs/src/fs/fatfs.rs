@@ -1,9 +1,11 @@
 use alloc::boxed::Box;
+use alloc::string::String;
 use alloc::sync::Arc;
-use core::cell::OnceCell;
+use core::{any::Any, cell::OnceCell, time::Duration};
 
-use axfs_vfs::{VfsDirEntry, VfsError, VfsNodePerm, VfsResult};
-use axfs_vfs::{VfsNodeAttr, VfsNodeOps, VfsNodeRef, VfsNodeType, VfsOps};
+use axfs_ng_vfs::{DirEntry, DirEntrySink, DirNodeOps, FileNode, FileNodeOps, FilesystemOps, Metadata, MetadataUpdate, NodeOps, NodePermission, NodeType, VfsError, VfsResult, Reference};
+use axfs_ng_vfs::node::dir::DirNode;
+use axpoll::Pollable;
 use spin::Mutex;
 use fatfs::{Dir, File, LossyOemCpConverter, NullTimeProvider, Read, Seek, SeekFrom, Write};
 
@@ -13,7 +15,7 @@ const BLOCK_SIZE: usize = 512;
 
 pub struct FatFileSystem {
     inner: fatfs::FileSystem<PartitionWrapper, NullTimeProvider, LossyOemCpConverter>,
-    root_dir: OnceCell<VfsNodeRef>,
+    root_dir: OnceCell<DirEntry>,
 }
 
 /// A wrapper for Partition to implement the required traits for fatfs
@@ -145,7 +147,7 @@ impl FatFileSystem {
 
     fn new_file(
         file: File<'_, PartitionWrapper, NullTimeProvider, LossyOemCpConverter>,
-    ) -> VfsNodeRef {
+    ) -> DirEntry {
         // Use a Box to extend the lifetime of the file
         let file_box = Box::new(file);
         let file_static = unsafe {
@@ -154,13 +156,18 @@ impl FatFileSystem {
                 Box<File<'static, PartitionWrapper, NullTimeProvider, LossyOemCpConverter>>,
             >(file_box)
         };
-        let file_wrapper = FileWrapper(Mutex::new(*file_static));
-        Arc::new(file_wrapper) as VfsNodeRef
+        let file_wrapper = Arc::new(FileWrapper(Mutex::new(*file_static)));
+        let file_node = FileNode::new(file_wrapper);
+        DirEntry::new_file(
+            file_node,
+            NodeType::RegularFile,
+            Reference::new(None, String::new()),
+        )
     }
 
     fn new_dir(
         dir: Dir<'_, PartitionWrapper, NullTimeProvider, LossyOemCpConverter>,
-    ) -> VfsNodeRef {
+    ) -> DirEntry {
         // Use a Box to extend the lifetime of the dir
         let dir_box = Box::new(dir);
         let dir_static = unsafe {
@@ -169,42 +176,106 @@ impl FatFileSystem {
                 Box<Dir<'static, PartitionWrapper, NullTimeProvider, LossyOemCpConverter>>,
             >(dir_box)
         };
-        let dir_wrapper = DirWrapper(*dir_static);
-        Arc::new(dir_wrapper) as VfsNodeRef
+        let dir_wrapper = Arc::new(DirWrapper(*dir_static));
+        DirEntry::new_dir(
+            |_weak| DirNode::new(dir_wrapper.clone()),
+            Reference::new(None, String::new()),
+        )
     }
 }
 
-impl VfsNodeOps for FileWrapper<'static> {
-    axfs_vfs::impl_vfs_non_dir_default! {}
-
-    fn get_attr(&self) -> VfsResult<VfsNodeAttr> {
-        let size = self.0.lock().seek(SeekFrom::End(0)).map_err(as_vfs_err)?;
-        let blocks = size.div_ceil(BLOCK_SIZE as u64);
-        // FAT fs doesn't support permissions, we just set everything to 755
-        let perm = VfsNodePerm::from_bits_truncate(0o755);
-        Ok(VfsNodeAttr::new(perm, VfsNodeType::File, size, blocks))
+impl NodeOps for FileWrapper<'static> {
+    fn inode(&self) -> u64 {
+        // FAT fs doesn't have inode numbers
+        0
     }
 
-    fn read_at(&self, offset: u64, buf: &mut [u8]) -> VfsResult<usize> {
+    fn metadata(&self) -> VfsResult<Metadata> {
+        let size = self.0.lock().seek(SeekFrom::End(0)).map_err(as_vfs_err)?;
+        let blocks = size.div_ceil(BLOCK_SIZE as u64);
+        // FAT fs doesn't support permissions, we just set everything to 644
+        let perm = NodePermission::from_bits_truncate(0o644);
+        Ok(Metadata {
+            device: 0,
+            inode: 0,
+            nlink: 1,
+            mode: perm,
+            node_type: NodeType::RegularFile,
+            uid: 0,
+            gid: 0,
+            size,
+            block_size: BLOCK_SIZE as u64,
+            blocks,
+            rdev: axfs_ng_vfs::DeviceId::new(0, 0),
+            atime: Duration::ZERO,
+            mtime: Duration::ZERO,
+            ctime: Duration::ZERO,
+        })
+    }
+
+    fn update_metadata(&self, _update: MetadataUpdate) -> VfsResult<()> {
+        // FAT fs doesn't support metadata updates
+        Ok(())
+    }
+
+    fn filesystem(&self) -> &dyn FilesystemOps {
+        // For now, we don't have a proper reference to the filesystem
+        // Return a static placeholder
+        // TODO: Redesign to maintain a proper filesystem reference
+        struct DummyFs;
+        impl FilesystemOps for DummyFs {
+            fn name(&self) -> &str { "fatfs" }
+            fn root_dir(&self) -> DirEntry { panic!("Should not be called") }
+            fn stat(&self) -> VfsResult<axfs_ng_vfs::StatFs> { Err(VfsError::Unsupported) }
+            fn flush(&self) -> VfsResult<()> { Ok(()) }
+        }
+        static DUMMY_FS: DummyFs = DummyFs;
+        &DUMMY_FS
+    }
+
+    fn len(&self) -> VfsResult<u64> {
         let mut file = self.0.lock();
-        file.seek(SeekFrom::Start(offset)).map_err(as_vfs_err)?; // TODO: more efficient
+        file.seek(SeekFrom::End(0)).map_err(as_vfs_err)
+    }
+
+    fn sync(&self, _data_only: bool) -> VfsResult<()> {
+        let mut file = self.0.lock();
+        file.flush().map_err(as_vfs_err)
+    }
+
+    fn into_any(self: Arc<Self>) -> Arc<dyn Any + Send + Sync> {
+        self
+    }
+}
+
+impl FileNodeOps for FileWrapper<'static> {
+    fn read_at(&self, buf: &mut [u8], offset: u64) -> VfsResult<usize> {
+        let mut file = self.0.lock();
+        file.seek(SeekFrom::Start(offset)).map_err(as_vfs_err)?;
         file.read(buf).map_err(as_vfs_err)
     }
 
-    fn write_at(&self, offset: u64, buf: &[u8]) -> VfsResult<usize> {
+    fn write_at(&self, buf: &[u8], offset: u64) -> VfsResult<usize> {
         let mut file = self.0.lock();
-        file.seek(SeekFrom::Start(offset)).map_err(as_vfs_err)?; // TODO: more efficient
+        file.seek(SeekFrom::Start(offset)).map_err(as_vfs_err)?;
         file.write(buf).map_err(as_vfs_err)
     }
 
-    fn truncate(&self, size: u64) -> VfsResult {
+    fn append(&self, buf: &[u8]) -> VfsResult<(usize, u64)> {
+        let mut file = self.0.lock();
+        let offset = file.seek(SeekFrom::End(0)).map_err(as_vfs_err)?;
+        let written = file.write(buf).map_err(as_vfs_err)?;
+        Ok((written, offset + written as u64))
+    }
+
+    fn set_len(&self, size: u64) -> VfsResult<()> {
         let mut file = self.0.lock();
         let current_size = file.seek(SeekFrom::End(0)).map_err(as_vfs_err)?;
 
         if size <= current_size {
             // If the target size is smaller than the current size,
             // perform a standard truncation operation
-            file.seek(SeekFrom::Start(size)).map_err(as_vfs_err)?; // TODO: more efficient
+            file.seek(SeekFrom::Start(size)).map_err(as_vfs_err)?;
             file.truncate().map_err(as_vfs_err)
         } else {
             // Calculate the number of bytes to fill
@@ -220,32 +291,92 @@ impl VfsNodeOps for FileWrapper<'static> {
             Ok(())
         }
     }
+
+    fn set_symlink(&self, _target: &str) -> VfsResult<()> {
+        Err(VfsError::InvalidInput)
+    }
+
+    fn ioctl(&self, _cmd: u32, _arg: usize) -> VfsResult<usize> {
+        Err(VfsError::NotATty)
+    }
 }
 
-impl VfsNodeOps for DirWrapper<'static> {
-    axfs_vfs::impl_vfs_dir_default! {}
+impl Pollable for FileWrapper<'static> {
+    fn poll(&self) -> axpoll::IoEvents {
+        axpoll::IoEvents::IN | axpoll::IoEvents::OUT
+    }
 
-    fn get_attr(&self) -> VfsResult<VfsNodeAttr> {
+    fn register(&self, _context: &mut core::task::Context<'_>, _events: axpoll::IoEvents) {
+        // No-op for FAT file system
+    }
+}
+
+impl NodeOps for DirWrapper<'static> {
+    fn inode(&self) -> u64 {
+        // FAT fs doesn't have inode numbers
+        0
+    }
+
+    fn metadata(&self) -> VfsResult<Metadata> {
         // FAT fs doesn't support permissions, we just set everything to 755
-        Ok(VfsNodeAttr::new(
-            VfsNodePerm::from_bits_truncate(0o755),
-            VfsNodeType::Dir,
-            BLOCK_SIZE as u64,
-            1,
-        ))
+        let perm = NodePermission::from_bits_truncate(0o755);
+        Ok(Metadata {
+            device: 0,
+            inode: 0,
+            nlink: 2,
+            mode: perm,
+            node_type: NodeType::Directory,
+            uid: 0,
+            gid: 0,
+            size: BLOCK_SIZE as u64,
+            block_size: BLOCK_SIZE as u64,
+            blocks: 1,
+            rdev: axfs_ng_vfs::DeviceId::new(0, 0),
+            atime: Duration::ZERO,
+            mtime: Duration::ZERO,
+            ctime: Duration::ZERO,
+        })
     }
 
-    fn parent(&self) -> Option<VfsNodeRef> {
-        self.0
-            .open_dir("..")
-            .map_or(None, |dir| Some(FatFileSystem::new_dir(dir)))
+    fn update_metadata(&self, _update: MetadataUpdate) -> VfsResult<()> {
+        // FAT fs doesn't support metadata updates
+        Ok(())
     }
 
-    fn lookup(self: Arc<Self>, path: &str) -> VfsResult<VfsNodeRef> {
+    fn filesystem(&self) -> &dyn FilesystemOps {
+        // For now, we don't have a proper reference to the filesystem
+        // Return a static placeholder
+        // TODO: Redesign to maintain a proper filesystem reference
+        struct DummyFs;
+        impl FilesystemOps for DummyFs {
+            fn name(&self) -> &str { "fatfs" }
+            fn root_dir(&self) -> DirEntry { panic!("Should not be called") }
+            fn stat(&self) -> VfsResult<axfs_ng_vfs::StatFs> { Err(VfsError::Unsupported) }
+            fn flush(&self) -> VfsResult<()> { Ok(()) }
+        }
+        static DUMMY_FS: DummyFs = DummyFs;
+        &DUMMY_FS
+    }
+
+    fn len(&self) -> VfsResult<u64> {
+        Ok(BLOCK_SIZE as u64)
+    }
+
+    fn sync(&self, _data_only: bool) -> VfsResult<()> {
+        Ok(())
+    }
+
+    fn into_any(self: Arc<Self>) -> Arc<dyn Any + Send + Sync> {
+        self
+    }
+}
+
+impl DirNodeOps for DirWrapper<'static> {
+    fn lookup(&self, path: &str) -> VfsResult<DirEntry> {
         debug!("lookup at fatfs: {}", path);
         let path = path.trim_matches('/');
         if path.is_empty() || path == "." {
-            return Ok(self.clone());
+            return Ok(FatFileSystem::new_dir(self.0.clone()));
         }
         if let Some(rest) = path.strip_prefix("./") {
             return self.lookup(rest);
@@ -261,75 +392,97 @@ impl VfsNodeOps for DirWrapper<'static> {
         }
     }
 
-    fn create(&self, path: &str, ty: VfsNodeType) -> VfsResult {
+    fn create(
+        &self,
+        path: &str,
+        ty: NodeType,
+        _permission: NodePermission,
+    ) -> VfsResult<DirEntry> {
         debug!("create {:?} at fatfs: {}", ty, path);
         let path = path.trim_matches('/');
         if path.is_empty() || path == "." {
-            return Ok(());
+            return Ok(FatFileSystem::new_dir(self.0.clone()));
         }
         if let Some(rest) = path.strip_prefix("./") {
-            return self.create(rest, ty);
+            return self.create(rest, ty, _permission);
         }
 
         match ty {
-            VfsNodeType::File => {
-                self.0.create_file(path).map_err(as_vfs_err)?;
-                Ok(())
+            NodeType::RegularFile => {
+                let file = self.0.create_file(path).map_err(as_vfs_err)?;
+                Ok(FatFileSystem::new_file(file))
             }
-            VfsNodeType::Dir => {
-                self.0.create_dir(path).map_err(as_vfs_err)?;
-                Ok(())
+            NodeType::Directory => {
+                let dir = self.0.create_dir(path).map_err(as_vfs_err)?;
+                Ok(FatFileSystem::new_dir(dir))
             }
             _ => Err(VfsError::Unsupported),
         }
     }
 
-    fn remove(&self, path: &str) -> VfsResult {
+    fn link(&self, _name: &str, _node: &DirEntry) -> VfsResult<DirEntry> {
+        // FAT fs doesn't support hard links
+        Err(VfsError::Unsupported)
+    }
+
+    fn unlink(&self, path: &str) -> VfsResult<()> {
         debug!("remove at fatfs: {}", path);
         let path = path.trim_matches('/');
         assert!(!path.is_empty()); // already check at `root.rs`
         if let Some(rest) = path.strip_prefix("./") {
-            return self.remove(rest);
+            return self.unlink(rest);
         }
         self.0.remove(path).map_err(as_vfs_err)
     }
 
-    fn read_dir(&self, start_idx: usize, dirents: &mut [VfsDirEntry]) -> VfsResult<usize> {
-        let mut iter = self.0.iter().skip(start_idx);
-        for (i, out_entry) in dirents.iter_mut().enumerate() {
-            let x = iter.next();
-            match x {
-                Some(Ok(entry)) => {
+    fn read_dir(&self, start_idx: u64, sink: &mut dyn DirEntrySink) -> VfsResult<usize> {
+        let mut iter = self.0.iter().skip(start_idx as usize);
+        let mut count = 0;
+        for entry in iter {
+            match entry {
+                Ok(entry) => {
                     let ty = if entry.is_dir() {
-                        VfsNodeType::Dir
+                        NodeType::Directory
                     } else if entry.is_file() {
-                        VfsNodeType::File
+                        NodeType::RegularFile
                     } else {
-                        unreachable!()
+                        continue;
                     };
-                    *out_entry = VfsDirEntry::new(&entry.file_name(), ty);
+                    if !sink.accept(&entry.file_name(), count as u64, ty, (count + 1) as u64) {
+                        break;
+                    }
+                    count += 1;
                 }
-                _ => return Ok(i),
+                Err(_) => break,
             }
         }
-        Ok(dirents.len())
+        Ok(count)
     }
 
-    fn rename(&self, src_path: &str, dst_path: &str) -> VfsResult {
+    fn rename(
+        &self,
+        src_name: &str,
+        _dst_dir: &DirNode,
+        dst_name: &str,
+    ) -> VfsResult<()> {
         // `src_path` and `dst_path` should in the same mounted fs
         debug!(
             "rename at fatfs, src_path: {}, dst_path: {}",
-            src_path, dst_path
+            src_name, dst_name
         );
 
         self.0
-            .rename(src_path, &self.0, dst_path)
+            .rename(src_name, &self.0, dst_name)
             .map_err(as_vfs_err)
     }
 }
 
-impl VfsOps for FatFileSystem {
-    fn root_dir(&self) -> VfsNodeRef {
+impl FilesystemOps for FatFileSystem {
+    fn name(&self) -> &str {
+        "fat"
+    }
+
+    fn root_dir(&self) -> DirEntry {
         self.root_dir
             .get_or_init(|| {
                 debug!("Creating root directory for FAT filesystem");
@@ -338,6 +491,22 @@ impl VfsOps for FatFileSystem {
                 Self::new_dir(root_dir)
             })
             .clone()
+    }
+
+    fn stat(&self) -> VfsResult<axfs_ng_vfs::fs::StatFs> {
+        // FAT filesystem statistics - simplified implementation
+        Ok(axfs_ng_vfs::fs::StatFs {
+            fs_type: 0x4d44, // FAT32 magic number
+            block_size: BLOCK_SIZE as u32,
+            blocks: 0,
+            blocks_free: 0,
+            blocks_available: 0,
+            file_count: 0,
+            free_file_count: 0,
+            name_length: 255,
+            fragment_size: 0,
+            mount_flags: 0,
+        })
     }
 }
 

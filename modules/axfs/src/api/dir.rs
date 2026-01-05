@@ -1,4 +1,4 @@
-use alloc::string::String;
+use alloc::{string::{String, ToString}, vec::Vec};
 use axio::Result;
 use core::fmt;
 
@@ -12,7 +12,7 @@ pub struct ReadDir<'a> {
     buf_pos: usize,
     buf_end: usize,
     end_of_stream: bool,
-    dirent_buf: [fops::DirEntry; 31],
+    dirent_buf: Vec<fops::DirEntry>,
 }
 
 /// Entries returned by the [`ReadDir`] iterator.
@@ -33,15 +33,13 @@ impl<'a> ReadDir<'a> {
         let mut opts = fops::OpenOptions::new();
         opts.read(true);
         let inner = fops::Directory::open_dir(path, &opts)?;
-        const EMPTY: fops::DirEntry = fops::DirEntry::default();
-        let dirent_buf = [EMPTY; 31];
         Ok(ReadDir {
             path,
             inner,
             end_of_stream: false,
             buf_pos: 0,
             buf_end: 0,
-            dirent_buf,
+            dirent_buf: Vec::with_capacity(31),
         })
     }
 }
@@ -73,12 +71,12 @@ impl<'a> Iterator for ReadDir<'a> {
             }
             let entry = &self.dirent_buf[self.buf_pos];
             self.buf_pos += 1;
-            let name_bytes = entry.name_as_bytes();
+            let name_bytes = entry.name().as_bytes();
             if name_bytes == b"." || name_bytes == b".." {
                 continue;
             }
-            let entry_name = unsafe { core::str::from_utf8_unchecked(name_bytes).into() };
-            let entry_type = entry.entry_type();
+            let entry_name = entry.name().to_string();
+            let entry_type = entry.node_type();
 
             return Some(Ok(DirEntry {
                 dir_path: self.path,

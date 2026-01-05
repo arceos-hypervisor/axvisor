@@ -7,6 +7,7 @@ members = [
   "kernel",
 ]
 resolver = "3"
+exclude = ["crates/axfs_crates"]
 
 [profile.release]
 lto = true
@@ -33,7 +34,7 @@ toml = "0.9"
 
 # System dependent modules provided by ArceOS.
 # FIXME: pin to a specific tag!
-axstd = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216", features = [
+axstd = {git = "https://github.com/Josen-B/arceos.git", branch = "dev", features = [
   "alloc-level-1",
   "paging",
   "irq",
@@ -42,35 +43,35 @@ axstd = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216", f
   "smp", # "page-alloc-64g",
 ]}
 
-axalloc = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axconfig = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axdisplay = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axdriver = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axhal = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axipi = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axlog = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axmm = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axnet = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axtask = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
+axalloc = {git = "https://github.com/Josen-B/arceos.git", branch = "dev"}
+axconfig = {git = "https://github.com/Josen-B/arceos.git", branch = "dev"}
+axdisplay = {git = "https://github.com/Josen-B/arceos.git", branch = "dev"}
+axdriver = {git = "https://github.com/Josen-B/arceos.git", branch = "dev"}
+axhal = {git = "https://github.com/Josen-B/arceos.git", branch = "dev"}
+axipi = {git = "https://github.com/Josen-B/arceos.git", branch = "dev"}
+axlog = {git = "https://github.com/Josen-B/arceos.git", branch = "dev"}
+axmm = {git = "https://github.com/Josen-B/arceos.git", branch = "dev"}
+axnet = {git = "https://github.com/Josen-B/arceos.git", branch = "dev"}
+axtask = {git = "https://github.com/Josen-B/arceos.git", branch = "dev"}
 
 axcpu = {git = "https://github.com/arceos-org/axcpu.git", tag = "dev-v03"}
 axplat = {git = "https://github.com/arceos-org/axplat_crates.git", tag = "dev-v03"}
 
 # System dependent modules provided by ArceOS-Hypervisor.
-axaddrspace = "0.1.1"
-axhvc = {git = "https://github.com/arceos-hypervisor/axhvc.git"}
-axklib = {git = "https://github.com/arceos-hypervisor/axklib.git"}
-axruntime = {path = "modules/axruntime"}
+axaddrspace = {git = "https://github.com/Josen-B/axaddrspace.git"}
 axfs = {path = "modules/axfs"}
-axvcpu = "0.1"
-axvm = {git = "https://github.com/arceos-hypervisor/axvm.git", branch = "next"}
+axhvc = {git = "https://github.com/arceos-hypervisor/axhvc.git"}
+axklib = {git = "https://github.com/Josen-B/axklib.git"}
+axruntime = {path = "modules/axruntime"}
+axvcpu = {git = "https://github.com/Josen-B/axvcpu.git"}
+axvm = {git = "https://github.com/Josen-B/axvm.git", branch = "next"}
 
 # System independent crates provided by ArceOS, these crates could be imported by remote url. 
 axerrno = "0.2"
 byte-unit = {version = "5", default-features = false, features = ["byte"]}
 crate_interface = "0.1"
 fdt-parser = "0.4"
-memory_addr = "0.4"
+memory_addr = {git = "https://github.com/Josen-B/axmm_crates.git"}
 page_table_entry = {version = "0.5", features = ["arm-el2"]}
 page_table_multiarch = "0.5"
 percpu = {version = "0.2", features = ["arm-el2"]}
@@ -79,20 +80,44 @@ rdrive = "0.18"
 
 vm-fdt = {git = "https://github.com/bullhh/vm-fdt.git", default-features = false, features = ["alloc"]}
 
-axdevice = {git = "https://github.com/arceos-hypervisor/axdevice.git"}
-axdevice_base = "0.1"
+axdevice = {git = "https://github.com/Josen-B/axdevice.git"}
+axdevice_base = {git = "https://github.com/Josen-B/axdevice_crates.git"}
 axvisor_api = "0.1"
 driver = {path = "modules/driver"}
 
 # platform
 axplat-x86-qemu-q35 = {path = "platform/x86-qemu-q35"}
-axvmconfig = {git = "https://github.com/arceos-hypervisor/axvmconfig.git", branch = "next"}
+axvmconfig = {git = "https://github.com/Josen-B/axvmconfig.git", branch = "next"}
 
 [patch.crates-io]
-axvcpu = {git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "next"}
-axvmconfig = {git = "https://github.com/arceos-hypervisor/axvmconfig.git", branch = "next"}
+axvcpu = {git = "https://github.com/Josen-B/axvcpu.git", branch = "next"}
+axvmconfig = {git = "https://github.com/Josen-B/axvmconfig.git", branch = "next"}
+axaddrspace = {git = "https://github.com/Josen-B/axaddrspace.git"}
+axdevice_base = {git = "https://github.com/Josen-B/axdevice_crates.git"}
+axdevice = {git = "https://github.com/Josen-B/axdevice.git"}
+memory_set = {git = "https://github.com/Josen-B/axmm_crates.git"}
+x86_vlapic = {git = "https://github.com/Josen-B/x86_vlapic.git"}
+x86_vcpu = {git = "https://github.com/Josen-B/x86_vcpu.git"}
+arm_vgic = {git = "https://github.com/Josen-B/arm_vgic.git"}
+memory_addr = {git = "https://github.com/Josen-B/axmm_crates.git"}
+riscv_vcpu = {git = "https://github.com/Josen-B/riscv_vcpu.git"}
 
 [patch."https://github.com/arceos-org/arceos"]
 axconfig = {path = "modules/axconfig"}
 axruntime = {path = "modules/axruntime"}
 axfs = {path = "modules/axfs"}
+
+[patch."https://github.com/Josen-B/arceos"]
+axconfig = {path = "modules/axconfig"}
+axruntime = {path = "modules/axruntime"}
+axfs = {path = "modules/axfs"}
+
+[patch."https://github.com/arceos-hypervisor/axdevice.git"]
+axdevice = {git = "https://github.com/Josen-B/axdevice.git"}
+
+[patch."https://github.com/arceos-hypervisor/arm_vcpu.git"]
+arm_vcpu = {git = "https://github.com/Josen-B/arm_vcpu.git"}
+
+[patch."https://github.com/arceos-org/axmm_crates.git"]
+memory_addr = {git = "https://github.com/Josen-B/axmm_crates.git"}
+memory_set = {git = "https://github.com/Josen-B/axmm_crates.git"}

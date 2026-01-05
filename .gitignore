@@ -1,7 +1,7 @@
 # Build output and other log/bin files from arceos
 /target
 /.vscode
-/tmp
+/tmp*
 /.arceos
 
 .DS_Store
