@@ -7,7 +7,7 @@ version.workspace = true
 
 [features]
 dyn-plat = ["axstd/myplat", "axstd/driver-dyn"]
-fs = ["axstd/fs"]
+fs = ["axstd/fs", "axvisor-vmm/fs", "axvisor-shell/fs"]
 
 [dependencies]
 anyhow = {version = "1.0", default-features = false}

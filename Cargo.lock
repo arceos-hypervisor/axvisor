@@ -1104,11 +1104,13 @@ dependencies = [
 name = "axvisor-shell"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "axstd",
  "axvisor-vmm",
  "axvm",
  "lazy_static",
  "log",
+ "toml 0.9.10+spec-1.1.0",
 ]
 
 [[package]]
@@ -1117,6 +1119,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axconfig",
+ "axstd",
  "axvm",
  "axvmconfig",
  "log",

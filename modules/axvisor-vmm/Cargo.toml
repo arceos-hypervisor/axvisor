@@ -5,7 +5,7 @@ edition = "2024"
 
 [features]
 default = []
-fs = []
+fs = ["axstd/fs"]
 
 [dependencies]
 anyhow = {version = "1.0", default-features = false}
@@ -13,6 +13,7 @@ log = "0.4"
 toml = { version = "0.9", default-features = false }
 spin = "0.9"
 
+axstd.workspace = true
 axvm = { path = "../axvm" }
 axvmconfig = { version = "0.1", default-features = false }
 

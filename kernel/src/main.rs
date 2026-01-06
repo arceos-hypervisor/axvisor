@@ -15,8 +15,8 @@ extern crate driver;
 mod logo;
 mod task;
 
-pub use axvisor_vmm::*;
 pub use axvisor_shell::*;
+pub use axvisor_vmm::*;
 
 #[unsafe(no_mangle)]
 fn main() {

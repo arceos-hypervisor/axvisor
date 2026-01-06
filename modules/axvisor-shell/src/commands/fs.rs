@@ -1,3 +1,7 @@
+//! File system commands
+//!
+//! Commands for file and directory operations (ls, cat, cd, mkdir, etc.).
+
 use std::collections::BTreeMap;
 #[cfg(feature = "fs")]
 use std::fs::{self, File, FileType};
@@ -6,7 +10,7 @@ use std::io::{self, Read, Write};
 use std::println;
 use std::string::{String, ToString};
 
-use crate::command::{CommandNode, FlagDef, ParsedCommand};
+use crate::parser::{CommandNode, FlagDef, ParsedCommand};
 
 #[cfg(feature = "fs")]
 macro_rules! print_err {
@@ -18,17 +22,9 @@ macro_rules! print_err {
     };
 }
 
-// Helper function: split whitespace
-#[cfg(feature = "fs")]
-fn split_whitespace(s: &str) -> (&str, &str) {
-    let s = s.trim();
-    if let Some(pos) = s.find(char::is_whitespace) {
-        let (first, rest) = s.split_at(pos);
-        (first, rest.trim())
-    } else {
-        (s, "")
-    }
-}
+// ============================================================================
+// Command Handlers
+// ============================================================================
 
 #[cfg(feature = "fs")]
 fn do_ls(cmd: &ParsedCommand) {
@@ -286,79 +282,6 @@ fn do_pwd(cmd: &ParsedCommand) {
     println!("{}", pwd);
 }
 
-fn do_uname(cmd: &ParsedCommand) {
-    let show_all = cmd.flags.get("all").unwrap_or(&false);
-    let show_kernel = cmd.flags.get("kernel-name").unwrap_or(&false);
-    let show_arch = cmd.flags.get("machine").unwrap_or(&false);
-
-    let arch = option_env!("AX_ARCH").unwrap_or("");
-    let platform = option_env!("AX_PLATFORM").unwrap_or("");
-    let smp = match option_env!("AX_SMP") {
-        None | Some("1") => "",
-        _ => " SMP",
-    };
-    let version = option_env!("CARGO_PKG_VERSION").unwrap_or("0.1.0");
-
-    if *show_all {
-        println!(
-            "ArceOS {ver}{smp} {arch} {plat}",
-            ver = version,
-            smp = smp,
-            arch = arch,
-            plat = platform,
-        );
-    } else if *show_kernel {
-        println!("ArceOS");
-    } else if *show_arch {
-        println!("{}", arch);
-    } else {
-        println!(
-            "ArceOS {ver}{smp} {arch} {plat}",
-            ver = version,
-            smp = smp,
-            arch = arch,
-            plat = platform,
-        );
-    }
-}
-
-fn do_exit(cmd: &ParsedCommand) {
-    let args = &cmd.positional_args;
-    let exit_code = if args.is_empty() {
-        0
-    } else {
-        args[0].parse::<i32>().unwrap_or(0)
-    };
-
-    println!("Bye~");
-    std::process::exit(exit_code);
-}
-
-fn do_log(cmd: &ParsedCommand) {
-    let args = &cmd.positional_args;
-
-    if args.is_empty() {
-        println!("Current log level: {:?}", log::max_level());
-        return;
-    }
-
-    match args[0].as_str() {
-        "on" | "enable" => log::set_max_level(log::LevelFilter::Info),
-        "off" | "disable" => log::set_max_level(log::LevelFilter::Off),
-        "error" => log::set_max_level(log::LevelFilter::Error),
-        "warn" => log::set_max_level(log::LevelFilter::Warn),
-        "info" => log::set_max_level(log::LevelFilter::Info),
-        "debug" => log::set_max_level(log::LevelFilter::Debug),
-        "trace" => log::set_max_level(log::LevelFilter::Trace),
-        level => {
-            println!("Unknown log level: {}", level);
-            println!("Available levels: off, error, warn, info, debug, trace");
-            return;
-        }
-    }
-    println!("Log level set to: {:?}", log::max_level());
-}
-
 #[cfg(feature = "fs")]
 fn do_mv(cmd: &ParsedCommand) {
     let args = &cmd.positional_args;
@@ -605,7 +528,23 @@ const fn file_perm_to_rwx(mode: u32) -> [u8; 9] {
     perm
 }
 
-pub fn build_base_cmd(tree: &mut BTreeMap<String, CommandNode>) {
+// Helper function: split whitespace
+#[cfg(feature = "fs")]
+fn split_whitespace(s: &str) -> (&str, &str) {
+    let s = s.trim();
+    if let Some(pos) = s.find(char::is_whitespace) {
+        let (first, rest) = s.split_at(pos);
+        (first, rest.trim())
+    } else {
+        (s, "")
+    }
+}
+
+// ============================================================================
+// Command Registration
+// ============================================================================
+
+pub fn register_fs_commands(tree: &mut BTreeMap<String, CommandNode>) {
     // ls Command
     #[cfg(feature = "fs")]
     tree.insert(
@@ -707,45 +646,6 @@ pub fn build_base_cmd(tree: &mut BTreeMap<String, CommandNode>) {
                     .with_short('L')
                     .with_long("logical"),
             ),
-    );
-
-    // uname Command
-    tree.insert(
-        "uname".to_string(),
-        CommandNode::new("System information")
-            .with_handler(do_uname)
-            .with_usage("uname [OPTIONS]")
-            .with_flag(
-                FlagDef::new("all", "Show all information")
-                    .with_short('a')
-                    .with_long("all"),
-            )
-            .with_flag(
-                FlagDef::new("kernel-name", "Show kernel name")
-                    .with_short('s')
-                    .with_long("kernel-name"),
-            )
-            .with_flag(
-                FlagDef::new("machine", "Show machine architecture")
-                    .with_short('m')
-                    .with_long("machine"),
-            ),
-    );
-
-    // exit Command
-    tree.insert(
-        "exit".to_string(),
-        CommandNode::new("Exit the shell")
-            .with_handler(do_exit)
-            .with_usage("exit [EXIT_CODE]"),
-    );
-
-    // log Command
-    tree.insert(
-        "log".to_string(),
-        CommandNode::new("Change log level")
-            .with_handler(do_log)
-            .with_usage("log [LEVEL]"),
     );
 
     // touch Command
