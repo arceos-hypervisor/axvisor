@@ -20,7 +20,7 @@ smp = ["axhal/smp", "axtask?/smp"]
 tls = ["axhal/tls", "axtask?/tls"]
 
 display = ["axdriver", "axdisplay"]
-fs = ["axdriver", "axfs"]
+fs = ["axfs", "axdriver", "driver"]
 multitask = ["axtask/multitask"]
 net = ["axdriver", "axnet"]
 rtc = []
@@ -39,6 +39,10 @@ axmm = {workspace = true, optional = true}
 axnet = {workspace = true, optional = true}
 axplat = {workspace = true}
 axtask = {workspace = true, optional = true}
+driver = {workspace = true, optional = true}
+rdrive = {workspace = true}
+rdif-block = "0.6.2"
+spin = {version = "0.9", features = ["mutex"]}
 
 log = "0.4"
 

@@ -80,6 +80,7 @@ pub fn scan_gpt_partitions(disk: &mut Disk) -> AxResult<Vec<PartitionInfo>> {
     info!("Scanning for GPT partitions...");
 
     let disk_size = disk.size();
+    warn!("disk size: {} bytes", disk_size);
     if disk_size == 0 {
         return Ok(Vec::new());
     }

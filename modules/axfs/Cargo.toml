@@ -9,17 +9,17 @@ version.workspace = true
 use-ramdisk = []
 
 [dependencies]
-axdriver = {workspace = true, features = ["block"]}
-axdriver_block = {git = "https://github.com/arceos-org/axdriver_crates.git", tag = "v0.1.2"}
 axerrno = "0.1"
 axfs_ramfs = {version = "0.1"}
 axfs_vfs = "0.1"
 axio = {version = "0.2", features = ["alloc"]}
 cap_access = "0.1"
 lazyinit = "0.2"
+rdif-block = "0.6.2"
 spin = "0.9"
 log = "0.4"
 rsext4 = {git = "https://github.com/Dirinkbottle/rsext4.git", tag = "dev-251222"}
+rdrive = {workspace = true}
 
 [dependencies.fatfs]
 default-features = false
@@ -34,5 +34,3 @@ git = "https://github.com/Josen-B/rust-fatfs.git"
 rev = "41122ef"
 
 [dev-dependencies]
-axdriver = {workspace = true, features = ["block", "ramdisk"]}
-axdriver_block = {git = "https://github.com/arceos-org/axdriver_crates.git", tag = "v0.1.2", features = ["ramdisk"]}

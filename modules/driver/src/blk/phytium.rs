@@ -11,6 +11,7 @@ use core::{
 
 use log::{debug, info};
 use rdrive::{PlatformDevice, module_driver, probe::OnProbeError, register::FdtInfo};
+use crate::set_block_device;
 
 use phytium_mci::sd::SdCard;
 use phytium_mci::{IoPad, PAD_ADDRESS, mci_host::err::MCIHostError};
@@ -92,6 +93,14 @@ fn probe_sdcard(info: FdtInfo<'_>, plat_dev: PlatformDevice) -> Result<(), OnPro
 
     let sdcard = SdCardDriver::new(mci_reg, iopad);
     let dev = rdif_block::Block::new(sdcard);
+
+    // Create queue from the device and register it
+    let mut guard = dev.lock().unwrap();
+    if let Some(queue) = guard.create_queue() {
+        crate::set_block_device(alloc::sync::Arc::new(spin::Mutex::new(*queue)));
+    }
+    drop(guard);
+
     plat_dev.register(dev);
 
     debug!("phytium block device registered successfully");

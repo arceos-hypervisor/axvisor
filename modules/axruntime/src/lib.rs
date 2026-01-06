@@ -19,6 +19,10 @@
 #![cfg_attr(not(test), no_std)]
 #![allow(missing_abi)]
 
+extern crate alloc;
+
+use alloc::boxed::Box;
+
 #[macro_use]
 extern crate axlog;
 
@@ -27,6 +31,31 @@ extern crate axplat_x86_qemu_q35;
 
 #[cfg(target_arch = "aarch64")]
 extern crate axplat_aarch64_dyn;
+
+#[cfg(target_arch = "aarch64")]
+use rdrive::Platform;
+
+#[cfg(all(target_arch = "aarch64", feature = "fs"))]
+use driver;
+
+#[cfg(all(target_arch = "aarch64", feature = "fs"))]
+use rdrive::{get_one, Device};
+
+#[cfg(all(target_arch = "aarch64", feature = "fs"))]
+#[cfg(feature = "fs")]
+use rdif_block::{Block, BlkError, BuffConfig};
+
+#[cfg(target_arch = "aarch64")]
+#[cfg(feature = "fs")]
+use alloc::sync::Arc;
+
+#[cfg(target_arch = "aarch64")]
+#[cfg(feature = "fs")]
+use spin::{Mutex, Once};
+
+#[cfg(target_arch = "aarch64")]
+#[cfg(feature = "fs")]
+use rdif_block::IQueue;
 
 #[cfg(all(target_os = "none", not(test)))]
 mod lang_items;
@@ -93,6 +122,9 @@ impl axlog::LogIf for LogIfImpl {
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 static INITED_CPUS: AtomicUsize = AtomicUsize::new(0);
+
+#[cfg(all(target_arch = "aarch64", feature = "fs"))]
+static BLOCK_DEVICE: Once<Arc<Mutex<dyn IQueue>>> = Once::new();
 
 fn is_init_ok() -> bool {
     INITED_CPUS.load(Ordering::Acquire) == cpu_count()
@@ -171,22 +203,70 @@ pub fn rust_main(cpu_id: usize, arg: usize) -> ! {
     info!("Initialize platform devices...");
     axhal::init_later(cpu_id, arg);
 
+    #[cfg(target_arch = "aarch64")]
+    {
+        let platform = Platform::Fdt {
+            addr: unsafe { core::ptr::NonNull::new_unchecked(arg as *mut u8) },
+        };
+        if let Err(e) = rdrive::init(platform) {
+            warn!("Failed to initialize rdrive: {:?}", e);
+        } else if let Err(e) = rdrive::probe_all(false) {
+            warn!("Failed to probe drivers: {:?}", e);
+        }
+
+        #[cfg(feature = "fs")]
+        {
+            // 尝试从 driver 模块获取已注册的 block device
+            if let Some(block_device) = driver::get_block_device() {
+                info!("Found block device from driver module");
+                BLOCK_DEVICE.call_once(|| block_device);
+            } else {
+                // 如果没有，尝试使用 axdriver 初始化 virtio-blk 设备作为fallback
+                warn!("No block device from driver module, trying axdriver...");
+                #[cfg(feature = "axdriver")]
+                {
+                    let all_devices = axdriver::init_drivers();
+                    if !all_devices.block.is_empty() {
+                        warn!("axdriver found {} block device(s) but cannot convert to rdif_block::IQueue", all_devices.block.len());
+                        warn!("Please implement a virtio-blk driver in the driver module that uses rdrive");
+                    } else {
+                        warn!("axdriver found no block devices");
+                    }
+                }
+                #[cfg(not(feature = "axdriver"))]
+                {
+                    warn!("No block device available");
+                }
+            }
+        }
+    }
+
     #[cfg(feature = "multitask")]
     axtask::init_scheduler();
 
     #[cfg(any(feature = "fs", feature = "net", feature = "display"))]
     {
-        #[allow(unused_variables)]
-        let all_devices = axdriver::init_drivers();
-
-        #[cfg(feature = "fs")]
-        axfs::init_filesystems(all_devices.block, axhal::dtb::get_chosen_bootargs());
-
         #[cfg(feature = "net")]
-        axnet::init_network(all_devices.net);
+        {
+            #[allow(unused_variables)]
+            let all_devices = axdriver::init_drivers();
+            axnet::init_network(all_devices.net);
+        }
 
         #[cfg(feature = "display")]
-        axdisplay::init_display(all_devices.display);
+        {
+            #[allow(unused_variables)]
+            let all_devices = axdriver::init_drivers();
+            axdisplay::init_display(all_devices.display);
+        }
+
+        #[cfg(feature = "fs")]
+        {
+            let block_dev = BLOCK_DEVICE.get()
+                .cloned()
+                .expect("Block device not available");
+            axfs::init_filesystems(block_dev, axhal::dtb::get_chosen_bootargs());
+        }
     }
 
     #[cfg(feature = "smp")]

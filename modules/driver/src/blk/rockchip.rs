@@ -11,7 +11,7 @@ use rdrive::{
 use sdmmc::emmc::{self, EMmcHost};
 use spin::Once;
 
-use crate::iomap;
+use crate::{iomap, set_block_device};
 
 module_driver!(
     name: "Rockchip sdhci",
@@ -87,7 +87,16 @@ fn probe(info: FdtInfo<'_>, plat_dev: PlatformDevice) -> Result<(), OnProbeError
     info!("eMMC card info: {:#?}", info);
 
     let dev = BlockDivce { dev: Some(emmc) };
-    plat_dev.register(Block::new(dev));
+    let block = Block::new(dev);
+
+    // Create queue from the device and register it
+    let mut guard = block.lock().unwrap();
+    if let Some(queue) = guard.create_queue() {
+        crate::set_block_device(alloc::sync::Arc::new(spin::Mutex::new(*queue)));
+    }
+    drop(guard);
+
+    plat_dev.register(block);
     debug!("virtio block device registered successfully");
     Ok(())
 }
