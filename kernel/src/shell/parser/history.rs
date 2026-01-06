@@ -1,6 +1,11 @@
+//! Command history management
+//!
+//! Provides functionality to store and navigate through command history.
+
 use std::io::prelude::*;
 use std::{string::String, vec::Vec};
 
+/// Command history storage and navigation
 pub struct CommandHistory {
     history: Vec<String>,
     current_index: usize,
@@ -8,6 +13,7 @@ pub struct CommandHistory {
 }
 
 impl CommandHistory {
+    /// Create a new command history with the given maximum size
     pub fn new(max_size: usize) -> Self {
         Self {
             history: Vec::new(),
@@ -16,6 +22,7 @@ impl CommandHistory {
         }
     }
 
+    /// Add a command to the history
     pub fn add_command(&mut self, cmd: String) {
         if !cmd.trim().is_empty() && self.history.last() != Some(&cmd) {
             if self.history.len() >= self.max_size {
@@ -26,6 +33,7 @@ impl CommandHistory {
         self.current_index = self.history.len();
     }
 
+    /// Get the previous command in history
     #[allow(dead_code)]
     pub fn previous(&mut self) -> Option<&String> {
         if self.current_index > 0 {
@@ -36,6 +44,7 @@ impl CommandHistory {
         }
     }
 
+    /// Get the next command in history
     #[allow(dead_code)]
     pub fn next(&mut self) -> Option<&String> {
         if self.current_index < self.history.len() {
@@ -51,6 +60,7 @@ impl CommandHistory {
     }
 }
 
+/// Clear the current line and redraw it with the given content
 #[allow(unused_must_use)]
 pub fn clear_line_and_redraw(
     stdout: &mut dyn Write,

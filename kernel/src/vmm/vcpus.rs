@@ -240,7 +240,7 @@ pub(crate) fn notify_all_vcpus(vm_id: usize) {
 ///
 /// This should be called after all VCpu threads have exited to avoid resource leaks.
 /// It will join all VCpu tasks to ensure they are fully cleaned up.
-pub(crate) fn cleanup_vm_vcpus(vm_id: usize) {
+pub fn cleanup_vm_vcpus(vm_id: usize) {
     if let Some(vm_vcpus) = VM_VCPU_TASK_WAIT_QUEUE.remove(&vm_id) {
         let task_count = vm_vcpus.vcpu_task_list.len();
 
