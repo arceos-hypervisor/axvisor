@@ -6,7 +6,7 @@ pub mod images;
 // pub mod timer;
 pub mod vm_list;
 
-use axvm::AxVMConfig;
+use axvm::{AxVMConfig, VmId};
 
 /// Initialize the VMM.
 ///
@@ -25,12 +25,12 @@ pub fn start_preconfigured_vms() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn start_vm(config: AxVMConfig) -> anyhow::Result<()> {
+pub fn start_vm(config: AxVMConfig) -> anyhow::Result<VmId> {
     debug!("Starting guest VM `{}`", config.name());
     let vm = axvm::Vm::new(config)?;
     let vm = vm_list::push_vm(vm);
     vm.boot()?;
-    Ok(())
+    Ok(vm.id())
 }
 
 pub fn wait_for_all_vms_exit() {

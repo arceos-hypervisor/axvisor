@@ -8,14 +8,17 @@ extern crate log;
 extern crate alloc;
 
 extern crate axstd as std;
-
-// extern crate axruntime;
 extern crate driver;
 
+// extern crate axruntime;
+
 mod logo;
-// mod shell;
 mod task;
+mod shell;
 mod vmm;
+
+pub use shell::*;
+pub use vmm::*;
 
 #[unsafe(no_mangle)]
 fn main() {
@@ -30,5 +33,5 @@ fn main() {
     info!("[OK] Default guest initialized");
     vmm::wait_for_all_vms_exit();
     info!("All guest VMs exited.");
-    // shell::console_init();
+    shell::console_init();
 }

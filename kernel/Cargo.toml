@@ -16,10 +16,8 @@ cfg-if.workspace = true
 cpumask.workspace = true
 kernel_guard.workspace = true
 kspin = "0.1"
-lazy_static = {version = "1.5", default-features = false, features = ["spin_no_std"]}
 lazyinit = "0.2"
 log = "0.4"
-spin = "0.9"
 timer_list = "0.1.0"
 toml = {version = "0.9", default-features = false}
 
@@ -29,7 +27,7 @@ axstd.workspace = true
 # System dependent modules provided by ArceOS-Hypervisor.
 axhvc.workspace = true
 axvm.workspace = true
-axvmconfig = {workspace = true}
+axvmconfig = { workspace = true }
 
 # System independent crates provided by ArceOS, these crates could be imported by remote url. 
 axerrno.workspace = true
@@ -37,6 +35,12 @@ byte-unit = {version = "5", default-features = false, features = ["byte"]}
 extern-trait = "0.2"
 memory_addr.workspace = true
 driver.workspace = true
+spin = "0.9"
+
+# axvm = { path = "../axvm" }
+# axvmconfig = { version = "0.1", default-features = false }
+
+lazy_static = {version = "1.5", default-features = false, features = ["spin_no_std"]}
 
 [build-dependencies]
 anyhow = "1.0"

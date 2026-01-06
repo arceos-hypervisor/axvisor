@@ -1,5 +1,4 @@
-use std::string::ToString;
-
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use axvm::{
     AxVMConfig, CpuId,
