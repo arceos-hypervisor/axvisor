@@ -10,12 +10,14 @@ use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
+use core::str;
+
 use crate::std::io::Write;
 
 use axstd::print;
 use axstd::println;
 
-use crate::parser::{CommandNode, ParseError};
+use super::parser::{CommandNode, CommandParser, ParseError};
 
 pub use builtin::register_builtin_commands;
 pub use fs::register_fs_commands;
@@ -39,12 +41,16 @@ fn build_command_tree() -> BTreeMap<String, CommandNode> {
 
 /// Execute a parsed command
 pub fn execute_command(input: &str) -> Result<(), ParseError> {
-    let parsed = crate::parser::CommandParser::parse(input, &COMMAND_TREE)?;
+    let parsed = CommandParser::parse(input, &*COMMAND_TREE)?;
 
     // Find the corresponding command node
-    let mut current_node = COMMAND_TREE.get(&parsed.command_path[0]).unwrap();
+    let mut current_node = (*COMMAND_TREE).get(&parsed.command_path[0]).ok_or_else(|| {
+        ParseError::UnknownCommand(parsed.command_path[0].clone())
+    })?;
     for cmd in &parsed.command_path[1..] {
-        current_node = current_node.subcommands.get(cmd).unwrap();
+        current_node = current_node.subcommands.get(cmd).ok_or_else(|| {
+            ParseError::UnknownCommand(cmd.clone())
+        })?;
     }
 
     // Execute the command
@@ -58,7 +64,7 @@ pub fn execute_command(input: &str) -> Result<(), ParseError> {
 
 /// Display help for a specific command
 pub fn show_help(command_path: &[String]) -> Result<(), ParseError> {
-    let mut current_node = COMMAND_TREE
+    let mut current_node = (*COMMAND_TREE)
         .get(&command_path[0])
         .ok_or_else(|| ParseError::UnknownCommand(command_path[0].clone()))?;
 
@@ -135,7 +141,7 @@ pub fn show_available_commands() {
     println!();
 
     // Display all top-level commands
-    for (name, node) in COMMAND_TREE.iter() {
+    for (name, node) in (*COMMAND_TREE).iter() {
         println!("  {:<15} {}", name, node.description);
 
         // Display subcommands

@@ -109,12 +109,12 @@ fn is_at_command_position(line: &str, word_start: usize) -> bool {
 /// Complete command names
 #[cfg(feature = "fs")]
 fn complete_command(partial: &str) -> Option<CompletionResult> {
-    use crate::commands::COMMAND_TREE;
+    use super::commands::COMMAND_TREE;
 
     let partial_lower = partial.to_lowercase();
-    let mut matches: Vec<String> = COMMAND_TREE
+    let mut matches: Vec<String> = (*COMMAND_TREE)
         .keys()
-        .filter(|cmd| cmd.starts_with(&partial_lower))
+        .filter(|cmd: &&String| cmd.starts_with(&partial_lower))
         .cloned()
         .collect();
 
@@ -131,12 +131,12 @@ fn complete_command(partial: &str) -> Option<CompletionResult> {
 /// Complete command names (no filesystem feature)
 #[cfg(not(feature = "fs"))]
 fn complete_command(partial: &str) -> Option<CompletionResult> {
-    use crate::commands::COMMAND_TREE;
+    use super::commands::COMMAND_TREE;
 
     let partial_lower = partial.to_lowercase();
-    let mut matches: Vec<String> = COMMAND_TREE
+    let mut matches: Vec<String> = (*COMMAND_TREE)
         .keys()
-        .filter(|cmd| cmd.starts_with(&partial_lower))
+        .filter(|cmd: &&String| cmd.starts_with(&partial_lower))
         .cloned()
         .collect();
 

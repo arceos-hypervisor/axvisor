@@ -16,12 +16,6 @@
 
 #![no_std]
 
-#[macro_use]
-extern crate alloc;
-extern crate axstd as std;
-#[macro_use]
-extern crate log;
-
 mod completion;
 mod parser;
 mod shell;

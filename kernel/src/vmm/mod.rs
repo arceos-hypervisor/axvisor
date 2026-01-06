@@ -1,12 +1,3 @@
-#![no_std]
-
-#[macro_use]
-extern crate log;
-
-#[macro_use]
-extern crate alloc;
-extern crate axstd;
-
 // mod hvc;
 // mod ivc;
 

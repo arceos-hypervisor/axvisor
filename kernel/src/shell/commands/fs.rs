@@ -10,7 +10,7 @@ use std::io::{self, Read, Write};
 use std::println;
 use std::string::{String, ToString};
 
-use crate::parser::{CommandNode, FlagDef, ParsedCommand};
+use super::super::parser::{CommandNode, FlagDef, ParsedCommand};
 
 #[cfg(feature = "fs")]
 macro_rules! print_err {

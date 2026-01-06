@@ -4,7 +4,7 @@
 
 use std::println;
 
-use crate::parser::ParsedCommand;
+use super::super::parser::ParsedCommand;
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 
@@ -85,8 +85,8 @@ pub fn do_log(cmd: &ParsedCommand) {
 }
 
 /// Register built-in commands to the command tree
-pub fn register_builtin_commands(tree: &mut BTreeMap<String, crate::parser::CommandNode>) {
-    use crate::parser::{CommandNode, FlagDef};
+pub fn register_builtin_commands(tree: &mut BTreeMap<String, super::super::parser::CommandNode>) {
+    use super::super::parser::{CommandNode, FlagDef};
 
     // uname Command
     tree.insert(

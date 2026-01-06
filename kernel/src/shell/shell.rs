@@ -7,11 +7,11 @@ use std::io::prelude::*;
 use std::print;
 use std::println;
 
-use alloc::string::ToString;
+use alloc::string::{String, ToString};
 
-use crate::commands::{handle_builtin_commands, print_prompt, run_cmd_bytes};
-use crate::completion;
-use crate::parser::{CommandHistory, clear_line_and_redraw};
+use super::commands::{handle_builtin_commands, print_prompt, run_cmd_bytes};
+use super::completion;
+use super::parser::{CommandHistory, clear_line_and_redraw};
 
 const LF: u8 = b'\n';
 const CR: u8 = b'\r';
@@ -153,6 +153,7 @@ impl Shell {
                         std::str::from_utf8(&self.buf[..self.line_len]).unwrap_or("");
 
                     if let Some(result) = completion::complete(current_content, self.cursor) {
+                        let result: &completion::CompletionResult = &result;
                         let is_unique = result.is_unique();
                         let matches_count = result.matches.len();
 
@@ -160,9 +161,10 @@ impl Shell {
                         if !is_unique && matches_count > 1 {
                             println!();
                             // Strip the common prefix from matches for cleaner display
-                            let display_prefix = &result.prefix;
+                            let display_prefix: &str = &result.prefix;
                             for (i, match_name) in result.matches.iter().enumerate() {
-                                let display_name = if match_name.starts_with(display_prefix) {
+                                let match_name: &String = match_name;
+                                let display_name: &str = if match_name.starts_with(display_prefix) {
                                     &match_name[display_prefix.len()..]
                                 } else {
                                     match_name.as_str()
@@ -271,10 +273,11 @@ impl Shell {
                 b'A' => {
                     // UP arrow - previous command
                     if let Some(prev_cmd) = self.history.previous() {
+                        let prev_cmd: &String = prev_cmd;
                         // clear current buffer
                         self.buf[..self.line_len].fill(0);
 
-                        let cmd_bytes = prev_cmd.as_bytes();
+                        let cmd_bytes: &[u8] = prev_cmd.as_bytes();
                         let copy_len = cmd_bytes.len().min(MAX_LINE_LEN - 1);
                         self.buf[..copy_len].copy_from_slice(&cmd_bytes[..copy_len]);
                         self.cursor = copy_len;
@@ -291,10 +294,11 @@ impl Shell {
                     // DOWN arrow - next command
                     match self.history.next() {
                         Some(next_cmd) => {
+                            let next_cmd: &String = next_cmd;
                             // clear current buffer
                             self.buf[..self.line_len].fill(0);
 
-                            let cmd_bytes = next_cmd.as_bytes();
+                            let cmd_bytes: &[u8] = next_cmd.as_bytes();
                             let copy_len = cmd_bytes.len().min(MAX_LINE_LEN - 1);
                             self.buf[..copy_len].copy_from_slice(&cmd_bytes[..copy_len]);
                             self.cursor = copy_len;

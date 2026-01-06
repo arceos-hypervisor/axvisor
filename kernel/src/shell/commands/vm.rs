@@ -4,17 +4,18 @@
 
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 
 #[cfg(feature = "fs")]
 use axstd::fs::read_to_string;
 use axstd::println;
 
-use axvisor_vmm::vm_list::{self, VMRef};
-use axvisor_vmm::{config::build_vmconfig, start_vm};
+use crate::vmm::vm_list;
+use crate::vmm::{config::build_vmconfig, start_vm};
 use axvm::config::AxVMCrateConfig;
 use axvm::VMStatus;
 
-use crate::parser::{CommandNode, FlagDef, OptionDef, ParsedCommand};
+use super::super::parser::{CommandNode, FlagDef, OptionDef, ParsedCommand};
 
 /// Format memory size in a human-readable way.
 fn format_memory_size(bytes: usize) -> String {
@@ -138,6 +139,7 @@ fn vm_start(cmd: &ParsedCommand) {
         let mut started_count = 0;
 
         for vm in vm_list::get_vm_list() {
+            let vm: vm_list::VMRef = vm;
             // Check current status before starting
             let status = vm.status();
             if status == VMStatus::Running {
@@ -169,6 +171,7 @@ fn vm_start(cmd: &ParsedCommand) {
         // Start specified VMs
         for arg in args {
             // Try to parse as VM ID or lookup VM name
+            let arg: &String = arg;
             if let Ok(vm_id) = arg.parse::<usize>() {
                 if !start_vm_by_id(vm_id) {
                     // VM not found, show available VMs
@@ -185,7 +188,7 @@ fn vm_start(cmd: &ParsedCommand) {
 }
 
 fn start_vm_by_id(vm_id: usize) -> bool {
-    let vm = match vm_list::get_vm_by_id(vm_id) {
+    let vm: vm_list::VMRef = match vm_list::get_vm_by_id(vm_id) {
         Some(vm) => vm,
         None => {
             println!("✗ VM[{}] not found", vm_id);
@@ -220,6 +223,7 @@ fn vm_status(cmd: &ParsedCommand) {
         println!("VM Status:");
         println!("-----------");
         for vm in vm_list {
+            let vm: vm_list::VMRef = vm;
             let vm_id = usize::from(vm.id());
             let name = vm.name();
             let status = vm.status();
@@ -230,8 +234,10 @@ fn vm_status(cmd: &ParsedCommand) {
 
     // Show status of specified VM(s)
     for arg in args {
+        let arg: &String = arg;
         if let Ok(vm_id) = arg.parse::<usize>() {
             if let Some(vm) = vm_list::get_vm_by_id(vm_id) {
+                let vm: vm_list::VMRef = vm;
                 let name = vm.name();
                 let status = vm.status();
                 println!("VM[{}] \"{}\": {:?}", vm_id, name, status);
@@ -254,6 +260,7 @@ fn vm_stop(cmd: &ParsedCommand) {
     }
 
     for vm_name in args {
+        let vm_name: &String = vm_name;
         if let Ok(vm_id) = vm_name.parse::<usize>() {
             stop_vm_by_id(vm_id);
         } else {
@@ -263,7 +270,7 @@ fn vm_stop(cmd: &ParsedCommand) {
 }
 
 fn stop_vm_by_id(vm_id: usize) {
-    let vm = match vm_list::get_vm_by_id(vm_id) {
+    let vm: vm_list::VMRef = match vm_list::get_vm_by_id(vm_id) {
         Some(vm) => vm,
         None => {
             println!("✗ VM[{}] not found", vm_id);
@@ -319,6 +326,7 @@ fn vm_delete(cmd: &ParsedCommand) {
     }
 
     for arg in args {
+        let arg: &String = arg;
         if let Ok(vm_id) = arg.parse::<usize>() {
             delete_vm_by_id(vm_id, *force);
         } else {
@@ -329,7 +337,7 @@ fn vm_delete(cmd: &ParsedCommand) {
 
 fn delete_vm_by_id(vm_id: usize, force: bool) {
     // Check if VM exists and get its status
-    let vm = match vm_list::get_vm_by_id(vm_id) {
+    let vm: vm_list::VMRef = match vm_list::get_vm_by_id(vm_id) {
         Some(vm) => vm,
         None => {
             println!("✗ VM[{}] not found", vm_id);
@@ -402,6 +410,7 @@ fn vm_list_simple() {
     println!("ID    NAME           STATE      VCPU   MEMORY");
     println!("----  -----------    -------    ----   ------");
     for vm in vms {
+        let vm: vm_list::VMRef = vm;
         let status = vm.status();
         let vcpu_num = vm.vcpu_num();
         let memory_size = vm.memory_size();
@@ -433,6 +442,7 @@ fn vm_list(cmd: &ParsedCommand) {
         println!("{{");
         println!("  \"vms\": [");
         for (i, vm) in display_vms.iter().enumerate() {
+            let vm: &vm_list::VMRef = vm;
             let status = vm.status();
             let total_memory = vm.memory_size();
             let vcpu_num = vm.vcpu_num();
@@ -464,6 +474,7 @@ fn vm_list(cmd: &ParsedCommand) {
         );
 
         for vm in display_vms {
+            let vm: vm_list::VMRef = vm;
             let status = vm.status();
             let total_memory = vm.memory_size();
             let vcpu_num = vm.vcpu_num();
@@ -492,7 +503,7 @@ fn vm_show(cmd: &ParsedCommand) {
     }
 
     // Show specific VM details
-    let vm_name = &args[0];
+    let vm_name: &String = &args[0];
     if let Ok(vm_id) = vm_name.parse::<usize>() {
         show_vm_details(vm_id);
     } else {
@@ -502,7 +513,7 @@ fn vm_show(cmd: &ParsedCommand) {
 
 /// Show VM information
 fn show_vm_details(vm_id: usize) {
-    let vm = match vm_list::get_vm_by_id(vm_id) {
+    let vm: vm_list::VMRef = match vm_list::get_vm_by_id(vm_id) {
         Some(vm) => vm,
         None => {
             println!("✗ VM[{}] not found", vm_id);
