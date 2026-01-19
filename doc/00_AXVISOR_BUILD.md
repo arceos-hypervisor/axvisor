@@ -36,42 +36,18 @@ cargo xtask vmconfig             # 生成 VM 配置 schema
 
 AxVisor 采用分层构建系统架构，由以下核心组件构成：
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    用户命令层                                 │
-│              cargo xtask build                              │
-└────────────────────┬────────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  xtask 构建管理层                             │
-│  - 读取 .build.toml 配置                                     │
-│  - 调用 ostool 执行构建                                       │
-│  - 处理 VM 配置文件                                          │
-└────────────────────┬────────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  ostool 构建执行层                            │
-│  - CargoBuilder: 执行 cargo build 命令                      │
-│  - 处理特性、目标架构、环境变量                               │
-│  - 调用 rust-objcopy 生成二进制文件                          │
-└────────────────────┬────────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  Cargo 构建系统                               │
-│  - 解析 Cargo.toml 依赖关系                                  │
-│  - 调用 rustc 编译每个 crate                                 │
-│  - 执行 build.rs 构建脚本                                    │
-└────────────────────┬────────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  最终产物                                     │
-│  - ELF 文件 (axvisor)                                       │
-│  - BIN 文件 (axvisor.bin, 仅 ARM)                           │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    A[用户命令层<br/>cargo xtask build] --> B[xtask 构建管理层<br/>读取 .build.toml 配置<br/>调用 ostool 执行构建<br/>处理 VM 配置文件]
+    B --> C[ostool 构建执行层<br/>CargoBuilder: 执行 cargo build 命令<br/>处理特性、目标架构、环境变量<br/>调用 rust-objcopy 生成二进制文件]
+    C --> D[Cargo 构建系统<br/>解析 Cargo.toml 依赖关系<br/>调用 rustc 编译每个 crate<br/>执行 build.rs 构建脚本]
+    D --> E[最终产物<br/>ELF 文件 axvisor<br/>BIN 文件 axvisor.bin 仅 ARM]
+
+    style A fill:#e1f5ff
+    style B fill:#fff4e1
+    style C fill:#ffe1f5
+    style D fill:#e1ffe1
+    style E fill:#f5e1ff
 ```
 
 ---
@@ -234,73 +210,32 @@ x2apic = "0.5"  # x86 APIC 支持
 
 两个平台都遵循相同的构建流程，但在具体实现上有所差异：
 
-```
-用户执行: cargo xtask build
-    │
-    ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 1. xtask::main() 解析命令                                    │
-│    - 创建 Context 对象                                       │
-│    - 调用 ctx.run_build()                                    │
-└────────────────────┬────────────────────────────────────────┘
-                     │
-    ┌────────────────▼────────────────────┐
-    │ 2. xtask::tbuld::run_build()        │
-    │    - 读取 .build.toml               │
-    │    - 解析配置为 Cargo 结构          │
-    │    - 设置环境变量 (AXVISOR_SMP等)   │
-    └────────────────┬────────────────────┘
-                     │
-    ┌────────────────▼────────────────────┐
-    │ 3. ostool::ctx::cargo_build()       │
-    │    - 创建 CargoBuilder              │
-    │    - 调用 builder.execute()         │
-    └────────────────┬────────────────────┘
-                     │
-    ┌────────────────▼──────────────────────────────────────────┐
-    │ 4. ostool::build::CargoBuilder::execute()                │
-    │    4.1 run_pre_build_cmds()  (如果有)                    │
-    │    4.2 run_cargo()                                       │
-    │        - 构建 cargo build 命令                           │
-    │        - 设置环境变量                                     │
-    │        - 添加 --target, --features, --package            │
-    │        - 执行 cargo build                                │
-    │    4.3 handle_output()                                   │
-    │        - 定位生成的 ELF 文件                             │
-    │        - 如果 to_bin=true, 调用 rust-objcopy             │
-    │    4.4 run_post_build_cmds() (如果有)                   │
-    └────────────────┬─────────────────────────────────────────┘
-                     │
-    ┌────────────────▼────────────────────┐
-    │ 5. Cargo 构建系统                    │
-    │    - 解析 kernel/Cargo.toml          │
-    │    - 执行 kernel/build.rs           │
-    │    - 编译所有依赖 crate              │
-    │    - 链接生成最终 ELF                │
-    └────────────────┬────────────────────┘
-                     │
-    ┌────────────────▼────────────────────┐
-    │ 6. kernel/build.rs                  │
-    │    - 读取 AXVISOR_VM_CONFIGS        │
-    │    - 生成 vm_configs.rs             │
-    │    - 设置 platform cfg              │
-    └────────────────┬────────────────────┘
-                     │
-    ┌────────────────▼────────────────────┐
-    │ 7. rustc 编译                       │
-    │    - 编译 kernel/src/main.rs        │
-    │    - 链接所有依赖                   │
-    │    - 生成 axvisor (ELF)             │
-    └────────────────┬────────────────────┘
-                     │
-    ┌────────────────▼────────────────────┐
-    │ 8. rust-objcopy (如果 to_bin=true)  │
-    │    - rust-objcopy -O binary         │
-    │    - 生成 axvisor.bin               │
-    └────────────────┬────────────────────┘
-                     │
-                     ▼
-              最终产物
+```mermaid
+graph TD
+    Start[用户执行<br/>cargo xtask build] --> Step1[1. xtask::main 解析命令<br/>创建 Context 对象<br/>调用 ctx.run_build]
+    Step1 --> Step2[2. xtask::tbuld::run_build<br/>读取 .build.toml<br/>解析配置为 Cargo 结构<br/>设置环境变量 AXVISOR_SMP等]
+    Step2 --> Step3[3. ostool::ctx::cargo_build<br/>创建 CargoBuilder<br/>调用 builder.execute]
+    Step3 --> Step4[4. CargoBuilder::execute<br/>4.1 run_pre_build_cmds 如果有<br/>4.2 run_cargo 构建 cargo build 命令<br/>设置环境变量 添加 target features package<br/>执行 cargo build<br/>4.3 handle_output 定位生成的 ELF 文件<br/>如果 to_bin=true 调用 rust-objcopy<br/>4.4 run_post_build_cmds 如果有]
+    Step4 --> Step5[5. Cargo 构建系统<br/>解析 kernel/Cargo.toml<br/>执行 kernel/build.rs<br/>编译所有依赖 crate<br/>链接生成最终 ELF]
+    Step5 --> Step6[6. kernel/build.rs<br/>读取 AXVISOR_VM_CONFIGS<br/>生成 vm_configs.rs<br/>设置 platform cfg]
+    Step6 --> Step7[7. rustc 编译<br/>编译 kernel/src/main.rs<br/>链接所有依赖<br/>生成 axvisor ELF]
+    Step7 --> Step8{to_bin=true?}
+    Step8 -->|是| Step9[8. rust-objcopy<br/>rust-objcopy -O binary<br/>生成 axvisor.bin]
+    Step8 -->|否| End[最终产物<br/>ELF 文件 axvisor]
+    Step9 --> End2[最终产物<br/>ELF 文件 axvisor<br/>BIN 文件 axvisor.bin]
+
+    style Start fill:#e1f5ff
+    style Step1 fill:#fff4e1
+    style Step2 fill:#fff4e1
+    style Step3 fill:#ffe1f5
+    style Step4 fill:#ffe1f5
+    style Step5 fill:#e1ffe1
+    style Step6 fill:#e1ffe1
+    style Step7 fill:#f5e1ff
+    style Step8 fill:#ffcccc
+    style Step9 fill:#f5e1ff
+    style End fill:#d4edda
+    style End2 fill:#d4edda
 ```
 
 ### x86_64 平台构建详解
@@ -423,7 +358,51 @@ cargo build -p axvisor \
 
 #### 编译过程详解
 
-**步骤 3: build.rs 执行** ([kernel/build.rs](../kernel/build.rs))
+**步骤 3: Cargo 设置环境变量（关键步骤）**
+
+在 Cargo 解析任何 `Cargo.toml` 文件**之前**，它会根据命令行参数 `--target x86_64-unknown-none` 自动设置一系列环境变量。这个操作发生在 Cargo 启动的早期阶段。
+
+```bash
+# Cargo 从目标三元组 x86_64-unknown-none 中提取信息并设置环境变量
+CARGO_CFG_TARGET_ARCH=x86_64
+CARGO_CFG_TARGET_VENDOR=unknown
+CARGO_CFG_TARGET_OS=none
+CARGO_CFG_TARGET_ENDIAN=little
+CARGO_CFG_TARGET_POINTER_WIDTH=64
+CARGO_CFG_TARGET_FEATURE="fxsr,sse,sse2"
+# ... 等等
+```
+
+**环境变量设置的时机**：
+
+```
+1. 用户执行: cargo build --target x86_64-unknown-none
+   │
+   ▼
+2. Cargo 解析命令行参数
+   获取 --target 参数: "x86_64-unknown-none"
+   │
+   ▼
+3. Cargo 设置环境变量 ⭐ (在解析 Cargo.toml 之前)
+   从目标三元组提取信息并设置环境变量
+   │
+   ▼
+4. Cargo 解析 Cargo.toml
+   读取 [target.'cfg(target_arch = "x86_64")'.dependencies]
+   检查 CARGO_CFG_TARGET_ARCH 环境变量
+   │
+   ▼
+5. Cargo 执行 build.rs
+   build.rs 可以读取 CARGO_CFG_TARGET_ARCH 等环境变量
+```
+
+**关键点**：
+- 环境变量是在 Cargo 解析 `Cargo.toml` **之前**设置的
+- 这些环境变量在整个构建过程中都可用
+- `build.rs` 可以读取这些环境变量
+- 后续的条件编译检查只是读取这些已经设置好的环境变量
+
+**步骤 4: build.rs 执行** ([kernel/build.rs](../kernel/build.rs))
 
 ```rust
 fn main() -> anyhow::Result<()> {
@@ -470,7 +449,7 @@ fn main() -> anyhow::Result<()> {
 }
 ```
 
-**步骤 4: Cargo 解析依赖**
+**步骤 5: Cargo 解析依赖**
 
 Cargo 解析 [kernel/Cargo.toml](../kernel/Cargo.toml)，根据目标架构选择依赖：
 
@@ -495,7 +474,7 @@ ept-level-4 = ["axaddrspace/4-level-ept"]
 fs = ["axstd/fs", "axruntime/fs"]
 ```
 
-**步骤 5: axruntime 平台选择**
+**步骤 6: axruntime 平台选择（条件匹配检查）**
 
 [modules/axruntime/Cargo.toml](../modules/axruntime/Cargo.toml) 根据目标架构选择平台 crate：
 
@@ -504,13 +483,13 @@ fs = ["axstd/fs", "axruntime/fs"]
 axplat-x86-qemu-q35 = {workspace = true}  # x86 平台特定实现
 ```
 
-**条件编译的确定过程**：
+**条件编译的匹配过程**：
 
 当 Cargo 解析到 `[target.'cfg(target_arch = "x86_64")']` 时，会进行以下检查：
 
-1. **Cargo 自动设置环境变量**：
+1. **读取已设置的环境变量**：
    ```bash
-   # 从目标三元组 x86_64-unknown-none 提取
+   # 这些环境变量在步骤 3 中已经设置好了
    CARGO_CFG_TARGET_ARCH=x86_64
    CARGO_CFG_TARGET_VENDOR=unknown
    CARGO_CFG_TARGET_OS=none
@@ -518,7 +497,8 @@ axplat-x86-qemu-q35 = {workspace = true}  # x86 平台特定实现
    ```
 
 2. **条件匹配检查**：
-   - Cargo 检查 `CARGO_CFG_TARGET_ARCH` 的值是否为 `"x86_64"`
+   - Cargo 读取 `CARGO_CFG_TARGET_ARCH` 环境变量的值
+   - 检查是否等于 `"x86_64"`
    - 如果匹配，包含这部分依赖
    - 如果不匹配（如 ARM64 平台），完全跳过这部分依赖
 
@@ -540,9 +520,14 @@ axplat-x86-qemu-q35 = {workspace = true}  # x86 平台特定实现
    }
    ```
 
+**重要说明**：
+- 步骤 6 只是做**检查匹配**，不涉及环境变量的提取
+- 环境变量的提取和设置在**步骤 3**已经完成
+- 这里只是读取已经设置好的 `CARGO_CFG_TARGET_ARCH` 环境变量并进行匹配
+
 这就是为什么相同的代码库，通过指定不同的 `--target`，可以编译出不同平台的版本！
 
-**步骤 6: rustc 编译**
+**步骤 7: rustc 编译**
 
 Cargo 调用 rustc 编译每个 crate：
 
@@ -566,7 +551,7 @@ rustc --edition=2024 \
 - `--features`: 启用特性，影响代码编译
 - `-C link-arg=-Tlink.ld`: 使用链接脚本
 
-**步骤 7: 链接生成 ELF**
+**步骤 8: 链接生成 ELF**
 
 链接器将所有目标文件链接成最终的 ELF 可执行文件：
 
@@ -584,7 +569,7 @@ rustc --edition=2024 \
 输出: target/x86_64-unknown-none/release/axvisor (ELF)
 ```
 
-**步骤 8: 完成**
+**步骤 9: 完成**
 
 由于 `to_bin = false`，x86 平台不生成 .bin 文件，只生成 ELF 文件。
 
@@ -727,7 +712,51 @@ cargo build -p axvisor \
 
 #### 编译过程详解
 
-**步骤 3: build.rs 执行**
+**步骤 3: Cargo 设置环境变量（关键步骤）**
+
+与 x86_64 平台一样，在 Cargo 解析任何 `Cargo.toml` 文件**之前**，它会根据命令行参数 `--target aarch64-unknown-none-softfloat` 自动设置一系列环境变量。
+
+```bash
+# Cargo 从目标三元组 aarch64-unknown-none-softfloat 中提取信息并设置环境变量
+CARGO_CFG_TARGET_ARCH=aarch64
+CARGO_CFG_TARGET_VENDOR=unknown
+CARGO_CFG_TARGET_OS=none
+CARGO_CFG_TARGET_ENDIAN=little
+CARGO_CFG_TARGET_POINTER_WIDTH=64
+CARGO_CFG_TARGET_FEATURE="neon,v8a"
+# ... 等等
+```
+
+**环境变量设置的时机**：
+
+```
+1. 用户执行: cargo build --target aarch64-unknown-none-softfloat
+   │
+   ▼
+2. Cargo 解析命令行参数
+   获取 --target 参数: "aarch64-unknown-none-softfloat"
+   │
+   ▼
+3. Cargo 设置环境变量 ⭐ (在解析 Cargo.toml 之前)
+   从目标三元组提取信息并设置环境变量
+   │
+   ▼
+4. Cargo 解析 Cargo.toml
+   读取 [target.'cfg(target_arch = "aarch64")'.dependencies]
+   检查 CARGO_CFG_TARGET_ARCH 环境变量
+   │
+   ▼
+5. Cargo 执行 build.rs
+   build.rs 可以读取 CARGO_CFG_TARGET_ARCH 等环境变量
+```
+
+**关键点**：
+- 环境变量是在 Cargo 解析 `Cargo.toml` **之前**设置的
+- 这些环境变量在整个构建过程中都可用
+- `build.rs` 可以读取这些环境变量
+- 后续的条件编译检查只是读取这些已经设置好的环境变量
+
+**步骤 4: build.rs 执行**
 
 ```rust
 fn main() -> anyhow::Result<()> {
@@ -752,7 +781,7 @@ fn main() -> anyhow::Result<()> {
 }
 ```
 
-**步骤 4: Cargo 解析依赖**
+**步骤 5: Cargo 解析依赖**
 
 ```toml
 [dependencies]
@@ -770,7 +799,7 @@ dyn-plat = ["axstd/myplat", "axstd/driver-dyn", "axruntime/driver-dyn"]
 fs = ["axstd/fs", "axruntime/fs"]
 ```
 
-**步骤 5: axruntime 平台选择**
+**步骤 6: axruntime 平台选择（条件匹配检查）**
 
 ```toml
 [target.'cfg(target_arch = "aarch64")'.dependencies]
@@ -778,13 +807,13 @@ axplat-aarch64-dyn = {git = "...", tag = "v0.4.0", features = ["irq", "smp", "hv
 somehal = "0.4"  # ARM 硬件抽象层
 ```
 
-**条件编译的确定过程**：
+**条件编译的匹配过程**：
 
 当 Cargo 解析到 `[target.'cfg(target_arch = "aarch64")']` 时，会进行以下检查：
 
-1. **Cargo 自动设置环境变量**：
+1. **读取已设置的环境变量**：
    ```bash
-   # 从目标三元组 aarch64-unknown-none-softfloat 提取
+   # 这些环境变量在步骤 3 中已经设置好了
    CARGO_CFG_TARGET_ARCH=aarch64
    CARGO_CFG_TARGET_VENDOR=unknown
    CARGO_CFG_TARGET_OS=none
@@ -792,7 +821,8 @@ somehal = "0.4"  # ARM 硬件抽象层
    ```
 
 2. **条件匹配检查**：
-   - Cargo 检查 `CARGO_CFG_TARGET_ARCH` 的值是否为 `"aarch64"`
+   - Cargo 读取 `CARGO_CFG_TARGET_ARCH` 环境变量的值
+   - 检查是否等于 `"aarch64"`
    - 如果匹配，包含这部分依赖
    - 如果不匹配（如 x86_64 平台），完全跳过这部分依赖
 
@@ -828,7 +858,12 @@ somehal = "0.4"  # ARM 硬件抽象层
    }
    ```
 
-**步骤 6: rustc 编译**
+**重要说明**：
+- 步骤 6 只是做**检查匹配**，不涉及环境变量的提取
+- 环境变量的提取和设置在**步骤 3**已经完成
+- 这里只是读取已经设置好的 `CARGO_CFG_TARGET_ARCH` 环境变量并进行匹配
+
+**步骤 7: rustc 编译**
 
 ```bash
 # 实际执行的 rustc 命令（简化版）
@@ -849,7 +884,7 @@ rustc --edition=2024 \
 - `--cfg 'platform="aarch64-generic"'`: 编译时条件，选择 ARM 平台代码
 - `--features`: 启用特性，包括驱动支持
 
-**步骤 7: 链接生成 ELF**
+**步骤 8: 链接生成 ELF**
 
 ```
 输入文件:
@@ -867,7 +902,7 @@ rustc --edition=2024 \
 输出: target/aarch64-unknown-none-softfloat/release/axvisor (ELF)
 ```
 
-**步骤 8: rust-objcopy 转换（ARM 特有）**
+**步骤 9: rust-objcopy 转换（ARM 特有）**
 
 由于 `to_bin = true`，ostool 会调用 rust-objcopy 将 ELF 转换为纯二进制文件：
 
