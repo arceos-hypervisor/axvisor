@@ -50,7 +50,7 @@ axstd = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216", f
   "smp", # "page-alloc-64g",
 ]}
 
-axalloc = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
+axalloc = {path = "modules/axalloc"}
 axconfig = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
 axdisplay = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
 axdriver = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
@@ -83,6 +83,7 @@ page_table_entry = {version = "0.5", features = ["arm-el2"]}
 page_table_multiarch = "0.5"
 rdif-intc = "0.12"
 rdrive = "0.18"
+axbacktrace = "0.1"
 
 # percpu "0.2.1" can not compile on aarch64
 percpu = {version = "=0.2.0", features = ["arm-el2"]}
@@ -114,7 +115,7 @@ x86_vlapic = {path = "modules/x86_vlapic"}
 path = "modules/axdevice"
 
 [patch."https://github.com/arceos-org/arceos"]
-# axalloc = {path = "modules/axalloc"}
 axconfig = {path = "modules/axconfig"}
 axruntime = {path = "modules/axruntime"}
 axfs = {path = "modules/axfs"}
+axalloc = {path = "modules/axalloc"}

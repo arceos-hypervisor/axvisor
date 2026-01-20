@@ -1,11 +1,4 @@
-#![no_std]
-
-//! [ArceOS](https://github.com/arceos-org/arceos) global memory allocator.
-//!
-//! It provides [`GlobalAllocator`], which implements the trait
-//! [`core::alloc::GlobalAlloc`]. A static global variable of type
-//! [`GlobalAllocator`] is defined with the `#[global_allocator]` attribute, to
-//! be registered as the standard library’s default allocator.
+//! The Axvisor memory allocator.
 
 #![no_std]
 
@@ -13,31 +6,80 @@
 extern crate log;
 extern crate alloc;
 
-// mod page;
+use core::{
+    alloc::{GlobalAlloc, Layout},
+    fmt,
+    ptr::NonNull,
+};
 
-use buddy_system_allocator::Heap;
-use core::alloc::{GlobalAlloc, Layout};
-use core::ptr::NonNull;
+use buddy_slab_allocator::{AllocResult, PageAllocator};
 use kspin::SpinNoIrq;
+use strum::{IntoStaticStr, VariantArray};
 
+// Page size can be configured from here
 const PAGE_SIZE: usize = 0x1000;
-const MIN_HEAP_SIZE: usize = 0x8000; // 32 K
 
-// pub use page::GlobalPage;
+mod page;
+pub use page::GlobalPage;
+
+#[cfg(feature = "tracking")]
+mod tracking;
+#[cfg(feature = "tracking")]
+pub use tracking::*;
+
+/// Kinds of memory usage for tracking.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, VariantArray, IntoStaticStr)]
+pub enum UsageKind {
+    /// Heap allocations made by kernel Rust code.
+    RustHeap,
+    /// Virtual memory, usually used for user space.
+    VirtMem,
+    /// Page cache for file systems.
+    PageCache,
+    /// Page tables.
+    PageTable,
+    /// DMA memory.
+    Dma,
+    /// Memory used by [`GlobalPage`].
+    Global,
+}
+
+/// Statistics of memory usages.
+#[derive(Clone, Copy)]
+pub struct Usages([usize; UsageKind::VARIANTS.len()]);
+
+impl Usages {
+    const fn new() -> Self {
+        Self([0; UsageKind::VARIANTS.len()])
+    }
+
+    fn alloc(&mut self, kind: UsageKind, size: usize) {
+        self.0[kind as usize] += size;
+    }
+
+    fn dealloc(&mut self, kind: UsageKind, size: usize) {
+        self.0[kind as usize] -= size;
+    }
+}
+
+impl fmt::Debug for Usages {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut d = f.debug_struct("UsageStats");
+        for &kind in UsageKind::VARIANTS {
+            d.field(kind.into(), &self.0[kind as usize]);
+        }
+        d.finish()
+    }
+}
 
 /// The global allocator used by ArceOS.
 ///
-/// It combines a [`ByteAllocator`] and a [`PageAllocator`] into a simple
-/// two-level allocator: firstly tries allocate from the byte allocator, if
-/// there is no memory, asks the page allocator for more memory and adds it to
-/// the byte allocator.
-///
-/// Currently, [`TlsfByteAllocator`] is used as the byte allocator, while
-/// [`BitmapPageAllocator`] is used as the page allocator.
-///
-/// [`TlsfByteAllocator`]: allocator::TlsfByteAllocator
+/// This is an adapter around the allocator::GlobalAllocator that provides
+/// compatibility with the original axalloc API.
 pub struct GlobalAllocator {
-    palloc: SpinNoIrq<Heap<64>>,
+    inner: buddy_slab_allocator::GlobalAllocator<PAGE_SIZE>,
+    usages: SpinNoIrq<Usages>,
 }
 
 impl Default for GlobalAllocator {
@@ -50,138 +92,202 @@ impl GlobalAllocator {
     /// Creates an empty [`GlobalAllocator`].
     pub const fn new() -> Self {
         Self {
-            palloc: SpinNoIrq::new(Heap::empty()),
+            inner: buddy_slab_allocator::GlobalAllocator::<PAGE_SIZE>::new(),
+            usages: SpinNoIrq::new(Usages::new()),
         }
     }
 
     /// Returns the name of the allocator.
     pub const fn name(&self) -> &'static str {
-        "buddy"
+        "buddy_slab_allocator"
     }
 
     /// Initializes the allocator with the given region.
-    ///
-    /// It firstly adds the whole region to the page allocator, then allocates
-    /// a small region (32 KB) to initialize the byte allocator. Therefore,
-    /// the given region must be larger than 32 KB.
     pub fn init(&self, start_vaddr: usize, size: usize) {
-        assert!(size > MIN_HEAP_SIZE);
-        debug!(
-            "initialize global allocator at: [{:#x}, {:#x})",
-            start_vaddr,
-            start_vaddr + size
+        info!(
+            "Initialize global memory allocator, addr:[{:#x}-{:#x})",
+            start_vaddr, start_vaddr + size
         );
-        unsafe { self.palloc.lock().init(start_vaddr, size) };
+        if let Err(e) = self.inner.init(start_vaddr, size) {
+            panic!("Failed to initialize allocator: {:?}", e);
+        }
     }
 
     /// Add the given region to the allocator.
-    ///
-    /// It will add the whole region to the byte allocator.
-    pub fn add_memory(&self, start_vaddr: usize, size: usize) {
-        unsafe { self.palloc.lock().add_to_heap(start_vaddr, size) }
+    pub fn add_memory(&self, start_vaddr: usize, size: usize) -> AllocResult {
+         info!(
+            "Add memory region to allocator, addr:[{:#x}-{:#x})",
+            start_vaddr, start_vaddr + size
+        );
+        self.inner.add_memory(start_vaddr, size)
     }
 
     /// Allocate arbitrary number of bytes. Returns the left bound of the
     /// allocated region.
-    ///
-    /// It firstly tries to allocate from the byte allocator. If there is no
-    /// memory, it asks the page allocator for more memory and adds it to the
-    /// byte allocator.
-    pub fn alloc(&self, layout: Layout) -> Result<NonNull<u8>, ()> {
-        // single-level allocator: only use the byte allocator.
-        let mut balloc = self.palloc.lock();
-        balloc.alloc(layout)
+    pub fn alloc(&self, layout: Layout) -> AllocResult<NonNull<u8>> {
+        let result = self.inner.alloc(layout);
+        if let Ok(_ptr) = result {
+            self.usages.lock().alloc(UsageKind::RustHeap, layout.size());
+        }
+        result
     }
 
     /// Gives back the allocated region to the byte allocator.
-    ///
-    /// The region should be allocated by [`alloc`], and `align_pow2` should be
-    /// the same as the one used in [`alloc`]. Otherwise, the behavior is
-    /// undefined.
-    ///
-    /// [`alloc`]: GlobalAllocator::alloc
     pub fn dealloc(&self, pos: NonNull<u8>, layout: Layout) {
-        self.palloc.lock().dealloc(pos, layout)
+        self.usages
+            .lock()
+            .dealloc(UsageKind::RustHeap, layout.size());
+        self.inner.dealloc(pos, layout);
     }
 
     /// Allocates contiguous pages.
-    ///
-    /// It allocates `num_pages` pages from the page allocator.
-    ///
-    /// `align_pow2` must be a power of 2, and the returned region bound will be
-    /// aligned to it.
-    pub fn alloc_pages(&self, num_pages: usize, align_pow2: usize) -> Result<usize, ()> {
-        // single-level allocator: allocate from the byte allocator.
-        let mut balloc = self.palloc.lock();
-        let layout = Layout::from_size_align(num_pages * PAGE_SIZE, align_pow2).unwrap();
-        let ptr = balloc.alloc(layout)?;
-        Ok(ptr.as_ptr() as usize)
+    pub fn alloc_pages(
+        &self,
+        num_pages: usize,
+        alignment: usize,
+        kind: UsageKind,
+    ) -> AllocResult<usize> {
+        let result = self.inner.alloc_pages(num_pages, alignment);
+        if let Ok(_addr) = result {
+            let size = num_pages * PAGE_SIZE;
+            self.usages.lock().alloc(kind, size);
+        }
+        result
     }
 
     /// Allocates contiguous pages starting from the given address.
-    ///
-    /// It allocates `num_pages` pages from the page allocator starting from the
-    /// given address.
-    ///
-    /// `align_pow2` must be a power of 2, and the returned region bound will be
-    /// aligned to it.
     pub fn alloc_pages_at(
-        &self,
+        &mut self,
         start: usize,
         num_pages: usize,
-        align_pow2: usize,
-    ) -> Result<usize, ()> {
-        unimplemented!("level-1 allocator does not support alloc_pages_at")
+        alignment: usize,
+        kind: UsageKind,
+    ) -> AllocResult<usize> {
+        let result = self.inner.alloc_pages_at(start, num_pages, alignment);
+        if let Ok(_addr) = result {
+            let size = num_pages * PAGE_SIZE;
+            self.usages.lock().alloc(kind, size);
+        }
+        result
     }
 
     /// Gives back the allocated pages starts from `pos` to the page allocator.
-    ///
-    /// The pages should be allocated by [`alloc_pages`], and `align_pow2`
-    /// should be the same as the one used in [`alloc_pages`]. Otherwise, the
-    /// behavior is undefined.
-    ///
-    /// [`alloc_pages`]: GlobalAllocator::alloc_pages
-    pub fn dealloc_pages(&self, pos: usize, num_pages: usize) {
-        // single-level allocator: deallocate to the byte allocator.
-        let mut balloc = self.palloc.lock();
-        let layout = Layout::from_size_align(num_pages * PAGE_SIZE, PAGE_SIZE).unwrap();
-        let ptr = NonNull::new(pos as *mut u8).unwrap();
-        balloc.dealloc(ptr, layout);
+    pub fn dealloc_pages(&self, pos: usize, num_pages: usize, kind: UsageKind) {
+        let size = num_pages * PAGE_SIZE;
+        self.usages.lock().dealloc(kind, size);
+        self.inner.dealloc_pages(pos, num_pages);
     }
 
     /// Returns the number of allocated bytes in the byte allocator.
+    #[cfg(feature = "tracking")]
     pub fn used_bytes(&self) -> usize {
-        self.palloc.lock().stats_alloc_actual()
+        let stats = self.inner.get_stats();
+        stats.heap_bytes + stats.slab_bytes
     }
 
     /// Returns the number of available bytes in the byte allocator.
+    #[cfg(feature = "tracking")]
     pub fn available_bytes(&self) -> usize {
-        let g = self.palloc.lock();
-        g.stats_total_bytes() - g.stats_alloc_actual()
+        // The new allocator doesn't have this exact method, so we approximate
+        let stats = self.inner.get_stats();
+        stats.free_pages * PAGE_SIZE
     }
 
     /// Returns the number of allocated pages in the page allocator.
+    #[cfg(feature = "tracking")]
     pub fn used_pages(&self) -> usize {
-        self.used_bytes().div_ceil(PAGE_SIZE)
+        let stats = self.inner.get_stats();
+        stats.used_pages
     }
 
     /// Returns the number of available pages in the page allocator.
+    #[cfg(feature = "tracking")]
     pub fn available_pages(&self) -> usize {
-        self.available_bytes().div_ceil(PAGE_SIZE)
+        let stats = self.inner.get_stats();
+        stats.free_pages
+    }
+
+    /// Returns the number of allocated bytes in the byte allocator.
+    #[cfg(not(feature = "tracking"))]
+    pub fn used_bytes(&self) -> usize {
+        0
+    }
+
+    /// Returns the number of available bytes in the byte allocator.
+    #[cfg(not(feature = "tracking"))]
+    pub fn available_bytes(&self) -> usize {
+        0
+    }
+
+    /// Returns the number of allocated pages in the page allocator.
+    #[cfg(not(feature = "tracking"))]
+    pub fn used_pages(&self) -> usize {
+        0
+    }
+
+    /// Returns the number of available pages in the page allocator.
+    #[cfg(not(feature = "tracking"))]
+    pub fn available_pages(&self) -> usize {
+        0
+    }
+
+    /// Returns the usage statistics of the allocator.
+    pub fn usages(&self) -> Usages {
+        *self.usages.lock()
     }
 }
 
 unsafe impl GlobalAlloc for GlobalAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        if let Ok(ptr) = GlobalAllocator::alloc(self, layout) {
-            ptr.as_ptr()
-        } else {
-            alloc::alloc::handle_alloc_error(layout)
+        let inner = move || {
+            if let Ok(ptr) = GlobalAllocator::alloc(self, layout) {
+                ptr.as_ptr()
+            } else {
+                alloc::alloc::handle_alloc_error(layout)
+            }
+        };
+
+        #[cfg(feature = "tracking")]
+        {
+            tracking::with_state(|state| match state {
+                None => inner(),
+                Some(state) => {
+                    let ptr = inner();
+                    let generation = state.generation;
+                    state.generation += 1;
+                    state.map.insert(
+                        ptr as usize,
+                        tracking::AllocationInfo {
+                            layout,
+                            backtrace: axbacktrace::Backtrace::capture(),
+                            generation,
+                        },
+                    );
+                    ptr
+                }
+            })
         }
+
+        #[cfg(not(feature = "tracking"))]
+        inner()
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        GlobalAllocator::dealloc(self, NonNull::new(ptr).expect("dealloc null ptr"), layout)
+        let ptr = NonNull::new(ptr).expect("dealloc null ptr");
+        let inner = || GlobalAllocator::dealloc(self, ptr, layout);
+
+        #[cfg(feature = "tracking")]
+        tracking::with_state(|state| match state {
+            None => inner(),
+            Some(state) => {
+                let address = ptr.as_ptr() as usize;
+                state.map.remove(&address);
+                inner()
+            }
+        });
+
+        #[cfg(not(feature = "tracking"))]
+        inner();
     }
 }
 
@@ -202,12 +308,8 @@ pub fn global_allocator() -> &'static GlobalAllocator {
 ///
 /// This function should be called only once, and before any allocation.
 pub fn global_init(start_vaddr: usize, size: usize) {
-    debug!(
-        "initialize global allocator at: [{:#x}, {:#x})",
-        start_vaddr,
-        start_vaddr + size
-    );
     GLOBAL_ALLOCATOR.init(start_vaddr, size);
+    info!("global allocator initialized");
 }
 
 /// Add the given memory region to the global allocator.
@@ -216,12 +318,11 @@ pub fn global_init(start_vaddr: usize, size: usize) {
 /// so that the allocated memory is also valid.
 ///
 /// It's similar to [`global_init`], but can be called multiple times.
-pub fn global_add_memory(start_vaddr: usize, size: usize) -> Result<(), ()> {
+pub fn global_add_memory(start_vaddr: usize, size: usize) -> AllocResult {
     debug!(
         "add a memory region to global allocator: [{:#x}, {:#x})",
         start_vaddr,
         start_vaddr + size
     );
-    GLOBAL_ALLOCATOR.add_memory(start_vaddr, size);
-    Ok(())
+    GLOBAL_ALLOCATOR.add_memory(start_vaddr, size)
 }
