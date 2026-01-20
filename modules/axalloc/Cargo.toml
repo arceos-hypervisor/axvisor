@@ -15,7 +15,6 @@ tracking = ["dep:percpu", "dep:axbacktrace", "buddy-slab-allocator/tracking"]
 buddy-slab-allocator = {git = "https://github.com/arceos-hypervisor/buddy-slab-allocator.git", branch = "main", features = ["log"] }
 axbacktrace = { workspace = true, optional = true }
 axerrno.workspace = true
-cfg-if.workspace = true
 kspin.workspace = true
 log.workspace = true
 memory_addr.workspace = true

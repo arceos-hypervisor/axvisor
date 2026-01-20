@@ -347,7 +347,6 @@ dependencies = [
  "axbacktrace",
  "axerrno 0.2.2",
  "buddy-slab-allocator",
- "cfg-if",
  "kspin",
  "log",
  "memory_addr",
