@@ -1,7 +1,7 @@
-use axerrno::{AxError, AxResult};
+use axerrno::AxResult;
 use memory_addr::{PhysAddr, VirtAddr};
 
-use crate::{PAGE_SIZE, global_allocator};
+use crate::{PAGE_SIZE, UsageKind, global_allocator};
 
 /// A RAII wrapper of contiguous 4K-sized pages.
 ///
@@ -15,13 +15,13 @@ pub struct GlobalPage {
 impl GlobalPage {
     /// Allocate one 4K-sized page.
     pub fn alloc() -> AxResult<Self> {
-        global_allocator()
-            .alloc_pages(1, PAGE_SIZE)
-            .map(|vaddr| Self {
-                start_vaddr: vaddr.into(),
-                num_pages: 1,
-            })
-            .map_err(alloc_err_to_ax_err)
+        let vaddr = global_allocator()
+            .alloc_pages(1, PAGE_SIZE, UsageKind::Global)
+            .map_err(|_| axerrno::AxError::from(axerrno::AxErrorKind::NoMemory))?;
+        Ok(Self {
+            start_vaddr: vaddr.into(),
+            num_pages: 1,
+        })
     }
 
     /// Allocate one 4K-sized page and fill with zero.
@@ -32,14 +32,14 @@ impl GlobalPage {
     }
 
     /// Allocate contiguous 4K-sized pages.
-    pub fn alloc_contiguous(num_pages: usize, align_pow2: usize) -> AxResult<Self> {
-        global_allocator()
-            .alloc_pages(num_pages, align_pow2)
-            .map(|vaddr| Self {
-                start_vaddr: vaddr.into(),
-                num_pages,
-            })
-            .map_err(alloc_err_to_ax_err)
+    pub fn alloc_contiguous(num_pages: usize, alignment: usize) -> AxResult<Self> {
+        let vaddr = global_allocator()
+            .alloc_pages(num_pages, alignment, UsageKind::Global)
+            .map_err(|_| axerrno::AxError::from(axerrno::AxErrorKind::NoMemory))?;
+        Ok(Self {
+            start_vaddr: vaddr.into(),
+            num_pages,
+        })
     }
 
     /// Get the start virtual address of this page.
@@ -93,15 +93,10 @@ impl GlobalPage {
 
 impl Drop for GlobalPage {
     fn drop(&mut self) {
-        global_allocator().dealloc_pages(self.start_vaddr.into(), self.num_pages);
-    }
-}
-
-const fn alloc_err_to_ax_err(e: AllocError) -> AxError {
-    match e {
-        AllocError::InvalidParam | AllocError::MemoryOverlap | AllocError::NotAllocated => {
-            AxError::InvalidInput
-        }
-        AllocError::NoMemory => AxError::NoMemory,
+        global_allocator().dealloc_pages(
+            self.start_vaddr.into(),
+            self.num_pages,
+            UsageKind::Global,
+        );
     }
 }
