@@ -16,6 +16,7 @@ buddy-slab-allocator = {git = "https://github.com/arceos-hypervisor/buddy-slab-a
 axbacktrace = { workspace = true, optional = true }
 axerrno.workspace = true
 kspin.workspace = true
+kernel_guard.workspace = true
 log.workspace = true
 memory_addr.workspace = true
 percpu = { workspace = true, optional = true }
