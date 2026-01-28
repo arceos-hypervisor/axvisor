@@ -642,6 +642,18 @@ pub fn load_config(&mut self) -> anyhow::Result<Cargo> {
     };
 
     // 5. 设置环境变量（关键步骤）
+    // 
+    // 重要说明：此处的 cargo.env.insert() 是在【配置阶段】将环境变量
+    // 存储到 Cargo 结构体的 env 字段（HashMap<String, String>）中，
+    // 此时还没有执行任何命令。这些环境变量将在后续的执行阶段
+    //（cargo_builder.rs 的 build_cargo_command 函数中）被读取并
+    // 设置到实际的子进程中。
+    //
+    // 详细流程：
+    //   配置阶段（tbuld.rs）: cargo.env.insert() → 存储到 HashMap
+    //         ↓
+    //   执行阶段（cargo_builder.rs）: cmd.env(k, v) → 设置到子进程
+    //
     // 5.1 设置 SMP 核心数
     if let Some(smp) = config.smp {
         cargo.env.insert(
@@ -649,6 +661,7 @@ pub fn load_config(&mut self) -> anyhow::Result<Cargo> {
             smp.to_string()
         );
         // 例如: AXVISOR_SMP=1
+        // 此时环境变量被存储在 cargo.env HashMap 中，供后续使用
     }
 
     // 5.2 设置 VM 配置文件路径列表
@@ -660,6 +673,7 @@ pub fn load_config(&mut self) -> anyhow::Result<Cargo> {
             value
         );
         // 例如: AXVISOR_VM_CONFIGS=configs/vms/vm1.toml:configs/vms/vm2.toml
+        // 此时环境变量被存储在 cargo.env HashMap 中，供后续使用
     }
 
     // 6. 处理日志级别
@@ -695,11 +709,25 @@ async fn build_cargo_command(&mut self) -> anyhow::Result<Command> {
     cmd.arg("build");  // 指定子命令
 
     // 2. 设置环境变量（从配置中获取）
+    // 
+    // 重要说明：此处的 cmd.env(k, v) 是在【执行阶段】从配置中读取
+    // 环境变量并设置到实际的子进程（std::process::Command）中。
+    // 这些环境变量将在执行 cargo 命令时生效，被 cargo 子进程继承。
+    //
+    // 完整流程：
+    //   配置阶段（tbuld.rs）: cargo.env.insert() → 存储到 HashMap
+    //         ↓
+    //   执行阶段（cargo_builder.rs）: cmd.env(k, v) → 设置到子进程
+    //         ↓
+    //   子进程执行：cargo 子进程继承这些环境变量
+    //
     for (key, value) in &self.config.env {
+        println!("{}", format!("{key}={value}").cyan());  // 打印环境变量
         cmd.env(key, value);
         // 设置的环境变量包括：
         // - AXVISOR_SMP=1
         // - AXVISOR_VM_CONFIGS=...
+        // 这些环境变量会被 cargo 子进程及其调用的 build.rs 继承
     }
 
     // 3. 指定要构建的包
@@ -1183,7 +1211,381 @@ Ok(())
 3. **配置嵌入**：将 VM 配置文件内容嵌入到生成的代码中
 4. **增量编译**：设置重新构建触发器，确保配置变化时重新构建
 
-##### 3.2.3.6 rustc 编译
+##### 3.2.3.6 链接器脚本处理
+
+链接器脚本定义了程序的内存布局和入口点。x86_64 平台使用模板化的链接器脚本，通过构建系统动态生成最终配置。本节详细介绍链接器脚本的模板设计、构建脚本处理流程以及最终生成的内存布局。
+
+**链接器脚本的作用**：
+
+链接器脚本（Linker Script）是链接器（ld）使用的配置文件，用于控制程序的内存布局。它定义了：
+- **入口点**：程序开始执行的符号（如 `_start`）
+- **内存布局**：各个段（.text、.data、.bss 等）在内存中的位置
+- **符号定义**：用于代码中引用的地址标记
+- **对齐要求**：段的对齐方式（如 4KB 页对齐）
+
+**x86_64 平台的链接器脚本处理流程**：
+
+```mermaid
+graph TD
+    A[linker.lds.S 模板文件] --> B[platform/build.rs 构建脚本]
+    B --> C[读取 AXVISOR_SMP 环境变量]
+    C --> D[替换模板占位符 %ARCH%, %KERNEL_BASE%, %SMP%]
+    D --> E[生成 link.x 到 OUT_DIR]
+    E --> F[输出 cargo:rustc-link-search 和 cargo:rustc-link-arg]
+    F --> G[rustc 编译时使用 link.x 进行链接]
+    
+    style A fill:#e1f5ff
+    style B fill:#fff4e1
+    style E fill:#e1ffe1
+    style G fill:#f5e1ff
+```
+
+###### 3.2.3.6.1 链接器脚本模板
+
+链接器脚本模板位于 [platform/x86-qemu-q35/linker.lds.S](../platform/x86-qemu-q35/linker.lds.S) 中，使用占位符机制实现动态配置：
+
+```assembly
+OUTPUT_ARCH(%ARCH%)              /* 架构占位符 */
+
+BASE_ADDRESS = %KERNEL_BASE%;    /* 内核基地址占位符 */
+SMP = %SMP%;                     /* CPU 核心数占位符 */
+
+ENTRY(_start)                    /* 设置入口点为 _start */
+SECTIONS
+{
+    . = BASE_ADDRESS;
+    _skernel = .;
+
+    /* 代码段 */
+    .text : ALIGN(4K) {
+        _stext = .;
+        *(.text.boot)            /* 启动代码段 */
+        *(.text .text.*)
+        . = ALIGN(4K);
+        _etext = .;
+    }
+
+    /* 只读数据段 */
+    .rodata : ALIGN(4K) {
+        _srodata = .;
+        *(.rodata .rodata.*)
+        *(.srodata .srodata.*)
+        *(.sdata2 .sdata2.*)
+        . = ALIGN(4K);
+        _erodata = .;
+    }
+
+    /* 数据段 */
+    .data : ALIGN(4K) {
+        _sdata = .;
+        *(.data.boot_page_table)    /* 启动页表 */
+        . = ALIGN(4K);
+
+        /* 驱动注册段 */
+        __sdriver_register = .;
+        KEEP(*(.driver.register*))
+        __edriver_register = .;
+
+        *(.data .data.*)
+        *(.sdata .sdata.*)
+        *(.got .got.*)
+    }
+
+    /* 线程局部存储 */
+    .tdata : ALIGN(0x10) {
+        _stdata = .;
+        *(.tdata .tdata.*)
+        _etdata = .;
+    }
+
+    .tbss : ALIGN(0x10) {
+        _stbss = .;
+        *(.tbss .tbss.*)
+        *(.tcommon)
+        _etbss = .;
+    }
+
+    /* Per-CPU 数据段 */
+    . = ALIGN(4K);
+    _percpu_start = .;
+    _percpu_end = _percpu_start + SIZEOF(.percpu);
+    .percpu 0x0 : AT(_percpu_start) {
+        _percpu_load_start = .;
+        *(.percpu .percpu.*)
+        _percpu_load_end = .;
+        . = _percpu_load_start + ALIGN(64) * SMP;  /* 每个CPU 64字节对齐 */
+    }
+    . = _percpu_end;
+
+    . = ALIGN(4K);
+    _edata = .;
+
+    /* BSS 段 */
+    .bss : ALIGN(4K) {
+        boot_stack = .;
+        *(.bss.stack)
+        . = ALIGN(4K);
+        boot_stack_top = .;
+
+        _sbss = .;
+        *(.bss .bss.*)
+        *(.sbss .sbss.*)
+        *(COMMON)
+        . = ALIGN(4K);
+        _ebss = .;
+    }
+
+    _ekernel = .;
+
+    /* 丢弃不需要的段 */
+    /DISCARD/ : {
+        *(.comment) *(.gnu*) *(.note*) *(.eh_frame*)
+    }
+}
+
+/* 中断处理和链接器优化段 */
+SECTIONS {
+    linkme_IRQ : { *(linkme_IRQ) }
+    linkm2_IRQ : { *(linkm2_IRQ) }
+    linkme_PAGE_FAULT : { *(linkme_PAGE_FAULT) }
+    linkm2_PAGE_FAULT : { *(linkm2_PAGE_FAULT) }
+    linkme_SYSCALL : { *(linkme_SYSCALL) }
+    linkm2_SYSCALL : { *(linkm2_SYSCALL) }
+    scope_local : { *(scope_local) }
+}
+INSERT AFTER .tbss;
+```
+
+**模板占位符说明**：
+
+| 占位符 | 替换值 | 说明 |
+|--------|--------|------|
+| `%ARCH%` | `i386:x86-64` | 目标架构 |
+| `%KERNEL_BASE%` | `0xffff800000200000` | 内核虚拟基地址 |
+| `%SMP%` | 从 `AXVISOR_SMP` 环境变量读取 | CPU 核心数 |
+
+**关键段说明**：
+
+| 段名称 | 用途 | 特点 |
+|--------|------|------|
+| `.text.boot` | 启动代码 | 必须在物理地址上执行 |
+| `.data.boot_page_table` | 启动页表 | 用于开启分页机制 |
+| `.driver.register*` | 驱动注册表 | 使用 `KEEP` 防止被优化掉 |
+| `.percpu` | Per-CPU 数据 | 每个CPU 64 字节对齐 |
+| `.bss.stack` | 启动栈 | 用于早期启动阶段 |
+
+###### 3.2.3.6.2 构建脚本处理
+
+构建脚本 [platform/x86-qemu-q35/build.rs](../platform/x86-qemu-q35/build.rs) 负责处理模板并生成最终的链接器脚本：
+
+```rust
+fn main() {
+    // 监听环境变量和源文件变化
+    println!("cargo:rerun-if-env-changed=AXVISOR_SMP");
+    println!("cargo:rerun-if-changed=linker.lds.S");
+
+    // 读取 SMP 配置（默认为 1）
+    let mut smp = 1;
+    if let Ok(s) = std::env::var("AXVISOR_SMP") {
+        smp = s.parse::<usize>().unwrap_or(1);
+    }
+
+    // 读取模板文件
+    let ld_content = include_str!("linker.lds.S");
+
+    // 替换占位符
+    let ld_content = ld_content.replace("%ARCH%", "i386:x86-64");
+    let ld_content = ld_content.replace(
+        "%KERNEL_BASE%", 
+        &format!("{:#x}", 0xffff800000200000usize)
+    );
+    let ld_content = ld_content.replace("%SMP%", &format!("{smp}"));
+
+    // 输出到构建目录
+    let out_dir = std::env::var("OUT_DIR").unwrap();
+    let out_path = std::path::Path::new(&out_dir).join("link.x");
+    
+    // 告诉 cargo 链接器搜索路径
+    println!("cargo:rustc-link-search={out_dir}");
+    
+    // 写入最终的链接器脚本
+    std::fs::write(out_path, ld_content).unwrap();
+}
+```
+
+**处理步骤详解**：
+
+1. **监听变化**：
+   - `cargo:rerun-if-env-changed=AXVISOR_SMP`：当 `AXVISOR_SMP` 环境变量变化时重新运行 build.rs
+   - `cargo:rerun-if-changed=linker.lds.S`：当模板文件变化时重新运行 build.rs
+
+2. **读取配置**：
+   - 从 `AXVISOR_SMP` 环境变量读取 CPU 核心数
+   - 如果未设置，默认为 1
+
+3. **替换占位符**：
+   - `%ARCH%` → `i386:x86-64`
+   - `%KERNEL_BASE%` → `0xffff800000200000`
+   - `%SMP%` → 实际的 CPU 核心数
+
+4. **输出文件**：
+   - 生成 `link.x` 到 `OUT_DIR`
+   - 通过 `cargo:rustc-link-search` 告诉链接器搜索路径
+
+**关键环境变量**：
+
+| 环境变量 | 值示例 | 说明 |
+|---------|--------|------|
+| `OUT_DIR` | `target/.../build/axplat-x86-q35-xxxxx/out` | 构建脚本输出目录 |
+| `TARGET` | `x86_64-unknown-none` | 目标三元组 |
+| `AXVISOR_SMP` | `1`、`4`、`8` | CPU 核心数（用户设置） |
+
+**增量编译支持**：
+
+通过 `cargo:rerun-if-*` 指令实现智能重新构建：
+- 仅当相关文件或环境变量变化时才重新运行 build.rs
+- 避免不必要的重新编译，提高构建效率
+
+###### 3.2.3.6.3 最终生成的链接器脚本
+
+经过构建脚本处理后，生成的 `link.x` 文件内容如下（以 SMP=1 为例）：
+
+```assembly
+OUTPUT_ARCH(i386:x86-64)
+
+BASE_ADDRESS = 0xffff800000200000;
+SMP = 1;
+
+ENTRY(_start)
+SECTIONS
+{
+    . = 0xffff800000200000;
+    _skernel = .;
+
+    .text : ALIGN(4K) {
+        _stext = .;
+        *(.text.boot)
+        *(.text .text.*)
+        . = ALIGN(4K);
+        _etext = .;
+    }
+
+    /* ... 其他段配置 ... */
+
+    .percpu 0x0 : AT(_percpu_start) {
+        _percpu_load_start = .;
+        *(.percpu .percpu.*)
+        _percpu_load_end = .;
+        . = _percpu_load_start + ALIGN(64) * 1;  /* SMP=1 */
+    }
+    /* ... */
+}
+```
+
+**生成文件的位置**：
+
+```
+target/x86_64-unknown-none/debug/build/axplat-x86-q35-<hash>/out/link.x
+```
+
+**链接器如何使用 link.x**：
+
+在 rustc 编译时，通过 `-C link-arg=-Tlink.x` 参数告诉链接器使用该脚本：
+
+```bash
+rustc ... -C link-arg=-Tlink.x ...
+```
+
+###### 3.2.3.6.4 内存布局
+
+链接器脚本定义的内存布局如下：
+
+| 段名称 | 起始地址 | 大小 | 说明 |
+|--------|----------|------|------|
+| `.text` | `0xffff800000200000` | 可变 | 代码段，包含启动代码 |
+| `.rodata` | 紧接 `.text` | 可变 | 只读数据段 |
+| `.data` | 紧接 `.rodata` | 可变 | 数据段，包含启动页表和驱动注册表 |
+| `.percpu` | 紧接 `.data` | `64 × SMP` 字节 | Per-CPU 数据段 |
+| `.bss` | 紧接 `.percpu` | 可变 | 零初始化数据段，包含启动栈 |
+
+**内存布局图**：
+
+```
+高位地址
+    │
+    │  ┌────────────────────────────────────┐
+    │  │         栈空间（向下增长）           │
+    │  ├────────────────────────────────────┤
+    │  │         .bss 段（零初始化）          │
+    │  │  - boot_stack                      │
+    │  │  - .percpu 数据                    │
+    │  ├────────────────────────────────────┤
+    │  │         .data 段（已初始化）         │
+    │  │  - 启动页表                         │
+    │  │  - 驱动注册表                       │
+    │  ├────────────────────────────────────┤
+    │  │         .rodata 段（只读）           │
+    │  ├────────────────────────────────────┤
+    │  │         .text 段（代码）             │
+    │  │  - multiboot.S 启动代码             │
+    │  │  - Rust 代码                        │
+    │  └────────────────────────────────────┘
+    │
+0xffff800000200000  (内核基地址)
+    │
+低位地址
+```
+
+**关键特点**：
+
+1. **高位内核地址**：
+   - 使用 `0xffff800000200000` 作为内核基地址
+   - 与用户空间地址分离，提高安全性
+   - 符合 x86_64 的 canonical address 规范
+
+2. **页对齐**：
+   - 所有段按 4KB 页对齐
+   - 便于页表管理
+   - 提高内存访问效率
+
+3. **启动代码段**：
+   - 通过 `*(.text.boot)` 收集启动代码
+   - 确保启动代码位于内存开头
+   - 被 Multiboot 引导加载器识别
+
+4. **Per-CPU 支持**：
+   - 每个 CPU 的数据按 64 字节对齐
+   - 支持 SMP 多核架构
+   - 避免缓存行竞争
+
+5. **驱动注册**：
+   - 通过 `KEEP(*(.driver.register*))` 保留驱动注册表
+   - 防止链接器优化掉未直接引用的驱动
+   - 支持动态驱动初始化
+
+6. **Multiboot 兼容**：
+   - 支持 Multiboot 协议的引导加载器（如 GRUB、QEMU）
+   - 提供标准的启动信息传递机制
+   - 简化引导加载器的集成
+
+**符号定义**：
+
+链接器脚本定义了多个符号，供代码中使用：
+
+```rust
+// 在 Rust 代码中可以引用这些符号
+extern "C" {
+    fn _stext();
+    fn _etext();
+    fn _sdata();
+    fn _edata();
+    fn _sbss();
+    fn _ebss();
+    fn boot_stack_top();
+}
+```
+
+##### 3.2.3.7 rustc 编译
 
 Cargo 调用 rustc 编译每个 crate：
 
@@ -1207,7 +1609,7 @@ rustc --edition=2024 \
 - `--features`: 启用特性，影响代码编译
 - `-C link-arg=-Tlink.x`: 使用链接脚本（由 platform/x86-qemu-q35/build.rs 从 linker.lds.S 生成）
 
-##### 3.2.3.7 链接生成 ELF
+##### 3.2.3.8 链接生成 ELF
 
 链接器将所有目标文件链接成最终的 ELF 可执行文件：
 
@@ -1225,7 +1627,7 @@ rustc --edition=2024 \
 输出: target/x86_64-unknown-none/release/axvisor (ELF)
 ```
 
-##### 3.2.3.8 完成
+##### 3.2.3.9 完成
 
 由于 `to_bin = false`，x86 平台不生成 .bin 文件，只生成 ELF 文件。
 
@@ -1378,6 +1780,18 @@ pub fn load_config(&mut self) -> anyhow::Result<Cargo> {
     };
 
     // 5. 设置环境变量（关键步骤）
+    // 
+    // 重要说明：此处的 cargo.env.insert() 是在【配置阶段】将环境变量
+    // 存储到 Cargo 结构体的 env 字段（HashMap<String, String>）中，
+    // 此时还没有执行任何命令。这些环境变量将在后续的执行阶段
+    //（cargo_builder.rs 的 build_cargo_command 函数中）被读取并
+    // 设置到实际的子进程中。
+    //
+    // 详细流程：
+    //   配置阶段（tbuld.rs）: cargo.env.insert() → 存储到 HashMap
+    //         ↓
+    //   执行阶段（cargo_builder.rs）: cmd.env(k, v) → 设置到子进程
+    //
     // 5.1 设置 SMP 核心数
     if let Some(smp) = config.smp {
         cargo.env.insert(
@@ -1385,6 +1799,7 @@ pub fn load_config(&mut self) -> anyhow::Result<Cargo> {
             smp.to_string()
         );
         // 例如: AXVISOR_SMP=1
+        // 此时环境变量被存储在 cargo.env HashMap 中，供后续使用
     }
 
     // 5.2 设置 VM 配置文件路径列表
@@ -1394,6 +1809,7 @@ pub fn load_config(&mut self) -> anyhow::Result<Cargo> {
             "AXVISOR_VM_CONFIGS".to_string(),
             value
         );
+        // 此时环境变量被存储在 cargo.env HashMap 中，供后续使用
     }
 
     // 6. 处理日志级别
@@ -1422,9 +1838,23 @@ async fn build_cargo_command(&mut self) -> anyhow::Result<Command> {
     let mut cmd = self.ctx.command("cargo");
     cmd.arg("build");
 
-    // 2. 设置环境变量
+    // 2. 设置环境变量（从配置中获取）
+    // 
+    // 重要说明：此处的 cmd.env(k, v) 是在【执行阶段】从配置中读取
+    // 环境变量并设置到实际的子进程（std::process::Command）中。
+    // 这些环境变量将在执行 cargo 命令时生效，被 cargo 子进程继承。
+    //
+    // 完整流程：
+    //   配置阶段（tbuld.rs）: cargo.env.insert() → 存储到 HashMap
+    //         ↓
+    //   执行阶段（cargo_builder.rs）: cmd.env(k, v) → 设置到子进程
+    //         ↓
+    //   子进程执行：cargo 子进程继承这些环境变量
+    //
     for (key, value) in &self.config.env {
+        println!("{}", format!("{key}={value}").cyan());  // 打印环境变量
         cmd.env(key, value);
+        // 设置的环境变量会被 cargo 子进程及其调用的 build.rs 继承
     }
 
     // 3. 指定要构建的包
@@ -1873,7 +2303,347 @@ Ok(())
 3. **配置嵌入**：将 VM 配置嵌入到生成的代码中
 4. **增量编译**：设置重新构建触发器
 
-##### 3.3.3.6 rustc 编译
+##### 3.3.3.6 链接器脚本处理
+
+ARM64 平台的链接器脚本由 [modules/axplat-aarch64-dyn](../modules/axplat-aarch64-dyn) crate 提供，与 x86_64 平台相比有显著差异。本节详细介绍 ARM64 平台的链接器脚本设计、构建脚本处理流程以及与 x86_64 平台的关键差异。
+
+**ARM64 平台链接器脚本的特点**：
+
+1. **位置**：由外部 crate `axplat-aarch64-dyn` 提供，而非本地平台目录
+2. **模板格式**：使用 `{{SMP}}` 占位符，而非 `%SMP%`
+3. **PIE 支持**：通过 `INCLUDE "pie_boot.x"` 支持位置无关可执行文件
+4. **栈空间**：固定 256KB 栈空间，而非动态分配
+5. **内核地址**：使用 `0xffff_8000_0000_0000` 作为基地址
+
+**ARM64 平台的链接器脚本处理流程**：
+
+```mermaid
+graph TD
+    A[axplat-aarch64-dyn link.ld 模板] --> B[axplat-aarch64-dyn build.rs]
+    B --> C[读取 link.ld 模板文件]
+    C --> D["替换 {{SMP}} 占位符"]
+    D --> E[生成 link.x 到 OUT_DIR]
+    E --> F[输出 cargo:rustc-link-arg 配置链接器]
+    F --> G[rustc 编译时使用 link.x 进行链接]
+    
+    style A fill:#ffe1f0
+    style B fill:#fff4e1
+    style E fill:#e1ffe1
+    style G fill:#f5e1ff
+```
+
+###### 3.3.3.6.1 链接器脚本模板
+
+ARM64 平台的链接器脚本模板位于 [modules/axplat-aarch64-dyn/link.ld](../modules/axplat-aarch64-dyn/link.ld) 中：
+
+```assembly
+OUTPUT_ARCH(aarch64)
+
+__SMP = {{SMP}};              /* 由 build.rs 动态替换 */
+STACK_SIZE = 0x40000;         /* 256KB 栈空间 */
+
+ENTRY(_start)
+
+INCLUDE "pie_boot.x"          /* PIE（位置无关可执行）引导支持 */
+
+SECTIONS
+{
+    _skernel = .;
+
+    /* 代码段 */
+    .text : ALIGN(4K) {
+        _stext = .;
+        *(.text.boot)         /* 启动代码段，必须在 EL2 执行 */
+        *(.text .text.*)
+        . = ALIGN(4K);
+        _etext = .;
+    }
+
+    /* 只读数据段 */
+    .rodata : ALIGN(4K) {
+        *(.rodata .rodata.*)
+        *(.srodata .srodata.*)
+    }
+
+    /* 初始化数组 */
+    .init_array : ALIGN(0x10) {
+        __init_array_start = .;
+        *(.init_array .init_array.*)
+        __init_array_end = .;
+    }
+
+    /* 数据段 */
+    .data : ALIGN(4K) {
+        *(.data.boot_page_table)    /* 启动页表 */
+        . = ALIGN(4K);
+
+        /* 驱动注册段 */
+        __sdriver_register = .;
+        KEEP(*(.driver.register*))
+        __edriver_register = .;
+
+        *(.data .data.*)
+        *(.got .got.*)
+    }
+
+    /* 线程局部存储 */
+    .tdata : ALIGN(0x10) {
+        _stdata = .;
+        *(.tdata .tdata.*)
+        _etdata = .;
+    }
+
+    .tbss : ALIGN(0x10) {
+        _stbss = .;
+        *(.tbss .tbss.*)
+        *(.tcommon)
+        _etbss = .;
+    }
+
+    /* Per-CPU 数据段 */
+    . = ALIGN(4K);
+    _percpu_start = .;
+    _percpu_end = _percpu_start + SIZEOF(.percpu);
+    .percpu 0x0 : AT(_percpu_start) {
+        _percpu_load_start = .;
+        *(.percpu .percpu.*)
+        _percpu_load_end = .;
+        . = _percpu_load_start + ALIGN(64) * __SMP;  /* 每个CPU 64字节对齐 */
+    }
+    . = _percpu_end;
+
+    /* BSS 段 */
+    .bss : AT(.) ALIGN(4K) {
+        /* CPU0 栈 */
+        __cpu0_stack = .;
+        . += STACK_SIZE;
+        __cpu0_stack_top = .;
+
+        /* 启动栈 */
+        boot_stack = .;
+        *(.bss.stack)
+        . = ALIGN(4K);
+        boot_stack_top = .;
+
+        _sbss = .;
+        *(.bss .bss.*)
+        *(.sbss .sbss.*)
+        *(COMMON)
+        . = ALIGN(4K);
+        _ebss = .;
+    }
+
+    _ekernel = .;
+}
+```
+
+**模板占位符说明**：
+
+| 占位符 | 替换值 | 说明 |
+|--------|--------|------|
+| `{{SMP}}` | 从配置读取（默认 16） | CPU 核心数 |
+
+**与 x86_64 平台的关键差异**：
+
+| 特性 | x86_64 | ARM64 |
+|------|--------|-------|
+| **占位符格式** | `%SMP%` | `{{SMP}}` |
+| **架构指定** | `OUTPUT_ARCH(i386:x86-64)` | `OUTPUT_ARCH(aarch64)` |
+| **PIE 支持** | 无 | `INCLUDE "pie_boot.x"` |
+| **栈空间** | 动态分配 | 固定 256KB |
+| **CPU0 栈** | 无 | 专门的 `__cpu0_stack` 段 |
+
+**关键段说明**：
+
+| 段名称 | 用途 | 特点 |
+|--------|------|------|
+| `.text.boot` | 启动代码 | 必须在 EL2 特权级执行 |
+| `.data.boot_page_table` | 启动页表 | 用于开启 Stage-2 页表 |
+| `.driver.register*` | 驱动注册表 | 使用 `KEEP` 防止被优化掉 |
+| `.percpu` | Per-CPU 数据 | 每个CPU 64 字节对齐 |
+| `.init_array` | 初始化函数数组 | C++ 风格构造函数 |
+| `__cpu0_stack` | CPU0 专用栈 | 256KB 固定大小 |
+
+###### 3.3.3.6.2 构建脚本处理
+
+构建脚本 [modules/axplat-aarch64-dyn/build.rs](../modules/axplat-aarch64-dyn/build.rs) 负责处理模板并生成最终的链接器脚本：
+
+```rust
+fn main() {
+    // 设置链接器搜索路径
+    println!("cargo:rustc-link-search={}", out_dir().display());
+
+    // 使用自定义链接器脚本
+    println!("cargo::rustc-link-arg=-Tlink.x");
+    println!("cargo:rustc-link-arg=-no-pie");           /* 禁用 PIE */
+    println!("cargo:rustc-link-arg=-znostart-stop-gc"); /* 保留启动和停止代码 */
+
+    // 读取链接器脚本模板
+    let ld_content = std::fs::read_to_string("link.ld").unwrap();
+
+    // 替换 SMP 占位符（默认为 16 核）
+    let ld_content = ld_content.replace("{{SMP}}", &format!("{}", 16));
+
+    // 写入最终的链接器脚本
+    std::fs::write(out_dir().join("link.x"), ld_content)
+        .expect("link.x write failed");
+}
+```
+
+**处理步骤详解**：
+
+1. **设置链接器搜索路径**：
+   - `cargo:rustc-link-search`：告诉链接器在 OUT_DIR 中查找 link.x
+
+2. **配置链接器参数**：
+   - `-Tlink.x`：使用生成的链接器脚本
+   - `-no-pie`：禁用位置无关可执行文件（虽然模板包含 PIE 支持，但实际禁用）
+   - `-znostart-stop-gc`：保留启动和停止代码，防止被垃圾回收
+
+3. **读取和替换模板**：
+   - 读取 `link.ld` 模板文件
+   - 将 `{{SMP}}` 替换为实际的 CPU 核心数（默认 16）
+
+4. **输出最终脚本**：
+   - 生成 `link.x` 到 `OUT_DIR`
+   - 供链接器在编译时使用
+
+**平台配置**（[modules/axplat-aarch64-dyn/axconfig.toml](../modules/axplat-aarch64-dyn/axconfig.toml)）：
+
+```toml
+[plat]
+cpu-num = 1                                   # CPU 核心数
+kernel-base-vaddr = "0xffff_8000_0000_0000"    # 内核虚拟地址
+kernel-aspace-base = "0xffff_8000_0000_0000"   # 内核地址空间基址
+kernel-aspace-size = "0x0000_7fff_ffff_f000"   # 内核地址空间大小
+
+[devices]
+timer-irq = 30  # 定时器中断号（PPI，物理定时器）
+```
+
+**与 x86_64 平台的构建脚本差异**：
+
+| 特性 | x86_64 | ARM64 |
+|------|--------|-------|
+| **模板读取方式** | `include_str!("linker.lds.S")` | `std::fs::read_to_string("link.ld")` |
+| **占位符替换** | 三个占位符（`%ARCH%`, `%KERNEL_BASE%`, `%SMP%`） | 一个占位符（`{{SMP}}`） |
+| **SMP 默认值** | 1 | 16 |
+| **链接器参数** | 仅 `-Tlink.x` | `-Tlink.x`, `-no-pie`, `-znostart-stop-gc` |
+| **环境变量监听** | 监听 `AXVISOR_SMP` | 无（使用固定值） |
+
+###### 3.3.3.6.3 最终生成的链接器脚本
+
+经过构建脚本处理后，生成的 `link.x` 文件内容如下（以 SMP=16 为例）：
+
+```assembly
+OUTPUT_ARCH(aarch64)
+
+__SMP = 16;               /* 替换后的值 */
+STACK_SIZE = 0x40000;     /* 256KB */
+
+ENTRY(_start)
+
+INCLUDE "pie_boot.x"
+
+SECTIONS
+{
+    _skernel = .;
+
+    .text : ALIGN(4K) {
+        _stext = .;
+        *(.text.boot)
+        *(.text .text.*)
+        . = ALIGN(4K);
+        _etext = .;
+    }
+
+    /* ... 其他段配置 ... */
+
+    .percpu 0x0 : AT(_percpu_start) {
+        _percpu_load_start = .;
+        *(.percpu .percpu.*)
+        _percpu_load_end = .;
+        . = _percpu_load_start + ALIGN(64) * 16;  /* SMP=16 */
+    }
+    /* ... */
+}
+```
+
+**生成文件的位置**：
+
+```
+target/aarch64-unknown-none-softfloat/debug/build/axplat-aarch64-dyn-<hash>/out/link.x
+```
+
+###### 3.3.3.6.4 内存布局
+
+ARM64 平台的内存布局与 x86_64 平台类似，但有一些关键差异：
+
+| 段名称 | 起始地址 | 大小 | 说明 |
+|--------|----------|------|------|
+| `.text` | `0xffff_8000_0000_0000` | 可变 | 代码段，包含启动代码 |
+| `.rodata` | 紧接 `.text` | 可变 | 只读数据段 |
+| `.data` | 紧接 `.rodata` | 可变 | 数据段，包含启动页表和驱动注册表 |
+| `.percpu` | 紧接 `.data` | `64 × SMP` 字节 | Per-CPU 数据段 |
+| `.bss` | 紧接 `.percpu` | 可变 | 零初始化数据段，包含 CPU0 栈和启动栈 |
+
+**内存布局图**：
+
+```
+高位地址
+    │
+    │  ┌────────────────────────────────────┐
+    │  │         栈空间（向下增长）           │
+    │  ├────────────────────────────────────┤
+    │  │         .bss 段（零初始化）          │
+    │  │  - __cpu0_stack (256KB)            │
+    │  │  - boot_stack                      │
+    │  │  - .percpu 数据                    │
+    │  ├────────────────────────────────────┤
+    │  │         .data 段（已初始化）         │
+    │  │  - 启动页表                         │
+    │  │  - 驱动注册表                       │
+    │  ├────────────────────────────────────┤
+    │  │         .rodata 段（只读）           │
+    │  ├────────────────────────────────────┤
+    │  │         .text 段（代码）             │
+    │  │  - EL2 启动代码                     │
+    │  │  - Rust 代码                        │
+    │  └────────────────────────────────────┘
+    │
+0xffff_8000_0000_0000  (内核基地址)
+    │
+低位地址
+```
+
+**关键特点**：
+
+1. **64 位内核地址**：
+   - 使用 `0xffff_8000_0000_0000` 作为内核基地址
+   - 提供更大的地址空间（128 TB）
+   - 符合 ARM64 的 canonical address 规范
+
+2. **EL2 特权级**：
+   - 启动代码必须在 EL2 特权级执行
+   - 支持硬件虚拟化（Stage-2 页表）
+   - 与 x86_64 的 long mode 类似
+
+3. **固定栈空间**：
+   - CPU0 专用栈：256KB
+   - 启动栈：动态分配
+   - 与 x86_64 的动态栈不同
+
+4. **PIE 支持**：
+   - 通过 `INCLUDE "pie_boot.x"` 支持位置无关可执行
+   - 虽然实际编译时禁用了 PIE
+   - 为未来的地址空间布局随机化（ASLR）预留支持
+
+5. **初始化数组**：
+   - `.init_array` 段包含 C++ 风格的构造函数
+   - 在 `rust_main` 之前执行
+   - x86_64 平台也有类似机制
+
+##### 3.3.3.7 rustc 编译
 
 ```bash
 # 实际执行的 rustc 命令（简化版）
@@ -1895,7 +2665,7 @@ rustc --edition=2024 \
 - `--features`: 启用特性，包括驱动支持
 - `-C link-arg=-Tlink.ld`: 使用链接脚本
 
-##### 3.3.3.7 链接生成 ELF
+##### 3.3.3.8 链接生成 ELF
 
 ```
 输入文件:
@@ -1913,7 +2683,7 @@ rustc --edition=2024 \
 输出: target/aarch64-unknown-none-softfloat/release/axvisor (ELF)
 ```
 
-##### 3.3.3.8 转换 BIN
+##### 3.3.3.9 转换 BIN
 
 由于 `to_bin = true`，ostool 会调用 rust-objcopy 将 ELF 转换为纯二进制文件：
 
