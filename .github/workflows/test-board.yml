@@ -31,8 +31,10 @@ jobs:
         with:
           submodules: "recursive"
 
-      - name: Install dependencies
-        run: cargo +stable install ostool --version ^0.8
+      - uses: cargo-bins/cargo-binstall@main
+
+      - name: Install ostool
+        run: cargo binstall ostool
 
       - name: Run tests
         run: |
