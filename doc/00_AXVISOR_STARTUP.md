@@ -230,317 +230,702 @@ axplat-aarch64-dyn = { git = "https://github.com/arceos-hypervisor/axplat-aarch6
 
 ### 2.1 启动流程图
 
-```mermaid
-graph TD
-    A[Bootloader<br/>GRUB/QEMU] --> B[_start<br/>汇编入口点]
-    B --> C[multiboot.S<br/>设置栈/页表]
-    C --> D[rust_entry<br/>平台Rust入口]
-    D --> E[axplat::call_main<br/>调用主函数]
-    E --> F[rust_main<br/>运行时初始化]
-    F --> G[axtask::init_scheduler<br/>调度器初始化]
-    G --> H[main<br/>应用入口]
-```
-
-### 2.2 链接器入口点配置
-
-链接器脚本定义了程序的内存布局和入口点。x86_64 平台使用模板化的链接器脚本，通过构建系统动态生成最终配置。
-
-#### 2.2.1 链接器脚本模板
-
-链接器脚本模板位于 [platform/x86-qemu-q35/linker.lds.S](platform/x86-qemu-q35/linker.lds.S) 中：
-
-```assembly
-OUTPUT_ARCH(%ARCH%)              /* 架构占位符 */
-
-BASE_ADDRESS = %KERNEL_BASE%;    /* 内核基地址占位符 */
-SMP = %SMP%;                     /* CPU 核心数占位符 */
-
-ENTRY(_start)                    /* 设置入口点为 _start */
-SECTIONS
-{
-    . = BASE_ADDRESS;
-    _skernel = .;
-
-    /* 代码段 */
-    .text : ALIGN(4K) {
-        _stext = .;
-        *(.text.boot)            /* 启动代码段 */
-        *(.text .text.*)
-        . = ALIGN(4K);
-        _etext = .;
-    }
-
-    /* 只读数据段 */
-    .rodata : ALIGN(4K) {
-        _srodata = .;
-        *(.rodata .rodata.*)
-        *(.srodata .srodata.*)
-        *(.sdata2 .sdata2.*)
-        . = ALIGN(4K);
-        _erodata = .;
-    }
-
-    /* 数据段 */
-    .data : ALIGN(4K) {
-        _sdata = .;
-        *(.data.boot_page_table)    /* 启动页表 */
-        . = ALIGN(4K);
-
-        /* 驱动注册段 */
-        __sdriver_register = .;
-        KEEP(*(.driver.register*))
-        __edriver_register = .;
-
-        *(.data .data.*)
-        *(.sdata .sdata.*)
-        *(.got .got.*)
-    }
-
-    /* 线程局部存储 */
-    .tdata : ALIGN(0x10) {
-        _stdata = .;
-        *(.tdata .tdata.*)
-        _etdata = .;
-    }
-
-    .tbss : ALIGN(0x10) {
-        _stbss = .;
-        *(.tbss .tbss.*)
-        *(.tcommon)
-        _etbss = .;
-    }
-
-    /* Per-CPU 数据段 */
-    . = ALIGN(4K);
-    _percpu_start = .;
-    _percpu_end = _percpu_start + SIZEOF(.percpu);
-    .percpu 0x0 : AT(_percpu_start) {
-        _percpu_load_start = .;
-        *(.percpu .percpu.*)
-        _percpu_load_end = .;
-        . = _percpu_load_start + ALIGN(64) * SMP;  /* 每个CPU 64字节对齐 */
-    }
-    . = _percpu_end;
-
-    . = ALIGN(4K);
-    _edata = .;
-
-    /* BSS 段 */
-    .bss : ALIGN(4K) {
-        boot_stack = .;
-        *(.bss.stack)
-        . = ALIGN(4K);
-        boot_stack_top = .;
-
-        _sbss = .;
-        *(.bss .bss.*)
-        *(.sbss .sbss.*)
-        *(COMMON)
-        . = ALIGN(4K);
-        _ebss = .;
-    }
-
-    _ekernel = .;
-
-    /* 丢弃不需要的段 */
-    /DISCARD/ : {
-        *(.comment) *(.gnu*) *(.note*) *(.eh_frame*)
-    }
-}
-
-/* 中断处理和链接器优化段 */
-SECTIONS {
-    linkme_IRQ : { *(linkme_IRQ) }
-    linkm2_IRQ : { *(linkm2_IRQ) }
-    linkme_PAGE_FAULT : { *(linkme_PAGE_FAULT) }
-    linkm2_PAGE_FAULT : { *(linkm2_PAGE_FAULT) }
-    linkme_SYSCALL : { *(linkme_SYSCALL) }
-    linkm2_SYSCALL : { *(linkm2_SYSCALL) }
-    scope_local : { *(scope_local) }
-}
-INSERT AFTER .tbss;
-```
-
-**模板占位符**：
-- `%ARCH%`：目标架构（如 `i386:x86-64`）
-- `%KERNEL_BASE%`：内核虚拟基地址（如 `0xffff800000200000`）
-- `%SMP%`：CPU 核心数（从环境变量 `AXVISOR_SMP` 读取）
-
-#### 2.2.2 构建脚本处理
-
-构建脚本 [platform/x86-qemu-q35/build.rs](platform/x86-qemu-q35/build.rs) 负责处理模板并生成最终的链接器脚本：
-
-```rust
-fn main() {
-    // 监听环境变量和源文件变化
-    println!("cargo:rerun-if-env-changed=AXVISOR_SMP");
-    println!("cargo:rerun-if-changed=linker.lds.S");
-
-    // 读取 SMP 配置（默认为 1）
-    let mut smp = 1;
-    if let Ok(s) = std::env::var("AXVISOR_SMP") {
-        smp = s.parse::<usize>().unwrap_or(1);
-    }
-
-    // 读取模板文件
-    let ld_content = include_str!("linker.lds.S");
-
-    // 替换占位符
-    let ld_content = ld_content.replace("%ARCH%", "i386:x86-64");
-    let ld_content = ld_content.replace(
-        "%KERNEL_BASE%", 
-        &format!("{:#x}", 0xffff800000200000usize)
-    );
-    let ld_content = ld_content.replace("%SMP%", &format!("{smp}"));
-
-    // 输出到构建目录
-    let out_dir = std::env::var("OUT_DIR").unwrap();
-    let out_path = std::path::Path::new(&out_dir).join("link.x");
-    
-    // 告诉 cargo 链接器搜索路径
-    println!("cargo:rustc-link-search={out_dir}");
-    
-    // 写入最终的链接器脚本
-    std::fs::write(out_path, ld_content).unwrap();
-}
-```
-
-**Cargo 编译过程与处理流程**：
+x86_64 平台的启动流程分为 BSP（Bootstrap Processor）和 AP（Application Processor）两条路径：
 
 ```mermaid
 graph TD
-    A[Cargo 开始构建] --> B[编译并执行 build.rs]
-    B --> C[读取 AXVISOR_SMP 和模板]
-    C --> D[替换占位符生成 link.x]
-    D --> E[输出 cargo 指令配置链接器]
-    E --> F[编译 Rust 代码生成 .o 文件]
-    F --> G[链接器使用 link.x 生成可执行文件]
+    subgraph "BSP 启动流程（CPU 0）"
+        A1[Bootloader<br/>GRUB/QEMU] --> B1[汇编启动<br/>multiboot.S]
+        B1 --> C1[进入 64 位模式]
+        C1 --> D1[rust_entry<br/>平台 Rust 入口]
+        D1 --> E1[rust_main<br/>运行时初始化]
+        E1 --> F1[发送 INIT-SIPI-SIPI<br/>唤醒 AP]
+        F1 --> G1[axtask::init_scheduler<br/>调度器初始化]
+        G1 --> H1[main<br/>应用入口]
+    end
+
+    subgraph "AP 启动流程（CPU 1-N）"
+        A2[BSP 发送 SIPI] --> B2[AP 启动<br/>ap_start.S + multiboot.S]
+        B2 --> C2[进入 64 位模式]
+        C2 --> D2[rust_entry_secondary<br/>平台 Rust 入口]
+        D2 --> E2[运行时初始化<br/>等待调度]
+    end
+
+    F1 -.->|触发| A2
+    E2 -.->|就绪| G1
+
+    style A1 fill:#e1f5ff
+    style A2 fill:#ffe1f0
+    style H1 fill:#90EE90
+    style E2 fill:#FFD700
 ```
 
-**处理步骤**：
+**流程说明**：
 
-1. **构建脚本阶段**：Cargo 编译并运行 `build.rs`，读取 `AXVISOR_SMP` 环境变量和 `linker.lds.S` 模板，替换占位符后生成 `link.x` 到 `OUT_DIR`
+1. **BSP 启动流程**（左侧蓝色）：
+   - 由引导加载器启动，执行汇编启动代码
+   - 进入 64 位模式后调用 `rust_entry`
+   - 完成运行时初始化后，通过 APIC 发送 INIT-SIPI-SIPI 序列唤醒 AP
+   - 初始化调度器并进入应用主函数
 
-2. **指令配置阶段**：通过 `cargo:rustc-link-search` 和 `cargo:rustc-link-arg=-Tlink.x` 告诉链接器使用生成的脚本
+2. **AP 启动流程**（右侧粉色）：
+   - 由 BSP 通过 SIPI 中断唤醒
+   - 执行启动代码（`ap_start.S` + `multiboot.S`）
+   - 进入 64 位模式后调用 `rust_entry_secondary`
+   - 完成运行时初始化后进入就绪状态
 
-3. **编译链接阶段**：编译 Rust 源代码生成目标文件，链接器根据 `link.x` 定义的内存布局进行符号解析和重定位，生成最终可执行文件
+3. **汇合点**：
+   - BSP 和 AP 最终都进入运行时环境
+   - AP 就绪后，BSP 继续初始化调度器
+   - 调度器开始工作时，所有 CPU 都可以参与任务调度
 
-**关键环境变量**：
+### 2.2 程序入口点
 
-| 环境变量 | 值示例 | 说明 |
-|---------|--------|------|
-| `OUT_DIR` | `target/.../build/axplat-x86-q35-xxxxx/out` | 构建脚本输出目录 |
-| `TARGET` | `x86_64-unknown-none` | 目标三元组 |
-| `AXVISOR_SMP` | `1`、`4`、`8` | CPU 核心数（用户设置） |
+链接器脚本定义了程序的内存布局和入口点。x86_64 平台使用模板化的链接器脚本，通过构建系统动态生成最终链接脚本文件。关于链接器脚本的模板设计、构建脚本处理流程、内存布局等详细信息，请参阅 [构建文档 - 链接器脚本处理](00_AXVISOR_BUILD.md#3236-链接器脚本处理) 章节。
 
-**增量编译**：通过 `cargo:rerun-if-env-changed=AXVISOR_SMP` 和 `cargo:rerun-if-changed=linker.lds.S` 实现智能重新构建
+**核心要点**：
 
-#### 2.2.3 最终生成的链接器脚本
+1. **入口点定义**：链接器脚本通过 `ENTRY(_start)` 指令定义程序入口点为 `_start` 符号
+2. **模板机制**：使用占位符（如 `%ARCH%`、`%KERNEL_BASE%`、`%SMP%`）实现动态配置
+3. **构建时处理**：构建脚本 `build.rs` 在编译时读取环境变量并替换占位符，生成最终的 `link.x` 文件
+4. **内存布局**：定义了代码段、数据段、BSS 段等在内存中的位置，所有段按 4KB 页对齐
 
-经过构建脚本处理后，生成的 `link.x` 文件内容如下（以 SMP=1 为例）：
+**关键文件**：
+- **模板文件**：[platform/x86-qemu-q35/linker.lds.S](platform/x86-qemu-q35/linker.lds.S)
+- **构建脚本**：[platform/x86-qemu-q35/build.rs](platform/x86-qemu-q35/build.rs)
+- **生成文件**：`target/.../build/axplat-x86-q35-xxxxx/out/link.x`
 
-```assembly
-OUTPUT_ARCH(i386:x86-64)
+### 2.3 boot.rs 与 multiboot.S
 
-BASE_ADDRESS = 0xffff800000200000;
-SMP = 1;
-
-ENTRY(_start)
-SECTIONS
-{
-    . = 0xffff800000200000;
-    _skernel = .;
-
-    .text : ALIGN(4K) {
-        _stext = .;
-        *(.text.boot)
-        *(.text .text.*)
-        . = ALIGN(4K);
-        _etext = .;
-    }
-
-    /* ... 其他段配置 ... */
-
-    .percpu 0x0 : AT(_percpu_start) {
-        _percpu_load_start = .;
-        *(.percpu .percpu.*)
-        _percpu_load_end = .;
-        . = _percpu_load_start + ALIGN(64) * 1;  /* SMP=1 */
-    }
-    /* ... */
-}
-```
-
-#### 2.2.4 内存布局
-
-链接器脚本定义的内存布局如下：
-
-| 段名称 | 起始地址 | 大小 | 说明 |
-|--------|----------|------|------|
-| `.text` | `0xffff800000200000` | 可变 | 代码段，包含启动代码 |
-| `.rodata` | 紧接 `.text` | 可变 | 只读数据段 |
-| `.data` | 紧接 `.rodata` | 可变 | 数据段，包含启动页表和驱动注册表 |
-| `.percpu` | 紧接 `.data` | `64 × SMP` 字节 | Per-CPU 数据段 |
-| `.bss` | 紧接 `.percpu` | 可变 | 零初始化数据段，包含启动栈 |
-
-**关键特点**：
-- **高位内核地址**：使用 `0xffff800000200000` 作为内核基地址
-- **页对齐**：所有段按 4KB 页对齐
-- **启动代码段**：通过 `*(.text.boot)` 收集启动代码
-- **Per-CPU 支持**：每个 CPU 的数据按 64 字节对齐
-- **驱动注册**：通过 `KEEP(*(.driver.register*))` 保留驱动注册表
-- **Multiboot 兼容**：支持 Multiboot 协议的引导加载器
-
-### 2.3 汇编启动代码
-
-在 [platform/x86-qemu-q35/src/boot.rs](platform/x86-qemu-q35/src/boot.rs) 中，通过 `global_asm!` 宏嵌入 `multiboot.S` 这个汇编代码：
+boot.rs 文件是整个 x86_64 平台的程序入口文件，其中通过 `global_asm!` 宏将启动的 `multiboot.S` 汇编文件以及其自身定义的一些寄存器值整合到一起。
 
 ```rust
+use x86_64::registers::control::{Cr0Flags, Cr4Flags};
+use x86_64::registers::model_specific::EferFlags;
+
+// CR0: 保护模式 + 协处理器监控 + 数值错误 + 写保护 + 分页
+const CR0: u64 = Cr0Flags::PROTECTED_MODE_ENABLE.bits()    // PE (bit 0): 启用保护模式
+    | Cr0Flags::MONITOR_COPROCESSOR.bits()                 // MP (bit 1): 监控协处理器
+    | Cr0Flags::NUMERIC_ERROR.bits()                       // NE (bit 5): 数值错误
+    | Cr0Flags::WRITE_PROTECT.bits()                       // WP (bit 16): 写保护
+    | Cr0Flags::PAGING.bits();                             // PG (bit 31): 启用分页
+
+// CR4: 物理地址扩展 + 页表全局 + [可选] FXSR 保存
+const CR4: u64 = Cr4Flags::PHYSICAL_ADDRESS_EXTENSION.bits() // PAE (bit 5): 物理地址扩展
+    | Cr4Flags::PAGE_GLOBAL.bits()                          // PGE (bit 7): 页表全局
+    | if cfg!(feature = "fp-simd") {
+        Cr4Flags::OSFXSR.bits() | Cr4Flags::OSXMMEXCPT_ENABLE.bits()  // 条件编译
+    } else {
+        0
+    };
+
+// EFER: 长模式使能 + 不执行使能
+const EFER: u64 = EferFlags::LONG_MODE_ENABLE.bits()    // LME (bit 8): 启用 x86-64 长模式
+    | EferFlags::NO_EXECUTE_ENABLE.bits();               // NXE (bit 11): 启用不执行位
+
 global_asm!(
     include_str!("multiboot.S"),
-    mb_magic = const MULTIBOOT_BOOTLOADER_MAGIC,
-    entry = sym crate::rust_entry,           // Rust 入口点
-    entry_secondary = sym crate::rust_entry_secondary,
-    // ...
+    cr0 = const CR0,        // 将 CR0 常量传递给汇编
+    cr4 = const CR4,        // 将 CR4 常量传递给汇编
+    efer = const EFER,      // 将 EFER 常量传递给汇编
+    // ... 其他参数
 );
 ```
 
-`multiboot.S` 汇编代码实现 CPU 上电后的第一条要执行的指令（准确的说是，链接脚本中定义的程序入口点）
+`global_asm!` 是 Rust 提供的内联汇编宏，它允许在 Rust 代码中嵌入全局汇编代码。其工作流程如下：
+
+1. **编译时求值**：Rust 编译器在编译时计算 `const CR0`、`const CR4`、`const EFER` 的值
+2. **参数传递**：通过 `cr0 = const CR0` 这样的语法，将 Rust 常量传递给汇编代码
+3. **占位符替换**：汇编代码中使用 `{cr0}`、`{cr4}`、`{efer}` 作为占位符
+4. **文本替换**：编译器将汇编代码中的占位符替换为实际的常量值
+5. **汇编编译**：替换后的汇编代码被传递给汇编器（如 GAS）进行编译
+
+以 multiboot.S 中的使用为例，multiboot.S 中使用花括号 `{}` 包围的占位符来引用这些常量：
 
 ```assembly
-/* multiboot.S - x86_64 启动代码 */
-.set MAGIC, 0x1BADB002            /* Multiboot 魔数 */
-.set FLAGS, 0                     /* Multiboot 标志 */
-.set CHECKSUM, -(MAGIC + FLAGS)   /* 校验和 */
+# 在 ENTRY32_COMMON 宏中
+.macro ENTRY32_COMMON
+    # ... 其他代码 ...
 
-.section .text.boot
-.global _start
-.type _start, @function
+    # set PAE, PGE bit in CR4
+    mov     eax, {cr4}      # {cr4} 会被替换为 CR0 的实际值
+    mov     cr4, eax
 
-_start:
-    /* 1. 设置 Multiboot 头部 */
-    .long MAGIC
-    .long FLAGS
-    .long CHECKSUM
+    # ... 其他代码 ...
 
-    /* 2. 设置栈指针 */
-    mov $stack_top, %rsp
+    # set LME, NXE bit in IA32_EFER
+    mov     ecx, {efer_msr} # {efer_msr} 会被替换为 IA32_EFER 的地址
+    mov     edx, 0
+    mov     eax, {efer}     # {efer} 会被替换为 EFER 的实际值
+    wrmsr
 
-    /* 3. 设置页表并开启 64 位模式 */
-    call setup_page_tables
+    # set protected mode, write protect, paging bit in CR0
+    mov     eax, {cr0}      # {cr0} 会被替换为 CR0 的实际值
+    mov     cr0, eax
+.endm
+```
+在执行编译时执行替换，假设编译时的实际值为：
+- `CR0 = 0x80010031`（二进制：10000000000000010000000000110001）
+- `CR4 = 0x00000060`（二进制：00000000000000000000000001100000）
+- `EFER = 0x00001001`（二进制：00000000000000000000000100000001）
 
-    /* 4. 跳转到 Rust 入口点 */
-    jmp rust_entry
+编译器会将汇编代码中的占位符替换为实际值：
+
+```assembly
+# 替换前（原始汇编代码）
+mov     eax, {cr0}
+mov     cr0, eax
+
+# 替换后（编译后的汇编代码）
+mov     eax, 0x80010031
+mov     cr0, eax
 ```
 
-1. 设置 Multiboot 头部
-2. 配置 CPU（CR0, CR4, EFER 寄存器）
-3. 设置页表（开启 64 位长模式）
-4. 设置栈指针
-5. 跳转到 `rust_entry`
+**寄存器详细说明**：
 
+1. **CR0 寄存器**（Control Register 0）
+   - **PROTECTED_MODE_ENABLE (bit 0)**：启用保护模式，允许使用分段和分页机制
+   - **MONITOR_COPROCESSOR (bit 1)**：监控协处理器，与 `TS` 标志配合使用
+   - **NUMERIC_ERROR (bit 5)**：启用原生 FPU 错误报告，而非 PC 模拟
+   - **WRITE_PROTECT (bit 16)**：写保护，禁止在特权级 3 向只读页面写入
+   - **PAGING (bit 31)**：启用分页，必须与 PAE（CR4）和 LME（EFER）配合使用
 
-### 2.4 平台 Rust 入口
+2. **CR4 寄存器**（Control Register 4）
+   - **PHYSICAL_ADDRESS_EXTENSION (bit 5)**：启用 PAE，支持 64 位物理地址（最大 64GB）
+   - **PAGE_GLOBAL (bit 7)**：启用全局页表项，提高 TLB 效率
+   - **OSFXSR (bit 9)**：条件编译，启用 FXSAVE/FXRSTOR 指令（`fp-simd` feature）
+   - **OSXMMEXCPT_ENABLE (bit 10)**：条件编译，启用 SIMD 浮点异常（`fp-simd` feature）
+
+3. **EFER 寄存器**（Extended Feature Enable Register）
+   - **LONG_MODE_ENABLE (bit 8)**：启用 x86-64 长模式，必须先启用 PAE（CR4）和分页（CR0）
+   - **NO_EXECUTE_ENABLE (bit 11)**：启用不执行位，允许标记页面为不可执行（安全特性）
+
+根据 [2.2 链接器入口点配置](#22-链接器入口点配置) 章节的介绍，链接器脚本通过 `ENTRY(_start)` 指令定义了程序的入口点为 `_start` 符号。因此，[platform/x86-qemu-q35/src/multiboot.S](platform/x86-qemu-q35/src/multiboot.S) 中的 `_start` 是整个启动的第一条指令执行位置，也是 BSP 启动流程的真正起点。
+
+```assembly
+# Bootstrapping from 32-bit with the Multiboot specification.
+.section .text.boot
+.code32
+.global _start
+_start:
+    mov     edi, eax        # arg1: magic = 0x2BADB002
+    mov     esi, ebx        # arg2: multiboot info pointer
+    jmp     bsp_entry32
+
+# Multiboot 头部（引导加载器识别）
+.balign 4
+.type multiboot_header, STT_OBJECT
+multiboot_header:
+    .int    0x1BADB002                      # magic
+    .int    0x00010002                      # flags (mem info + addr fields)
+    .int    -(0x1BADB002 + 0x00010002)      # checksum
+    .int    multiboot_header - offset       # header_addr
+    .int    _skernel - offset               # load_addr
+    .int    _edata - offset                 # load_end_addr
+    .int    _ebss - offset                  # bss_end_addr
+    .int    _start - offset                 # entry_addr
+```
+
+1. **CPU 上电后**，引导加载器（GRUB/QEMU）将内核镜像加载到内存
+2. **跳转到 `_start`**：CPU 开始执行 `multiboot.S` 中的 `_start` 标签处的代码
+3. **此时 CPU 处于 32 位保护模式**，已经由引导加载器完成了基本的模式切换
+
+#### 2.4.1 _start
+
+这是 CPU 上电后执行的第一条指令，也是整个 AxVisor 系统的真正起点。引导加载器（GRUB/QEMU）根据 Multiboot 协议将参数放入寄存器
+
+```assembly
+_start:
+    mov     edi, eax        # 保存 Multiboot 魔数（0x2BADB002）
+    mov     esi, ebx        # 保存 Multiboot 信息结构体指针
+    jmp     bsp_entry32     # 跳转到 BSP 32 位入口
+```
+
+1. CPU 从 `_start` 开始执行，此时处于 32 位保护模式
+2. 将 `EAX` 中的 Multiboot 魔数（0x2BADB002）保存到 `EDI` 寄存器
+3. 将 `EBX` 中的 Multiboot 信息结构体指针保存到 `ESI` 寄存器
+4. 直接跳转到 `bsp_entry32`，避免使用可能未初始化的栈
+
+#### 2.4.2 bsp_entry32
+
+bsp_entry32 完成 32 位保护模式的初始化，为切换到 64 位长模式做准备。
+
+```assembly
+bsp_entry32:
+    lgdt    [.Ltmp_gdt_desc - offset]         # 加载临时 GDT
+    ENTRY32_COMMON                            # 执行通用初始化
+    ljmp    0x10, offset bsp_entry64 - offset # 远跳转到 64 位代码段
+```
+
+1. **加载临时 GDT**：使用 `lgdt` 指令加载临时全局描述符表（GDT），为后续的模式切换做准备
+2. **调用通用初始化宏**：执行 `ENTRY32_COMMON` 宏，完成通用的硬件初始化（详见下一节）
+3. **远跳转到 64 位代码段**：通过 `ljmp 0x10` 远跳转指令切换到 64 位代码段（选择子 0x10）
+
+#### 2.4.3 ENTRY32_COMMON
+
+ENTRY32_COMMON 宏是通用硬件初始化，BSP 和 AP 都会调用。它按顺序完成 5 个关键步骤，为从 32 位保护模式切换到 64 位长模式做好准备。
+
+```assembly
+.macro ENTRY32_COMMON
+    # 1. 设置数据段选择子（0x18 = 数据段选择子）
+    mov     ax, 0x18
+    mov     ss, ax
+    mov     ds, ax
+    mov     es, ax
+    mov     fs, ax
+    mov     gs, ax
+
+    # 2. 设置 CR4 寄存器（PAE + PGE）
+    mov     eax, {cr4}
+    mov     cr4, eax
+
+    # 3. 加载临时页表（PML4）
+    lea     eax, [.Ltmp_pml4 - {offset}]
+    mov     cr3, eax
+
+    # 4. 设置 IA32_EFER MSR（LME + NXE）
+    mov     ecx, {efer_msr}
+    mov     edx, 0
+    mov     eax, {efer}
+    wrmsr
+
+    # 5. 设置 CR0 寄存器（保护模式 + 分页）
+    mov     eax, {cr0}
+    mov     cr0, eax
+.endm
+```
+
+**步骤 1：设置数据段选择子**
+- 将所有数据段寄存器（SS、DS、ES、FS、GS）设置为 0x18
+- 0x18 指向 GDT 中的数据段描述符
+- 确保所有段寄存器指向正确的数据段
+
+**步骤 2：配置 CR4 寄存器**
+- 将 `cr4_value`（由 boot.rs 中的 CR4 常量提供）加载到 CR4 寄存器
+- 启用 PAE（Physical Address Extension）：支持 64 位物理地址（最大 64GB）
+- 启用 PGE（Page Global Enable）：启用全局页表项，提高 TLB 效率
+- 如果启用了 `fp-simd` feature，还会启用 FXSR 和 OSXMMEXCPT_ENABLE 位
+
+**步骤 3：加载临时页表**
+- 计算临时页表（PML4）的地址并加载到 CR3 寄存器
+- 这个页表同时映射低地址空间（0x0000_0000_0000）和高地址空间（0xffff_8000_0000_0000）
+- 使用 1GB 大页减少页表层级（详见 2.3.1.5 节）
+
+**步骤 4：配置 IA32_EFER MSR**
+- 将 `efer_msr`（IA32_EFER MSR 地址 = 0xC0000080）加载到 ECX
+- 将 `efer_value`（由 boot.rs 中的 EFER 常量提供）加载到 EAX
+- 使用 `wrmsr` 指令写入 IA32_EFER MSR
+- 启用 LME（Long Mode Enable）：启用 x86-64 长模式
+- 启用 NXE（No-Execute Enable）：启用不执行位（安全特性）
+
+**步骤 5：配置 CR0 寄存器**
+- 将 `cr0_value`（由 boot.rs 中的 CR0 常量提供）加载到 CR0 寄存器
+- 启用 PE（Protection Enable）：启用保护模式
+- 启用 WP（Write Protect）：启用写保护
+- 启用 PG（Paging）：启用分页
+- **注意**：设置 PG 位后，CPU 立即进入分页模式，此时页表必须已经配置好
+
+#### 2.4.4 bsp_entry64
+
+bsp_entry64 64 位长模式入口，此时 CPU 已经进入 64 位长模式，此阶段设置栈指针并调用 Rust 入口函数。
+
+```assembly
+bsp_entry64:
+    ENTRY64_COMMON                    # 清零段选择子
+    movabs  rsp, offset {boot_stack}  # 加载栈地址
+    add     rsp, {boot_stack_size}    # 设置栈顶
+    movabs  rax, offset {entry}       # 加载 Rust 入口点
+    call    rax                        # 调用 rust_entry(magic, mbi)
+    jmp     .Lhlt                      # 如果返回则停机
+```
+
+1. **清零段选择子**：调用 `ENTRY64_COMMON` 宏清零所有段选择子（64 位模式下不再使用段选择子）
+2. **设置栈指针**：
+   - 使用 `movabs` 加载 Boot Stack 的地址到 RSP
+   - 加上栈大小，使 RSP 指向栈顶
+3. **调用 Rust 入口**：
+   - 使用 `movabs` 加载 `rust_entry` 函数地址到 RAX
+   - 使用 `call rax` 调用该函数
+   - 传递两个参数：`EDI`（magic）和 `ESI`（mbi）
+4. **停机保护**：如果 `rust_entry` 返回（理论上不应该发生），跳转到 `.Lhlt` 停机
+
+#### 2.4.5 临时页表结构
+
+临时页表在 `ENTRY32_COMMON` 宏中被加载到 CR3 寄存器，它使用 1GB 大页同时映射低地址空间和高地址空间。
+
+```assembly
+.balign 4096
+.Ltmp_pml4:
+    # 低 512GB：0x0000_0000_0000 ~ 0x007f_ffff_ffff
+    .quad .Ltmp_pdpt_low - {offset} + 0x3   # PRESENT | WRITABLE
+    .zero 8 * 255
+    # 高 512GB：0xffff_8000_0000_0000 ~ 0xffff_807f_ffff_ffff
+    .quad .Ltmp_pdpt_high - {offset} + 0x3  # PRESENT | WRITABLE
+    .zero 8 * 255
+
+.Ltmp_pdpt_low:
+.set i, 0
+.rept 512
+    .quad 0x40000000 * i | 0x83  # 1GB 页表项
+    .set i, i + 1
+.endr
+
+.Ltmp_pdpt_high:
+.set i, 0
+.rept 512
+    .quad 0x40000000 * i | 0x83  # 1GB 页表项
+    .set i, i + 1
+.endr
+```
+
+- **PML4（Page Map Level 4）**：第四级页表
+  - 第 0 项：指向低地址空间的 PDPT（.Ltmp_pdpt_low）
+  - 第 256 项：指向高地址空间的 PDPT（.Ltmp_pdpt_high）
+  - 其他项：清零
+
+- **PDPT（Page Directory Pointer Table）**：第三级页表
+  - 使用 1GB 大页（页表项标志 0x83 = PRESENT | WRITABLE | HUGE_PAGE）
+  - 每个页表项映射 1GB 地址空间
+  - 512 个页表项 × 1GB = 512GB
+
+**映射关系**：
+
+```
+低地址空间：
+  0x0000_0000_0000 → 0x007f_ffff_ffff (512 GB)
+  映射到物理内存：0x0000_0000_0000 → 0x007f_ffff_ffff
+
+高地址空间：
+  0xffff_8000_0000_0000 → 0xffff_807f_ffff_ffff (512 GB)
+  映射到物理内存：0x0000_0000_0000 → 0x007f_ffff_ffff
+```
+
+### 2.4 mp.rs 与 ap_start.S
+
+[platform/x86-qemu-q35/src/mp.rs](platform/x86-qemu-q35/src/mp.rs) 负责处理 AP（Application Processor）的启动。mp.rs 中通过的 global_asm! 将 `ap_start.S` 嵌入其中，这与 boot.rs 中嵌入 multiboot.S 的方式相同，都是通过 `global_asm!` 宏将汇编代码嵌入到 Rust 代码中
+
+```rust
+core::arch::global_asm!(
+    include_str!("ap_start.S"),
+    start_page_paddr = const START_PAGE_PADDR.as_usize(),  // 0x6000
+);
+```
+
+由于 Intel MP 规范的要求，AP 启动时必须从低 64KB 地址空间内的 4KB 边界开始，AP 从实模式启动，需要专门的代码切换到保护模式，进入保护模式后，AP 可以与 BSP 共享 multiboot.S 中的通用初始化代码。而启动需要通过 BSP 发送的 **INIT-SIPI-SIPI** 序列来唤醒。它需要按照以下顺序执行两个汇编文件：
+
+1. **ap_start.S**（优先执行）：实模式 → 保护模式
+   - 位于固定物理页 0x6000
+   - 负责从实模式切换到保护模式
+   - 在 [mp.rs](platform/x86-qemu-q35/src/mp.rs) 中通过 `global_asm!` 嵌入
+
+2. **multiboot.S**（后续执行）：保护模式 → 长模式
+   - 与 BSP 共享 `ENTRY32_COMMON` 和 `ENTRY64_COMMON` 宏
+   - 提供 `ap_entry32` 和 `ap_entry64` 入口点
+   - 在 [boot.rs](platform/x86-qemu-q35/src/boot.rs) 中通过 `global_asm!` 嵌入
+
+#### 2.4.1 setup_startup_page
+
+在 AP 启动之前，BSP 必须先准备好启动页面。这是 AP 启动的第一步，由 BSP 的 `setup_startup_page` 函数完成。此函数在物理地址 0x6000 处准备 AP 的启动页面。
+
+```rust
+const START_PAGE_IDX: u8 = 6;
+const START_PAGE_PADDR: PhysAddr = pa!(0x6000);  // 第 6 页
+
+unsafe fn setup_startup_page(stack_top: PhysAddr) {
+    const U64_PER_PAGE: usize = 512;  // 4096 / 8
+
+    // 1. 将 ap_start.S 的二进制代码复制到 0x6000
+    let start_page_ptr = phys_to_virt(START_PAGE_PADDR).as_mut_ptr() as *mut u64;
+    core::ptr::copy_nonoverlapping(
+        ap_start as *const u64,
+        start_page_ptr,
+        (ap_end as usize - ap_start as usize) / 8,
+    );
+
+    // 2. 在页面末尾写入栈顶和入口地址
+    let start_page = core::slice::from_raw_parts_mut(start_page_ptr, U64_PER_PAGE);
+    start_page[510] = stack_top.as_usize() as u64;      // 0x6ff0: 栈顶
+    start_page[511] = ap_entry32 as usize as u64;       // 0x6ff8: 入口地址
+}
+```
+
+**步骤 1：复制 ap_start.S 代码**
+- 将 `ap_start` 符号到 `ap_end` 符号之间的二进制代码复制到物理地址 0x6000
+- 使用 `core::ptr::copy_nonoverlapping` 确保内存复制的安全性
+- AP 启动后会从 0x6000 开始执行这些代码
+
+**步骤 2：写入启动参数**
+- 在 0x6ff0 处写入栈顶指针（`stack_top`）
+- 在 0x6ff8 处写入入口地址（`ap_entry32`，位于 multiboot.S 中）
+- AP 的 `ap_start32` 代码会读取这些参数
+
+**启动页面布局**：
+
+```
+物理地址 0x6000（4096 字节）：
+┌─────────────────────────────────────────────────────┐
+│ 0x6000 - 0x6fef: ap_start.S 的二进制代码            │
+│              - ap_start（实模式入口）               │
+│              - 临时 GDT                            │
+│              - ap_start32（32 位入口）             │
+├─────────────────────────────────────────────────────┤
+│ 0x6ff0: 栈顶指针（8 字节）                        │
+├─────────────────────────────────────────────────────┤
+│ 0x6ff8: 入口地址 ap_entry32（8 字节）              │
+└─────────────────────────────────────────────────────┘
+```
+
+#### 2.4.2 INIT-SIPI-SIPI
+
+启动页面准备好后，BSP 通过 APIC 发送 INIT-SIPI-SIPI 序列来唤醒 AP。这是 Intel MP 规范定义的标准 AP 启动流程。
+
+```rust
+pub fn start_secondary_cpu(apic_id: usize, stack_top: PhysAddr) {
+    // 1. 设置启动页面（复制代码并设置参数）
+    unsafe { setup_startup_page(stack_top) };
+
+    let apic_id = super::apic::raw_apic_id(apic_id as u8);
+    let lapic = super::apic::local_apic();
+
+    // 2. INIT-SIPI-SIPI 序列（Intel SDM Vol 3C, Section 8.4.4）
+    unsafe { lapic.send_init_ipi(apic_id) };      // INIT IPI
+    busy_wait(Duration::from_millis(10));          // 等待 10ms
+    unsafe { lapic.send_sipi(START_PAGE_IDX, apic_id) };  // SIPI #1
+    busy_wait(Duration::from_micros(200));         // 等待 200μs
+    unsafe { lapic.send_sipi(START_PAGE_IDX, apic_id) };  // SIPI #2
+}
+```
+
+**步骤 1：设置启动页面**
+- 调用 `setup_startup_page(stack_top)` 准备启动页面
+- 将 AP 的栈顶指针和入口地址写入 0x6ff0 和 0x6ff8
+
+**步骤 2：发送 INIT IPI**
+- 向目标 AP 发送 INIT IPI（Inter-Processor Interrupt）
+- INIT IPI 使 AP 复位到实模式，等待 SIPI
+- 等待 10ms，确保 AP 完成复位
+
+**步骤 3：发送第一个 SIPI**
+- SIPI（Startup Inter-Processor Interrupt）包含启动向量
+- 启动向量 = 0x06，表示 AP 应该跳转到 0x6000
+- 等待 200μs，给 AP 时间响应
+
+**步骤 4：发送第二个 SIPI**
+- 发送第二个 SIPI 确保可靠启动
+- 根据 Intel SDM，某些情况下需要两个 SIPI
+
+**关键技术点**：
+
+- **时序要求**：INIT 和 SIPI 之间、两个 SIPI 之间都有严格的时序要求
+- **启动向量**：SIPI 的低 8 位指定 AP 的启动地址（0x06 → 0x6000）
+- **可靠性**：发送两个 SIPI 是为了确保 AP 能够可靠启动
+
+#### 2.4.3 ap_start
+
+AP 收到 SIPI 后，从物理地址 0x6000 开始执行 `ap_start.S` 的代码。此时 AP 处于实模式（16 位模式），这是 AP 启动的第一段代码，负责从实模式切换到保护模式。
+
+```assembly
+# Boot application processors into the protected mode.
+# AP 必须从 4KB 边界开始，且位于低 64KB 地址空间内
+
+.equ pa_ap_start32, ap_start32 - ap_start + 0x6000
+.equ pa_ap_gdt, .Lap_tmp_gdt - ap_start + 0x6000
+.equ pa_ap_gdt_desc, .Lap_tmp_gdt_desc - ap_start + 0x6000
+
+.equ stack_ptr, 0x6000 + 0xff0   # 栈指针位置
+.equ entry_ptr, 0x6000 + 0xff8   # 入口地址位置
+
+# 0x6000: AP 启动入口（实模式）
+.section .text
+.code16
+.p2align 12
+.global ap_start
+ap_start:
+    cli                     # 关中断
+    wbinvd                  # 回写并使缓存失效
+
+    # 清空所有段寄存器
+    xor     ax, ax
+    mov     ds, ax
+    mov     es, ax
+    mov     ss, ax
+    mov     fs, ax
+    mov     gs, ax
+
+    # 加载 64 位 GDT
+    lgdt    [pa_ap_gdt_desc]
+
+    # 设置 CR0.PE 位（进入保护模式）
+    mov     eax, cr0
+    or      eax, (1 << 0)
+    mov     cr0, eax
+
+    # 远跳转到 32 位代码段（0x08 = 32 位代码段选择子）
+    ljmp    0x8, offset pa_ap_start32
+```
+
+**步骤 1：环境初始化**
+- 关中断（`cli`）：防止中断干扰启动过程
+- 回写并使缓存失效（`wbinvd`）：确保缓存一致性
+
+**步骤 2：清空段寄存器**
+- 将所有段寄存器（DS、ES、SS、FS、GS）清零
+- 实模式下段寄存器表示段地址，清零后指向地址 0
+
+**步骤 3：加载 GDT**
+- 加载临时 GDT（全局描述符表）
+- GDT 包含 32 位代码段、64 位代码段和数据段的描述符
+- GDT 的物理地址在 0x6000 + 偏移
+
+**步骤 4：进入保护模式**
+- 设置 CR0 寄存器的 PE 位（bit 0）
+- PE = 1 表示启用保护模式
+
+**步骤 5：远跳转到 32 位代码**
+- 使用 `ljmp 0x8` 远跳转到 `ap_start32`
+- 0x08 是 32 位代码段选择子
+- 同时更新 CS 段寄存器和指令指针
+
+#### 2.4.4 ap_start32
+
+远跳转后，AP 进入 32 位保护模式，开始执行 `ap_start32` 代码。此时 AP 仍然在 ap_start.S 中，但已经切换到 32 位模式。此阶段负责读取启动参数并跳转到 multiboot.S 中的 `ap_entry32`。
+
+```assembly
+# 32 位保护模式入口
+.code32
+ap_start32:
+    mov     esp, [stack_ptr]    # 从 0x6ff0 读取栈指针
+    mov     eax, [entry_ptr]    # 从 0x6ff8 读取入口地址
+    jmp     eax                 # 跳转到 multiboot.S 的 ap_entry32
+
+# 临时 GDT（与 multiboot.S 相同）
+.balign 8
+.Lap_tmp_gdt_desc:
+    .short .Lap_tmp_gdt_end - .Lap_tmp_gdt - 1
+    .long pa_ap_gdt
+
+.balign 16
+.Lap_tmp_gdt:
+    .quad 0x0000000000000000    # 0x00: null
+    .quad 0x00cf9b000000ffff    # 0x08: 32 位代码段
+    .quad 0x00af9b000000ffff    # 0x10: 64 位代码段
+    .quad 0x00cf93000000ffff    # 0x18: 数据段
+.Lap_tmp_gdt_end:
+```
+
+**步骤 1：读取栈指针**
+- 从 0x6ff0 读取栈顶指针
+- 这个栈指针是 BSP 在 `setup_startup_page` 中设置的
+- 将栈指针加载到 ESP 寄存器
+
+**步骤 2：读取入口地址**
+- 从 0x6ff8 读取入口地址
+- 这个地址是 `ap_entry32`，位于 multiboot.S 中
+- 将入口地址加载到 EAX 寄存器
+
+**步骤 3：跳转到 multiboot.S**
+- 使用 `jmp eax` 跳转到 `ap_entry32`
+- 此时控制权从 ap_start.S 转移到 multiboot.S
+- AP 开始执行 multiboot.S 中的代码
+
+**关键技术点**：
+
+- **参数传递**：通过固定内存位置传递参数（0x6ff0 和 0x6ff8）
+- **代码切换**：从 ap_start.S 跳转到 multiboot.S
+- **栈设置**：在跳转之前设置好栈指针
+
+#### 2.4.5 ap_entry32
+
+AP 跳转到 multiboot.S 后，执行 `ap_entry32` 代码。此时 AP 与 BSP 一样，可以共享 multiboot.S 中的通用初始化代码。
+
+```assembly
+# 32 位入口（由 ap_start.S 跳转而来）
+.code32
+.global ap_entry32
+ap_entry32:
+    ENTRY32_COMMON                            # 执行通用初始化（与 BSP 相同）
+    ljmp    0x10, offset ap_entry64 - offset  # 远跳转到 64 位代码段
+```
+
+**步骤 1：执行通用初始化**
+- 调用 `ENTRY32_COMMON` 宏
+- 这个宏与 BSP 使用的完全相同
+- 完成设置段选择子、配置寄存器、加载页表等操作
+
+**步骤 2：远跳转到 64 位模式**
+- 使用 `ljmp 0x10` 远跳转到 `ap_entry64`
+- 0x10 是 64 位代码段选择子
+- 同时切换到 64 位长模式
+
+#### 2.4.6 ap_entry64
+
+AP 进入 64 位长模式后，执行 `ap_entry64` 代码，最终调用 Rust 入口函数。
+
+```assembly
+# 64 位入口
+.code64
+ap_entry64:
+    ENTRY64_COMMON                    # 清零段选择子
+    mov     rax, offset               # 加载虚拟地址偏移
+    add     rsp, rax                  # 调整栈指针
+    mov     rdi, mb_magic             # 传递 Multiboot 魔数
+    movabs  rax, offset rust_entry_secondary
+    call    rax                        # 调用 rust_entry_secondary
+    jmp     .Lhlt
+```
+
+**步骤 1：清零段选择子**
+- 调用 `ENTRY64_COMMON` 宏清零所有段选择子
+- 64 位模式下不再使用段选择子
+
+**步骤 2：调整栈指针**
+- 加载虚拟地址偏移到 RAX
+- 将虚拟地址偏移加到 RSP
+- 调整栈指针到高地址空间
+
+**步骤 3：传递参数并调用 Rust 入口**
+- 将 Multiboot 魔数加载到 RDI
+- 加载 `rust_entry_secondary` 函数地址到 RAX
+- 使用 `call rax` 调用该函数
+
+**步骤 4：停机保护**
+- 如果 `rust_entry_secondary` 返回，跳转到 `.Lhlt` 停机
+
+#### 2.4.7 BSP 与 AP 启动流程对比
+
+| 阶段 | BSP（multiboot.S） | AP（ap_start.S + multiboot.S） |
+|------|-------------------|-------------------------------|
+| **启动方式** | 引导加载器直接跳转 | BSP 通过 APIC 发送 INIT-SIPI-SIPI |
+| **起始位置** | 内核镜像入口（链接脚本指定） | 固定物理页 0x6000 |
+| **起始模式** | 32 位保护模式 | 16 位实模式 |
+| **实模式代码** | 无 | ap_start（清空段寄存器、设置 GDT） |
+| **保护模式入口** | bsp_entry32 | ap_start32 → ap_entry32 |
+| **长模式入口** | bsp_entry64 | ap_entry64 |
+| **栈设置** | 在 bsp_entry64 中设置 | 在 ap_start32 中从 0x6ff0 读取 |
+| **Rust 入口** | rust_entry(magic, mbi) | rust_entry_secondary(magic) |
+| **代码复用** | 独立执行 | 共享 ENTRY32_COMMON 和 ENTRY64_COMMON 宏 |
+
+**关键差异总结**：
+
+1. **启动触发**：BSP 由引导加载器启动，AP 由 BSP 通过 APIC 唤醒
+2. **起始模式**：BSP 从 32 位保护模式开始，AP 从 16 位实模式开始
+3. **代码文件**：BSP 只使用 multiboot.S，AP 需要先执行 ap_start.S 再跳转到 multiboot.S
+4. **参数传递**：BSP 通过寄存器传递参数，AP 通过固定内存位置传递参数
+5. **代码复用**：进入保护模式后，AP 与 BSP 共享相同的初始化代码
+
+| 阶段 | BSP（multiboot.S） | AP（ap_start.S + multiboot.S） |
+|------|-------------------|-------------------------------|
+| **启动方式** | 引导加载器直接跳转 | BSP 通过 APIC 发送 INIT-SIPI-SIPI |
+| **起始位置** | 内核镜像入口（链接脚本指定） | 固定物理页 0x6000 |
+| **起始模式** | 32 位保护模式 | 16 位实模式 |
+| **实模式代码** | 无 | ap_start（清空段寄存器、设置 GDT） |
+| **保护模式入口** | bsp_entry32 | ap_start32 → ap_entry32 |
+| **长模式入口** | bsp_entry64 | ap_entry64 |
+| **栈设置** | 在 bsp_entry64 中设置 | 在 ap_start32 中从 0x6ff0 读取 |
+| **Rust 入口** | rust_entry(magic, mbi) | rust_entry_secondary(magic) |
+| **代码复用** | 独立执行 | 共享 ENTRY32_COMMON 和 ENTRY64_COMMON 宏 |
+
+### 2.5 平台 Rust 入口
 
 平台 Rust 入口在 [platform/x86-qemu-q35/src/lib.rs](platform/x86-qemu-q35/src/lib.rs#L40-L50) 中定义，其中会直接跳转到统一的平台处理接口 `axplat::call_main` 中（详见第四章）。
 
@@ -563,7 +948,6 @@ unsafe extern fn rust_entry_secondary(_magic: usize) {
 - `magic`: Multiboot 魔数（`0x2BADB002`），用于验证引导加载器
 - `mbi`: Multiboot 信息结构体指针，包含内存布局、命令行参数等
 
----
 
 ## 三、ARM64 平台启动流程
 
@@ -584,154 +968,34 @@ graph TD
 
 ### 3.2 链接器入口点配置
 
-ARM64 平台的链接器脚本由 [modules/axplat-aarch64-dyn/link.ld](modules/axplat-aarch64-dyn/link.ld) 提供：
+ARM64 平台的链接器脚本由 [modules/axplat-aarch64-dyn](modules/axplat-aarch64-dyn) crate 提供，与 x86_64 平台相比有显著差异。
 
-```assembly
-OUTPUT_ARCH(aarch64)
+**核心要点**：
 
-__SMP = {{SMP}};              /* 由 build.rs 动态替换 */
-STACK_SIZE = 0x40000;         /* 256KB 栈空间 */
+1. **入口点定义**：链接器脚本通过 `ENTRY(_start)` 指令定义程序入口点为 `_start` 符号
+2. **模板机制**：使用 `{{SMP}}` 占位符实现动态配置（与 x86 的 `%SMP%` 不同）
+3. **PIE 支持**：通过 `INCLUDE "pie_boot.x"` 支持位置无关可执行文件
+4. **固定栈空间**：为 CPU0 分配固定的 256KB 栈空间
+5. **EL2 特权级**：启动代码必须在 EL2 特权级执行以支持硬件虚拟化
 
-ENTRY(_start)
+**关键文件**：
+- **模板文件**：[modules/axplat-aarch64-dyn/link.ld](modules/axplat-aarch64-dyn/link.ld)
+- **构建脚本**：[modules/axplat-aarch64-dyn/build.rs](modules/axplat-aarch64-dyn/build.rs)
+- **平台配置**：[modules/axplat-aarch64-dyn/axconfig.toml](modules/axplat-aarch64-dyn/axconfig.toml)
 
-INCLUDE "pie_boot.x"          /* PIE（位置无关可执行）引导支持 */
+**与 x86_64 平台的关键差异**：
 
-SECTIONS
-{
-    _skernel = .;
+| 特性 | x86_64 | ARM64 |
+|------|--------|-------|
+| **占位符格式** | `%SMP%` | `{{SMP}}` |
+| **内核基地址** | `0xffff800000200000` | `0xffff_8000_0000_0000` |
+| **PIE 支持** | 无 | 有（通过 `pie_boot.x`） |
+| **CPU0 栈** | 无 | 固定 256KB |
+| **特权级** | Long Mode | EL2 |
 
-    /* 代码段 */
-    .text : ALIGN(4K) {
-        _stext = .;
-        *(.text.boot)         /* 启动代码段，必须在 EL2 执行 */
-        *(.text .text.*)
-        . = ALIGN(4K);
-        _etext = .;
-    }
+**详细处理流程**：
 
-    /* 只读数据段 */
-    .rodata : ALIGN(4K) {
-        *(.rodata .rodata.*)
-        *(.srodata .srodata.*)
-    }
-
-    /* 初始化数组 */
-    .init_array : ALIGN(0x10) {
-        __init_array_start = .;
-        *(.init_array .init_array.*)
-        __init_array_end = .;
-    }
-
-    /* 数据段 */
-    .data : ALIGN(4K) {
-        *(.data.boot_page_table)    /* 启动页表 */
-        . = ALIGN(4K);
-
-        /* 驱动注册段 */
-        __sdriver_register = .;
-        KEEP(*(.driver.register*))
-        __edriver_register = .;
-
-        *(.data .data.*)
-        *(.got .got.*)
-    }
-
-    /* 线程局部存储 */
-    .tdata : ALIGN(0x10) {
-        _stdata = .;
-        *(.tdata .tdata.*)
-        _etdata = .;
-    }
-
-    .tbss : ALIGN(0x10) {
-        _stbss = .;
-        *(.tbss .tbss.*)
-        *(.tcommon)
-        _etbss = .;
-    }
-
-    /* Per-CPU 数据段 */
-    . = ALIGN(4K);
-    _percpu_start = .;
-    _percpu_end = _percpu_start + SIZEOF(.percpu);
-    .percpu 0x0 : AT(_percpu_start) {
-        _percpu_load_start = .;
-        *(.percpu .percpu.*)
-        _percpu_load_end = .;
-        . = _percpu_load_start + ALIGN(64) * __SMP;  /* 每个CPU 64字节对齐 */
-    }
-    . = _percpu_end;
-
-    /* BSS 段 */
-    .bss : AT(.) ALIGN(4K) {
-        /* CPU0 栈 */
-        __cpu0_stack = .;
-        . += STACK_SIZE;
-        __cpu0_stack_top = .;
-
-        /* 启动栈 */
-        boot_stack = .;
-        *(.bss.stack)
-        . = ALIGN(4K);
-        boot_stack_top = .;
-
-        _sbss = .;
-        *(.bss .bss.*)
-        *(.sbss .sbss.*)
-        *(COMMON)
-        . = ALIGN(4K);
-        _ebss = .;
-    }
-
-    _ekernel = .;
-}
-```
-
-**关键特点**：
-- 使用 `OUTPUT_ARCH(aarch64)` 指定 ARM64 架构
-- 通过 `INCLUDE "pie_boot.x"` 支持位置无关可执行文件
-- 动态 SMP 数量（由 `build.rs` 在编译时替换）
-- 256KB 栈空间（`STACK_SIZE = 0x40000`）
-- 支持 per-CPU 数据段，每个 CPU 的数据按 64 字节对齐
-- 包含驱动注册段（`.driver.register*`）
-- 启动页表段（`.data.boot_page_table`）
-
-**构建脚本**（[modules/axplat-aarch64-dyn/build.rs](modules/axplat-aarch64-dyn/build.rs)）：
-
-```rust
-fn main() {
-    // 设置链接器搜索路径
-    println!("cargo:rustc-link-search={}", out_dir().display());
-
-    // 使用自定义链接器脚本
-    println!("cargo::rustc-link-arg=-Tlink.x");
-    println!("cargo:rustc-link-arg=-no-pie");           /* 禁用 PIE */
-    println!("cargo:rustc-link-arg=-znostart-stop-gc"); /* 保留启动和停止代码 */
-
-    // 读取链接器脚本模板
-    let ld_content = std::fs::read_to_string("link.ld").unwrap();
-
-    // 替换 SMP 占位符（默认为 16 核）
-    let ld_content = ld_content.replace("{{SMP}}", &format!("{}", 16));
-
-    // 写入最终的链接器脚本
-    std::fs::write(out_dir().join("link.x"), ld_content)
-        .expect("link.x write failed");
-}
-```
-
-**平台配置**（[modules/axplat-aarch64-dyn/axconfig.toml](modules/axplat-aarch64-dyn/axconfig.toml)）：
-
-```toml
-[plat]
-cpu-num = 1                                   # CPU 核心数
-kernel-base-vaddr = "0xffff_8000_0000_0000"    # 内核虚拟地址
-kernel-aspace-base = "0xffff_8000_0000_0000"   # 内核地址空间基址
-kernel-aspace-size = "0x0000_7fff_ffff_f000"   # 内核地址空间大小
-
-[devices]
-timer-irq = 30  # 定时器中断号（PPI，物理定时器）
-```
+关于 ARM64 平台链接器脚本的模板设计、构建脚本处理流程、内存布局等详细信息，请参阅 [构建文档 - 链接器脚本处理](00_AXVISOR_BUILD.md#3336-链接器脚本处理) 章节。
 
 ### 3.3 汇编启动代码
 
