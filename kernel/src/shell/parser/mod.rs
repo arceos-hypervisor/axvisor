@@ -4,8 +4,8 @@
 
 mod history;
 mod node;
-mod parser;
+mod parser_impl;
 
 pub use history::{CommandHistory, clear_line_and_redraw};
 pub use node::{CommandNode, FlagDef, OptionDef, ParseError, ParsedCommand};
-pub use parser::CommandParser;
+pub use parser_impl::CommandParser;

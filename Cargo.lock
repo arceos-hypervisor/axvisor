@@ -1151,7 +1151,6 @@ dependencies = [
  "memory_addr",
  "page_table_entry",
  "page_table_multiarch",
- "percpu",
  "ranges-ext",
  "raw-cpuid 11.6.0",
  "spin 0.10.0",

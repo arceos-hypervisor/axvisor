@@ -2,18 +2,19 @@
 //!
 //! Commands for managing virtual machines (create, start, stop, list, etc.).
 
-use alloc::collections::BTreeMap;
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
+use alloc::{
+    collections::BTreeMap,
+    string::{String, ToString},
+};
 
 #[cfg(feature = "fs")]
 use axstd::fs::read_to_string;
 use axstd::println;
 
+use crate::vmm::config::build_vmconfig;
 use crate::vmm::vm_list;
-use crate::vmm::{config::build_vmconfig, start_vm};
-use axvm::config::AxVMCrateConfig;
 use axvm::VMStatus;
+use axvm::config::AxVMCrateConfig;
 
 use super::super::parser::{CommandNode, FlagDef, OptionDef, ParsedCommand};
 
@@ -92,25 +93,20 @@ fn vm_create(cmd: &ParsedCommand) {
         };
 
         match build_vmconfig(config_info) {
-            Ok(vm_config) => {
-                match axvm::Vm::new(vm_config) {
-                    Ok(vm) => {
-                        let vm = vm_list::push_vm(vm);
-                        let vm_id = vm.id();
-                        println!(
-                            "✓ Successfully created VM[{}] from config: {}",
-                            vm_id, config_path
-                        );
-                        println!("{:?}", vm.status());
-                    }
-                    Err(e) => {
-                        println!(
-                            "✗ Failed to create VM from {}: {:?}",
-                            config_path, e
-                        );
-                    }
+            Ok(vm_config) => match axvm::Vm::new(vm_config) {
+                Ok(vm) => {
+                    let vm = vm_list::push_vm(vm);
+                    let vm_id = vm.id();
+                    println!(
+                        "✓ Successfully created VM[{}] from config: {}",
+                        vm_id, config_path
+                    );
+                    println!("{:?}", vm.status());
                 }
-            }
+                Err(e) => {
+                    println!("✗ Failed to create VM from {}: {:?}", config_path, e);
+                }
+            },
             Err(e) => {
                 println!("✗ Failed to build VM config from {}: {:?}", config_path, e);
             }
@@ -352,7 +348,10 @@ fn delete_vm_by_id(vm_id: usize, force: bool) {
         VMStatus::Running => {
             if !force {
                 println!("✗ VM[{}] is currently running", vm_id);
-                println!("  Use 'vm stop {}' first, or use '--force' to force delete", vm_id);
+                println!(
+                    "  Use 'vm stop {}' first, or use '--force' to force delete",
+                    vm_id
+                );
                 return;
             }
             println!("⚠ Force deleting running VM[{}]...", vm_id);
@@ -468,10 +467,7 @@ fn vm_list(cmd: &ParsedCommand) {
             "{:<6} {:<15} {:<12} {:<10} {:<10}",
             "VM ID", "NAME", "STATUS", "VCPU", "MEMORY"
         );
-        println!(
-            "{:-<6} {:-<15} {:-<12} {:-<10} {:-<10}",
-            "", "", "", "", ""
-        );
+        println!("{:-<6} {:-<15} {:-<12} {:-<10} {:-<10}", "", "", "", "", "");
 
         for vm in display_vms {
             let vm: vm_list::VMRef = vm;
@@ -596,7 +592,7 @@ pub fn register_vm_commands(tree: &mut BTreeMap<String, CommandNode>) {
                 .with_short('c')
                 .with_long("console"),
         );
-    
+
     let status_cmd = CommandNode::new("Stop a virtual machine")
         .with_handler(vm_status)
         .with_usage("vm stop [OPTIONS] <VM_ID>...");
