@@ -38,7 +38,8 @@ jobs:
       - uses: cargo-bins/cargo-binstall@main
 
       - name: Install ostool
-        run: cargo binstall ostool
+        # run: cargo binstall ostool
+        run: cargo +stable install ostool --version ^0.8
 
       - name: Download images and patch vm configs
         run: |
