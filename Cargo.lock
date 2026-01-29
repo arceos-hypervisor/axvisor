@@ -243,7 +243,6 @@ dependencies = [
  "axvm-types",
  "log",
  "numeric-enum-macro",
- "percpu",
  "spin 0.10.0",
 ]
 
