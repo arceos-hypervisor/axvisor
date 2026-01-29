@@ -14,7 +14,6 @@ use core::{
 
 use buddy_slab_allocator::{AllocResult, PageAllocator};
 use kspin::SpinNoIrq;
-use kernel_guard::NoPreemptIrqSave;
 use strum::{IntoStaticStr, VariantArray};
 
 pub use buddy_slab_allocator::AddrTranslator;
@@ -81,7 +80,7 @@ impl fmt::Debug for Usages {
 /// This is an adapter around the allocator::GlobalAllocator that provides
 /// compatibility with the original axalloc API.
 pub struct GlobalAllocator {
-    inner: buddy_slab_allocator::GlobalAllocator<PAGE_SIZE>,
+    inner: SpinNoIrq<buddy_slab_allocator::GlobalAllocator<PAGE_SIZE>>,
     usages: SpinNoIrq<Usages>,
 }
 
@@ -95,7 +94,7 @@ impl GlobalAllocator {
     /// Creates an empty [`GlobalAllocator`].
     pub const fn new() -> Self {
         Self {
-            inner: buddy_slab_allocator::GlobalAllocator::<PAGE_SIZE>::new(),
+            inner: SpinNoIrq::new(buddy_slab_allocator::GlobalAllocator::<PAGE_SIZE>::new()),
             usages: SpinNoIrq::new(Usages::new()),
         }
     }
@@ -107,8 +106,7 @@ impl GlobalAllocator {
         &self,
         translator: &'static dyn buddy_slab_allocator::AddrTranslator,
     ) {
-        let _guard = NoPreemptIrqSave::new();
-        self.inner.set_addr_translator(translator);
+        self.inner.lock().set_addr_translator(translator);
     }
 
     /// Returns the name of the allocator.
@@ -122,8 +120,7 @@ impl GlobalAllocator {
             "Initialize global memory allocator, start_vaddr: {}, size: {}",
             start_vaddr, size
         );
-        let _guard = NoPreemptIrqSave::new();
-        if let Err(e) = self.inner.init(start_vaddr, size) {
+        if let Err(e) = self.inner.lock().init(start_vaddr, size) {
             panic!("Failed to initialize allocator: {:?}", e);
         }
     }
@@ -134,15 +131,13 @@ impl GlobalAllocator {
             "Add memory region, start_vaddr: {}, size: {}",
             start_vaddr, size
         );
-        let _guard = NoPreemptIrqSave::new();
-        self.inner.add_memory(start_vaddr, size)
+        self.inner.lock().add_memory(start_vaddr, size)
     }
 
     /// Allocate arbitrary number of bytes. Returns the left bound of the
     /// allocated region.
     pub fn alloc(&self, layout: Layout) -> AllocResult<NonNull<u8>> {
-        let _guard = NoPreemptIrqSave::new();
-        let result = self.inner.alloc(layout);
+        let result = self.inner.lock().alloc(layout);
         if let Ok(_ptr) = result {
             self.usages.lock().alloc(UsageKind::RustHeap, layout.size());
         }
@@ -151,11 +146,10 @@ impl GlobalAllocator {
 
     /// Gives back the allocated region to the byte allocator.
     pub fn dealloc(&self, pos: NonNull<u8>, layout: Layout) {
-        let _guard = NoPreemptIrqSave::new();
         self.usages
             .lock()
             .dealloc(UsageKind::RustHeap, layout.size());
-        self.inner.dealloc(pos, layout);
+        self.inner.lock().dealloc(pos, layout);
     }
 
     /// Allocates contiguous pages.
@@ -165,8 +159,7 @@ impl GlobalAllocator {
         alignment: usize,
         kind: UsageKind,
     ) -> AllocResult<usize> {
-        let _guard = NoPreemptIrqSave::new();
-        let result = self.inner.alloc_pages(num_pages, alignment);
+        let result = self.inner.lock().alloc_pages(num_pages, alignment);
         if let Ok(_addr) = result {
             let size = num_pages * PAGE_SIZE;
             self.usages.lock().alloc(kind, size);
@@ -181,8 +174,7 @@ impl GlobalAllocator {
         alignment: usize,
         kind: UsageKind,
     ) -> AllocResult<usize> {
-        let _guard = NoPreemptIrqSave::new();
-        let result = self.inner.alloc_dma32_pages(num_pages, alignment);
+        let result = self.inner.lock().alloc_dma32_pages(num_pages, alignment);
         if let Ok(_addr) = result {
             let size = num_pages * PAGE_SIZE;
             self.usages.lock().alloc(kind, size);
@@ -192,14 +184,16 @@ impl GlobalAllocator {
 
     /// Allocates contiguous pages starting from the given address.
     pub fn alloc_pages_at(
-        &mut self,
+        &self,
         start: usize,
         num_pages: usize,
         alignment: usize,
         kind: UsageKind,
     ) -> AllocResult<usize> {
-        let _guard = NoPreemptIrqSave::new();
-        let result = self.inner.alloc_pages_at(start, num_pages, alignment);
+        let result = self
+            .inner
+            .lock()
+            .alloc_pages_at(start, num_pages, alignment);
         if let Ok(_addr) = result {
             let size = num_pages * PAGE_SIZE;
             self.usages.lock().alloc(kind, size);
@@ -209,42 +203,37 @@ impl GlobalAllocator {
 
     /// Gives back the allocated pages starts from `pos` to the page allocator.
     pub fn dealloc_pages(&self, pos: usize, num_pages: usize, kind: UsageKind) {
-        let _guard = NoPreemptIrqSave::new();
         let size = num_pages * PAGE_SIZE;
         self.usages.lock().dealloc(kind, size);
-        self.inner.dealloc_pages(pos, num_pages);
+        self.inner.lock().dealloc_pages(pos, num_pages);
     }
 
     /// Returns the number of allocated bytes in the byte allocator.
     #[cfg(feature = "tracking")]
     pub fn used_bytes(&self) -> usize {
-        let _guard = NoPreemptIrqSave::new();
-        let stats = self.inner.get_stats();
+        let stats = self.inner.lock().get_stats();
         stats.heap_bytes + stats.slab_bytes
     }
 
     /// Returns the number of available bytes in the byte allocator.
     #[cfg(feature = "tracking")]
     pub fn available_bytes(&self) -> usize {
-        let _guard = NoPreemptIrqSave::new();
         // The new allocator doesn't have this exact method, so we approximate
-        let stats = self.inner.get_stats();
+        let stats = self.inner.lock().get_stats();
         stats.free_pages * PAGE_SIZE
     }
 
     /// Returns the number of allocated pages in the page allocator.
     #[cfg(feature = "tracking")]
     pub fn used_pages(&self) -> usize {
-        let _guard = NoPreemptIrqSave::new();
-        let stats = self.inner.get_stats();
+        let stats = self.inner.lock().get_stats();
         stats.used_pages
     }
 
     /// Returns the number of available pages in the page allocator.
     #[cfg(feature = "tracking")]
     pub fn available_pages(&self) -> usize {
-        let _guard = NoPreemptIrqSave::new();
-        let stats = self.inner.get_stats();
+        let stats = self.inner.lock().get_stats();
         stats.free_pages
     }
 
