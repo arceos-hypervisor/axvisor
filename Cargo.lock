@@ -1143,6 +1143,7 @@ dependencies = [
  "bitmap-allocator",
  "cfg-if",
  "cpumask",
+ "derive_more",
  "fdt-edit",
  "kspin",
  "lazyinit",
@@ -2013,6 +2014,7 @@ dependencies = [
  "quote",
  "rustc_version",
  "syn 2.0.111",
+ "unicode-xid",
 ]
 
 [[package]]
