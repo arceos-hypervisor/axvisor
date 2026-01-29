@@ -14,16 +14,14 @@
 //! console_init();
 //! ```
 
-#![no_std]
-
 mod completion;
 mod parser;
-mod shell;
+mod shell_impl;
 
 mod commands;
 
 // Re-export shell types and functions
-pub use shell::{Shell, console_init, console_init_non_blocking};
+pub use shell_impl::{Shell, console_init, console_init_non_blocking};
 
 // Re-export parser types for external use
 pub use parser::{

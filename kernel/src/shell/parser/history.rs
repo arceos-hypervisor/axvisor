@@ -46,7 +46,7 @@ impl CommandHistory {
 
     /// Get the next command in history
     #[allow(dead_code)]
-    pub fn next(&mut self) -> Option<&String> {
+    pub fn next_command(&mut self) -> Option<&String> {
         if self.current_index < self.history.len() {
             self.current_index += 1;
             if self.current_index < self.history.len() {

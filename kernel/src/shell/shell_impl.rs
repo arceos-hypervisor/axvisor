@@ -164,17 +164,15 @@ impl Shell {
                             let display_prefix: &str = &result.prefix;
                             for (i, match_name) in result.matches.iter().enumerate() {
                                 let match_name: &String = match_name;
-                                let display_name: &str = if match_name.starts_with(display_prefix) {
-                                    &match_name[display_prefix.len()..]
-                                } else {
-                                    match_name.as_str()
-                                };
+                                let display_name: &str = match_name
+                                    .strip_prefix(display_prefix)
+                                    .unwrap_or(match_name.as_str());
                                 print!("{}  ", display_name); // Add explicit spacing
                                 if (i + 1) % 3 == 0 {
                                     println!();
                                 }
                             }
-                            if result.matches.len() % 3 != 0 {
+                            if !result.matches.len().is_multiple_of(3) {
                                 println!();
                             }
                             print_prompt();
@@ -185,19 +183,23 @@ impl Shell {
                         } else if is_unique && matches_count > 0 {
                             // Single match - insert the full match
                             let text_to_insert = &result.matches[0];
-                            let word_start = completion::find_word_start(current_content, self.cursor);
+                            let word_start =
+                                completion::find_word_start(current_content, self.cursor);
                             let current_word = &current_content[word_start..self.cursor];
 
                             // Calculate what we need to add (match minus what's already typed)
                             let to_add = if text_to_insert.starts_with(current_word) {
-                                &text_to_insert[current_word.len()..]
+                                text_to_insert
+                                    .strip_prefix(current_word)
+                                    .unwrap_or(text_to_insert)
                             } else {
                                 text_to_insert
                             };
 
                             if !to_add.is_empty() {
                                 let to_add_bytes = to_add.as_bytes();
-                                let insert_len = to_add_bytes.len().min(MAX_LINE_LEN - self.line_len - 1);
+                                let insert_len =
+                                    to_add_bytes.len().min(MAX_LINE_LEN - self.line_len - 1);
 
                                 if insert_len > 0 {
                                     // Move existing characters to make space
@@ -214,12 +216,19 @@ impl Shell {
 
                                     // Redraw
                                     let new_content =
-                                        std::str::from_utf8(&self.buf[..self.line_len]).unwrap_or("");
+                                        std::str::from_utf8(&self.buf[..self.line_len])
+                                            .unwrap_or("");
                                     #[cfg(feature = "fs")]
-                                    let prompt = format!("axvisor:{}$ ", &std::env::current_dir().unwrap());
+                                    let prompt =
+                                        format!("axvisor:{}$ ", &std::env::current_dir().unwrap());
                                     #[cfg(not(feature = "fs"))]
                                     let prompt = "axvisor:$ ".to_string();
-                                    clear_line_and_redraw(&mut self.stdout, &prompt, new_content, self.cursor);
+                                    clear_line_and_redraw(
+                                        &mut self.stdout,
+                                        &prompt,
+                                        new_content,
+                                        self.cursor,
+                                    );
                                 }
                             }
                         }
@@ -292,7 +301,7 @@ impl Shell {
                 }
                 b'B' => {
                     // DOWN arrow - next command
-                    match self.history.next() {
+                    match self.history.next_command() {
                         Some(next_cmd) => {
                             let next_cmd: &String = next_cmd;
                             // clear current buffer

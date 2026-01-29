@@ -12,21 +12,12 @@ pub struct CompletionResult {
     pub prefix: String,
     /// List of all possible completions
     pub matches: Vec<String>,
-    /// The text that should be inserted (suffix to add)
-    pub insert_text: String,
 }
 
 impl CompletionResult {
     /// Create a new completion result
     pub fn new(prefix: String, matches: Vec<String>) -> Self {
-        let insert_text = if matches.len() == 1 {
-            // For single match, insert the full match
-            matches[0].clone()
-        } else {
-            // For multiple matches, insert the common prefix
-            prefix.clone()
-        };
-        Self { prefix, matches, insert_text }
+        Self { prefix, matches }
     }
 
     /// Check if there's exactly one match
@@ -35,6 +26,7 @@ impl CompletionResult {
     }
 
     /// Check if there are no matches
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.matches.is_empty()
     }
@@ -161,11 +153,15 @@ fn complete_filename(partial: &str) -> Option<CompletionResult> {
         // If partial ends with '/', complete everything in that directory
         if last_slash == partial.len() - 1 {
             // dir_path is everything up to and including the last slash
-            (&partial[..], "", partial.to_string())
+            (partial, "", partial.to_string())
         } else {
             // dir_path is everything up to and including the last slash
             // file_prefix is everything after the last slash
-            (&partial[..=last_slash], &partial[last_slash + 1..], partial[..=last_slash].to_string())
+            (
+                &partial[..=last_slash],
+                &partial[last_slash + 1..],
+                partial[..=last_slash].to_string(),
+            )
         }
     } else {
         (".", partial, String::new())
@@ -268,9 +264,15 @@ mod tests {
     fn test_find_common_prefix() {
         assert_eq!(find_common_prefix(&[]), "");
         assert_eq!(find_common_prefix(&["test".into()]), "test");
-        assert_eq!(find_common_prefix(&["test".into(), "testing".into()]), "test");
+        assert_eq!(
+            find_common_prefix(&["test".into(), "testing".into()]),
+            "test"
+        );
         assert_eq!(find_common_prefix(&["foo".into(), "bar".into()]), "");
-        assert_eq!(find_common_prefix(&["file1.txt".into(), "file2.txt".into()]), "file");
+        assert_eq!(
+            find_common_prefix(&["file1.txt".into(), "file2.txt".into()]),
+            "file"
+        );
     }
 
     #[test]
