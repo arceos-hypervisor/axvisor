@@ -1331,7 +1331,7 @@ dependencies = [
 [[package]]
 name = "buddy-slab-allocator"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/buddy-slab-allocator.git?branch=main#60fc7e076b4d623828e8a9b83e1649ee4c379469"
+source = "git+https://github.com/arceos-hypervisor/buddy-slab-allocator.git?branch=main#13167188073a43c58bff92b860c603ae10a03a0a"
 dependencies = [
  "cfg-if",
  "log",
