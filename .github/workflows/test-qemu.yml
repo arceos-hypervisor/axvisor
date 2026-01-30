@@ -8,10 +8,10 @@ jobs:
     strategy:
       matrix:
         include:
-          # - arch: aarch64
-          #   vmconfigs: configs/vms/arceos-aarch64-qemu-smp1.toml
-          #   vmconfigs_name: ArceOS
-          #   vmimage_name: qemu_aarch64_arceos
+          - arch: aarch64
+            vmconfigs: configs/vms/arceos-aarch64-qemu-smp1.toml
+            vmconfigs_name: ArceOS
+            vmimage_name: qemu_aarch64_arceos
           - arch: aarch64
             vmconfigs: configs/vms/linux-aarch64-qemu-smp1.toml
             vmconfigs_name: Linux
