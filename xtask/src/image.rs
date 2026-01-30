@@ -7,8 +7,10 @@
 //! are downloaded from a specified URL base and verified using SHA-256 checksums. The downloaded
 //! images are automatically extracted to a specified output directory. Images can also be removed
 //! from the temporary directory.
-//! ! Usage examples:
-//!! ```
+//!
+//! # Usage examples
+//!
+//! ```
 //! // List available images
 //! xtask image ls
 //! // Download a specific image and automatically extract it (default behavior)
@@ -46,6 +48,7 @@ const DEFAULT_REGISTRY_URL: &str = "https://raw.githubusercontent.com/arceos-hyp
 /// Image management command line arguments.
 #[derive(Parser)]
 pub struct ImageArgs {
+    /// Image subcommand to run: `ls`, `download`, `rm`, or `sync`.
     #[command(subcommand)]
     pub command: ImageCommands,
 }
@@ -95,24 +98,35 @@ pub enum ImageCommands {
     },
 }
 
-/// An image entry in the image list file.
+/// An image entry in the image list file (one row in the registry TOML).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ImageEntry {
+    /// Unique image identifier (e.g. `qemu_x86_64_nimbos`, `evm3588_arceos`).
     pub name: String,
+    /// Short human-readable description of the image.
     pub description: String,
+    /// SHA-256 checksum of the image archive (hex string).
     pub sha256: String,
+    /// Target architecture (e.g. `x86_64`, `aarch64`).
     pub arch: String,
+    /// URL to download the image archive (e.g. `.tar.gz`).
     pub url: String,
 }
 
-/// A image list contains a list of [`ImageEntry`]s.
+/// An image list contains a list of [`ImageEntry`]s (top-level structure of the registry TOML).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ImageList {
+    /// All image entries from the registry.
     pub images: Vec<ImageEntry>,
 }
 
 impl ImageList {
-    /// Load image list from local image list file.
+    /// Loads the image list from the local image list file only (no network).
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(ImageList)` - Parsed image list
+    /// * `Err` - If the file cannot be read or the TOML is invalid
     fn load_local() -> Result<ImageList> {
         let path = get_image_list_file()?;
         let s = fs::read_to_string(&path).map_err(|e| {
@@ -124,8 +138,17 @@ impl ImageList {
         toml::from_str(&s).map_err(|e| anyhow!("Invalid image list format: {e}"))
     }
 
-    /// Load image list from local image list file, fetch from registry if the
-    /// local image list file is missing or broken and `auto_sync` is set.
+    /// Loads the image list from local file; if missing or invalid and `auto_sync` is true,
+    /// syncs from the remote registry first, then loads again.
+    ///
+    /// # Arguments
+    ///
+    /// * `auto_sync` - If true, attempt to sync from registry when local load fails
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(ImageList)` - Parsed image list (from local or after sync)
+    /// * `Err` - If load fails and (when `auto_sync` is true) sync also fails
     pub async fn load(auto_sync: bool) -> Result<ImageList> {
         let result = Self::load_local();
         if result.is_ok() || !auto_sync {
@@ -140,12 +163,32 @@ impl ImageList {
         Self::load_local()
     }
 
-    /// Get all images from the local list file.
+    /// Returns all image entries from the list (loads list with optional auto-sync).
+    ///
+    /// # Arguments
+    ///
+    /// * `auto_sync` - If true, sync from registry when local list is missing or invalid
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Vec<ImageEntry>)` - All image entries
+    /// * `Err` - If the list cannot be loaded
     pub async fn all(auto_sync: bool) -> Result<Vec<ImageEntry>> {
         Self::load(auto_sync).await.map(|list| list.images)
     }
 
-    /// Find image by name in the local list file.
+    /// Finds a single image entry by name (loads list with optional auto-sync).
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Image name to look up (e.g. `evm3588_arceos`)
+    /// * `auto_sync` - If true, sync from registry when local list is missing or invalid
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Some(ImageEntry))` - The matching image
+    /// * `Ok(None)` - No image with that name
+    /// * `Err` - If the list cannot be loaded
     pub async fn find_by_name(name: &str, auto_sync: bool) -> Result<Option<ImageEntry>> {
         Self::load(auto_sync)
             .await
@@ -153,7 +196,12 @@ impl ImageList {
     }
 }
 
-/// Get the path to the AxVisor repository directory.
+/// Returns the path to the AxVisor repository root (parent of the xtask crate).
+///
+/// # Returns
+///
+/// * `Ok(PathBuf)` - Path to the repository root
+/// * `Err` - If `CARGO_MANIFEST_DIR` is unset or the parent path cannot be determined
 fn get_axvisor_repo_dir() -> Result<PathBuf> {
     // CARGO_MANIFEST_DIR contains the path of the xtask crate, and we need to
     // get the parent directory to get the AxVisor repository directory.
@@ -163,24 +211,38 @@ fn get_axvisor_repo_dir() -> Result<PathBuf> {
         .to_path_buf())
 }
 
-/// Get the path to the default image directory under the AxVisor repository directory.
+/// Returns the path to the default image directory under the AxVisor repository.
+///
+/// # Returns
+///
+/// * `Ok(PathBuf)` - Path to the default image directory (e.g. `<repo>/.images`)
+/// * `Err` - If the repository path cannot be determined
 fn get_default_image_dir() -> Result<PathBuf> {
     Ok(get_axvisor_repo_dir()?.join(DEFAULT_IMAGE_DIR))
 }
 
-/// Get the path to the image list file stored locally.
+/// Returns the path to the local image list file.
+///
+/// # Returns
+///
+/// * `Ok(PathBuf)` - Path to the image list file (e.g. `<repo>/.images/images.toml`)
+/// * `Err` - If the default image directory path cannot be determined
 fn get_image_list_file() -> Result<PathBuf> {
     Ok(get_default_image_dir()?.join(LIST_FILE_NAME))
 }
 
-/// Verify the SHA256 checksum of a file.
+/// Verifies the SHA256 checksum of a file.
+///
 /// # Arguments
-/// * `file_path` - The path to the file to verify
-/// * `expected_sha256` - The expected SHA256 checksum as a hex string
+///
+/// * `file_path` - Path to the file to verify
+/// * `expected_sha256` - Expected SHA256 checksum as a lowercase hex string
+///
 /// # Returns
-/// * `Result<bool>` - Result indicating whether the checksum matches
-/// # Errors
-/// * `anyhow::Error` - If any error occurs during the verification process
+///
+/// * `Ok(true)` - Checksum matches
+/// * `Ok(false)` - Checksum does not match
+/// * `Err` - I/O or read error during verification
 fn image_verify_sha256(file_path: &Path, expected_sha256: &str) -> Result<bool> {
     let mut file = fs::File::open(file_path)?;
     let mut hasher = Sha256::new();
@@ -200,12 +262,13 @@ fn image_verify_sha256(file_path: &Path, expected_sha256: &str) -> Result<bool> 
     Ok(actual_sha256 == expected_sha256)
 }
 
-/// Download a URL to a local file path with optional progress output.
+/// Downloads a URL to a local file, creating parent directories as needed.
 ///
 /// # Arguments
+///
 /// * `url` - URL to download
 /// * `path` - Local path to write the file
-/// * `progress_label` - If present, print progress lines with this label
+/// * `progress_label` - If `Some`, progress (percent/bytes) is printed with this label
 async fn download_to_path(url: &str, path: &Path, progress_label: Option<&str>) -> Result<()> {
     let mut response = reqwest::get(url).await?;
     if !response.status().is_success() {
@@ -251,14 +314,20 @@ async fn download_to_path(url: &str, path: &Path, progress_label: Option<&str>) 
     Ok(())
 }
 
-/// List all available images
+/// Lists all available images (name, architecture, description) to stdout.
+///
+/// # Arguments
+///
+/// * `auto_sync` - If true, sync image list from registry when local list is missing or invalid
+///
 /// # Returns
-/// * `Result<()>` - Result indicating success or failure
-/// # Errors
-/// * `anyhow::Error` - If any error occurs during the listing process
+///
+/// * `Ok(())` - List was loaded and printed
+/// * `Err` - Failed to load image list (and sync if enabled)
+///
 /// # Examples
-/// ```
-/// // List all available images
+///
+/// ```ignore
 /// xtask image ls
 /// ```
 async fn image_list(auto_sync: bool) -> Result<()> {
@@ -282,18 +351,23 @@ async fn image_list(auto_sync: bool) -> Result<()> {
     Ok(())
 }
 
-/// Download the specified image and optionally extract it
+/// Downloads the named image (and optionally extracts it) to the given or default directory.
+///
 /// # Arguments
-/// * `image_name` - The name of the image to download
-/// * `output_dir` - Optional output directory to save the downloaded image
-/// * `extract` - Whether to automatically extract the image after download (default: true)
+///
+/// * `image_name` - Name of the image (e.g. `evm3588_arceos`); must exist in the image list
+/// * `output_dir` - If `Some`, directory for the `.tar.gz` and extracted content; if `None`, uses `<repo>/.images`
+/// * `extract` - If true, extract the downloaded `.tar.gz` into a subdirectory named after the image
+/// * `auto_sync` - If true, sync image list from registry when local list is missing or invalid
+///
 /// # Returns
-/// * `Result<()>` - Result indicating success or failure
-/// # Errors
-/// * `anyhow::Error` - If any error occurs during the download or extraction process
+///
+/// * `Ok(())` - Image downloaded (and extracted if requested); checksum verified
+/// * `Err` - Image not found, download failed, checksum mismatch, or extraction failed
+///
 /// # Examples
-/// ```
-/// // Download the evm3588_arceos image to the ./images directory and automatically extract it
+///
+/// ```ignore
 /// xtask image download evm3588_arceos --output-dir ./images
 /// ```
 async fn image_download(
@@ -395,16 +469,20 @@ async fn image_download(
     Ok(())
 }
 
-/// Remove the specified image from temp directory
+/// Removes the named image from the default image directory (`.tar.gz` and extracted dir, if present).
+///
 /// # Arguments
-/// * `image_name` - The name of the image to remove
+///
+/// * `image_name` - Name of the image to remove (must exist in the image list)
+///
 /// # Returns
-/// * `Result<()>` - Result indicating success or failure
-/// # Errors
-/// * `anyhow::Error` - If any error occurs during the removal process
+///
+/// * `Ok(())` - Removal completed (or nothing was present)
+/// * `Err` - Image not found in list, or I/O error during removal
+///
 /// # Examples
-/// ```
-/// // Remove the evm3588_arceos image from temp directory
+///
+/// ```ignore
 /// xtask image rm evm3588_arceos
 /// ```
 async fn image_remove(image_name: &str) -> Result<()> {
@@ -441,11 +519,20 @@ async fn image_remove(image_name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Synchronize image list from a remote registry.
+/// Synchronizes the image list from a remote registry.
 ///
 /// Downloads the list file from the given registry URL (or the default) and
 /// saves it to the local image list path. Validates the downloaded content
 /// as TOML before returning.
+///
+/// # Arguments
+///
+/// * `registry` - If `Some(url)`, use this URL for the list file; if `None`, use the default registry URL
+///
+/// # Returns
+///
+/// * `Ok(())` - List downloaded and saved; content is valid TOML
+/// * `Err` - Download failed or content is not valid image list TOML
 async fn sync_image_list(registry: Option<String>) -> Result<()> {
     let url = registry.unwrap_or_else(|| DEFAULT_REGISTRY_URL.to_string());
     let dir = get_default_image_dir()?;
@@ -465,16 +552,20 @@ async fn sync_image_list(registry: Option<String>) -> Result<()> {
     Ok(())
 }
 
-/// Main function to run image management commands
+/// Dispatches and runs the image subcommand (ls, download, rm, sync) from parsed CLI arguments.
+///
 /// # Arguments
-/// * `args` - The image command line arguments
+///
+/// * `args` - Parsed image CLI arguments (subcommand and its options)
+///
 /// # Returns
-/// * `Result<()>` - Result indicating success or failure
-/// # Errors
-/// * `anyhow::Error` - If any error occurs during command execution
+///
+/// * `Ok(())` - Subcommand completed successfully
+/// * `Err` - Subcommand failed (e.g. list load, download, checksum, sync, or remove error)
+///
 /// # Examples
-/// ```
-/// // Run image management commands
+///
+/// ```ignore
 /// xtask image ls
 /// xtask image download evm3588_arceos --output-dir ./images
 /// xtask image rm evm3588_arceos
