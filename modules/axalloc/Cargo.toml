@@ -1,22 +1,23 @@
 [package]
 name = "axalloc"
-authors.workspace = true
+version.workspace = true
 edition.workspace = true
+authors = ["Yuekai Jia <equation618@gmail.com>"]
+description = "Axvisor global memory allocator"
 license.workspace = true
-version = "0.2.0"
+repository = "https://github.com/arceos-org/arceos/tree/main/modules/axalloc"
 
 [features]
-buddy = []
 default = []
-level-1 = []
-page-alloc-4g = [] # Support up to 4G memory capacity
-page-alloc-64g = [] # Support up to 64G memory capacity
-slab = []
-tlsf = []
-
+tracking = ["dep:percpu", "dep:axbacktrace", "buddy-slab-allocator/tracking"]
 
 [dependencies]
-buddy_system_allocator = "0.11"
-log = "0.4"
-kspin = "0.1"
-axerrno = "0.1"
+buddy-slab-allocator = {git = "https://github.com/arceos-hypervisor/buddy-slab-allocator.git", branch = "main", features = ["log"] }
+axbacktrace = { workspace = true, optional = true }
+axerrno.workspace = true
+kspin.workspace = true
+kernel_guard.workspace = true
+log.workspace = true
+memory_addr.workspace = true
+percpu = { workspace = true, optional = true }
+strum = { version = "0.27.2", default-features = false, features = ["derive"] }
