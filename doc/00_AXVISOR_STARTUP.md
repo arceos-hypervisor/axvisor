@@ -239,9 +239,9 @@ graph TD
         B1 --> C1[进入 64 位模式]
         C1 --> D1[rust_entry<br/>平台 Rust 入口]
         D1 --> E1[rust_main<br/>运行时初始化]
-        E1 --> F1[发送 INIT-SIPI-SIPI<br/>唤醒 AP]
-        F1 --> G1[axtask::init_scheduler<br/>调度器初始化]
-        G1 --> H1[main<br/>应用入口]
+        E1 --> G1[axtask::init_scheduler<br/>调度器初始化]
+        G1 --> F1[发送 INIT-SIPI-SIPI<br/>唤醒 AP]
+        F1 --> H1[main<br/>应用入口]
     end
 
     subgraph "AP 启动流程（CPU 1-N）"
@@ -265,8 +265,9 @@ graph TD
 1. **BSP 启动流程**（左侧蓝色）：
    - 由引导加载器启动，执行汇编启动代码
    - 进入 64 位模式后调用 `rust_entry`
-   - 完成运行时初始化后，通过 APIC 发送 INIT-SIPI-SIPI 序列唤醒 AP
-   - 初始化调度器并进入应用主函数
+   - 完成运行时初始化后，初始化调度器
+   - 通过 APIC 发送 INIT-SIPI-SIPI 序列唤醒 AP
+   - 进入应用主函数
 
 2. **AP 启动流程**（右侧粉色）：
    - 由 BSP 通过 SIPI 中断唤醒
@@ -276,7 +277,7 @@ graph TD
 
 3. **汇合点**：
    - BSP 和 AP 最终都进入运行时环境
-   - AP 就绪后，BSP 继续初始化调度器
+   - AP 就绪后，调度器可以调度任务到所有 CPU
    - 调度器开始工作时，所有 CPU 都可以参与任务调度
 
 ### 2.2 程序入口点
@@ -297,7 +298,7 @@ graph TD
 
 ### 2.3 boot.rs 与 multiboot.S
 
-boot.rs 文件是整个 x86_64 平台的程序入口文件，其中通过 `global_asm!` 宏将启动的 `multiboot.S` 汇编文件以及其自身定义的一些寄存器值整合到一起。
+boot.rs 文件是整个 x86_64 平台的程序入口文件，其中通过 `global_asm!` 宏将启动的 `multiboot.S` 汇编文件以及其自身定义的一些寄存器值整合到一起，实际处理启动过程的就是 `multiboot.S`。
 
 ```rust
 use x86_64::registers::control::{Cr0Flags, Cr4Flags};
@@ -602,7 +603,7 @@ bsp_entry64:
 
 ### 2.4 mp.rs 与 ap_start.S
 
-[platform/x86-qemu-q35/src/mp.rs](platform/x86-qemu-q35/src/mp.rs) 负责处理 AP（Application Processor）的启动。mp.rs 中通过的 global_asm! 将 `ap_start.S` 嵌入其中，这与 boot.rs 中嵌入 multiboot.S 的方式相同，都是通过 `global_asm!` 宏将汇编代码嵌入到 Rust 代码中
+[platform/x86-qemu-q35/src/mp.rs](platform/x86-qemu-q35/src/mp.rs) 负责处理 AP（Application Processor）的启动。mp.rs 中通过 `global_asm!` 宏将 `ap_start.S` 嵌入其中，实际处理启动过程的就是 `ap_start.S`。
 
 ```rust
 core::arch::global_asm!(
@@ -611,27 +612,99 @@ core::arch::global_asm!(
 );
 ```
 
-由于 Intel MP 规范的要求，AP 启动时必须从低 64KB 地址空间内的 4KB 边界开始，AP 从实模式启动，需要专门的代码切换到保护模式，进入保护模式后，AP 可以与 BSP 共享 multiboot.S 中的通用初始化代码。而启动需要通过 BSP 发送的 **INIT-SIPI-SIPI** 序列来唤醒。它需要按照以下顺序执行两个汇编文件：
+当 BSP 确保主 CPU 的运行环境已经准备好后，就会在**调度器初始化之后、中断初始化之前**调用 `start_secondary_cpus()` 函数依次唤醒每个 AP，确保它们进入就绪状态。
 
-1. **ap_start.S**（优先执行）：实模式 → 保护模式
-   - 位于固定物理页 0x6000
-   - 负责从实模式切换到保护模式
-   - 在 [mp.rs](platform/x86-qemu-q35/src/mp.rs) 中通过 `global_asm!` 嵌入
+```
+系统启动流程：
+  1. BSP 完成早期硬件初始化（axhal::init_early）
+  2. BSP 初始化内存管理（axhal::mem::init）
+  3. BSP 初始化页表（axmm::init_memory_management）（如果启用 paging 功能）
+  4. BSP 初始化驱动（axhal::init_later）
+  5. BSP 初始化调度器（axtask::init_scheduler）← 此时调用 start_secondary_cpus（如果启用 multitask 功能）
+  6. BSP 初始化中断处理（init_interrupt）（如果启用 irq 功能）
 
-2. **multiboot.S**（后续执行）：保护模式 → 长模式
-   - 与 BSP 共享 `ENTRY32_COMMON` 和 `ENTRY64_COMMON` 宏
-   - 提供 `ap_entry32` 和 `ap_entry64` 入口点
-   - 在 [boot.rs](platform/x86-qemu-q35/src/boot.rs) 中通过 `global_asm!` 嵌入
+调用链：
+axruntime/src/lib.rs:rust_main()
+  └─> axruntime/src/mp.rs:start_secondary_cpus()
+       └─> axhal::power::cpu_boot()  [trait调用]
+            └─> platform/x86-qemu-q35/src/power.rs:cpu_boot()
+                 └─> platform/x86-qemu-q35/src/mp.rs:start_secondary_cpu()
+                      └─> setup_startup_page()  ← 在这里调用
+```
+
+1. **运行时入口**：`axruntime/src/lib.rs`
+   ```rust
+   #[cfg(feature = "smp")]
+   self::mp::start_secondary_cpus(cpu_id);
+   ```
+   - 在主 CPU 完成基本初始化后调用
+   - 启动所有次级 CPU 核心
+
+2. **启动所有次级 CPU**：`axruntime/src/mp.rs`
+   ```rust
+   pub fn start_secondary_cpus(primary_cpu_id: usize) {
+       for i in 0..cpu_count {
+           if i != primary_cpu_id {
+               let stack_top = virt_to_phys(VirtAddr::from(unsafe {
+                   SECONDARY_BOOT_STACK[logic_cpu_id].as_ptr_range().end as usize
+               }));
+               axhal::power::cpu_boot(i, stack_top.as_usize());
+           }
+       }
+   }
+   ```
+   - 遍历所有 CPU 核心（除主 CPU 外）
+   - 为每个核心分配栈空间
+   - 调用平台接口启动每个 CPU
+
+3. **平台电源管理接口**：`platform/x86-qemu-q35/src/power.rs`
+   ```rust
+   #[impl_plat_interface]
+   impl PowerIf for PowerImpl {
+       #[cfg(feature = "smp")]
+       fn cpu_boot(cpu_id: usize, stack_top_paddr: usize) {
+           use axplat::mem::pa;
+           crate::mp::start_secondary_cpu(cpu_id, pa!(stack_top_paddr))
+       }
+   }
+   ```
+   - 实现 `PowerIf` trait 的 `cpu_boot` 方法
+   - 转调用多处理器启动函数
+
+4. **启动单个次级 CPU**：`platform/x86-qemu-q35/src/mp.rs:36`
+   ```rust
+   pub fn start_secondary_cpu(apic_id: usize, stack_top: PhysAddr) {
+       // 1. 设置启动页面（复制代码并设置参数）
+       unsafe { setup_startup_page(stack_top) };
+
+       let apic_id = super::apic::raw_apic_id(apic_id as u8);
+       let lapic = super::apic::local_apic();
+
+       // 2. INIT-SIPI-SIPI 序列（Intel SDM Vol 3C, Section 8.4.4）
+       unsafe { lapic.send_init_ipi(apic_id) };      // INIT IPI
+       busy_wait(Duration::from_millis(10));          // 等待 10ms
+       unsafe { lapic.send_sipi(START_PAGE_IDX, apic_id) };  // SIPI #1
+       busy_wait(Duration::from_micros(200));         // 等待 200μs
+       unsafe { lapic.send_sipi(START_PAGE_IDX, apic_id) };  // SIPI #2
+   }
+   ```
+   - **在这里调用 `setup_startup_page`**，设置启动页
+   - 然后发送 INIT-SIPI-SIPI 序列唤醒目标 CPU
 
 #### 2.4.1 setup_startup_page
 
-在 AP 启动之前，BSP 必须先准备好启动页面。这是 AP 启动的第一步，由 BSP 的 `setup_startup_page` 函数完成。此函数在物理地址 0x6000 处准备 AP 的启动页面。
+在 AP 启动之前，BSP 必须先为 AP 准备好启动页面。而这个过程是由 BSP 的通过 `start_secondary_cpu()` 中调用的 `setup_startup_page` 函数完成。此函数在物理地址 0x6000 处准备 AP 的启动页面。
 
 ```rust
 const START_PAGE_IDX: u8 = 6;
 const START_PAGE_PADDR: PhysAddr = pa!(0x6000);  // 第 6 页
 
 unsafe fn setup_startup_page(stack_top: PhysAddr) {
+    unsafe extern {
+        fn ap_entry32();
+        fn ap_start();
+        fn ap_end();
+    }
     const U64_PER_PAGE: usize = 512;  // 4096 / 8
 
     // 1. 将 ap_start.S 的二进制代码复制到 0x6000
@@ -644,8 +717,8 @@ unsafe fn setup_startup_page(stack_top: PhysAddr) {
 
     // 2. 在页面末尾写入栈顶和入口地址
     let start_page = core::slice::from_raw_parts_mut(start_page_ptr, U64_PER_PAGE);
-    start_page[510] = stack_top.as_usize() as u64;      // 0x6ff0: 栈顶
-    start_page[511] = ap_entry32 as usize as u64;       // 0x6ff8: 入口地址
+    start_page[U64_PER_PAGE - 2] = stack_top.as_usize() as u64;      // 0x6ff0: 栈顶
+    start_page[U64_PER_PAGE - 1] = ap_entry32 as usize as u64;       // 0x6ff8: 入口地址
 }
 ```
 
@@ -659,7 +732,7 @@ unsafe fn setup_startup_page(stack_top: PhysAddr) {
 - 在 0x6ff8 处写入入口地址（`ap_entry32`，位于 multiboot.S 中）
 - AP 的 `ap_start32` 代码会读取这些参数
 
-**启动页面布局**：
+由于 Intel MP 规范的要求，AP 启动时必须从低 64KB 地址空间内的 4KB 边界开始，AP 从实模式启动，需要专门的代码切换到保护模式，进入保护模式后，AP 就可以与 BSP 共享 multiboot.S 中的通用初始化代码。
 
 ```
 物理地址 0x6000（4096 字节）：
@@ -677,52 +750,140 @@ unsafe fn setup_startup_page(stack_top: PhysAddr) {
 
 #### 2.4.2 INIT-SIPI-SIPI
 
-启动页面准备好后，BSP 通过 APIC 发送 INIT-SIPI-SIPI 序列来唤醒 AP。这是 Intel MP 规范定义的标准 AP 启动流程。
+INIT-SIPI-SIPI 是 Intel x86_64 多处理器规范中定义的**处理器间中断（Inter-Processor Interrupt, IPI）序列**，用于由 BSP（Bootstrap Processor，引导处理器）唤醒 AP（Application Processor，应用处理器）。
 
-```rust
-pub fn start_secondary_cpu(apic_id: usize, stack_top: PhysAddr) {
-    // 1. 设置启动页面（复制代码并设置参数）
-    unsafe { setup_startup_page(stack_top) };
+- **INIT IPI**：初始化中断，使目标 AP 复位到实模式
+- **SIPI**（Startup IPI）：启动中断，指定 AP 的启动地址
+- **IPI**：处理器间中断，是通过 APIC（Advanced Programmable Interrupt Controller）在 CPU 之间发送的特殊中断
 
-    let apic_id = super::apic::raw_apic_id(apic_id as u8);
-    let lapic = super::apic::local_apic();
+INIT-SIPI-SIPI 是 BSP **主动发送**的中断，不是 AP 触发的，AP 收到这些中断后，会执行相应的硬件响应动作（复位、跳转到指定地址），这与普通的外部中断不同，IPI 是专门用于 CPU 间通信的机制。
 
-    // 2. INIT-SIPI-SIPI 序列（Intel SDM Vol 3C, Section 8.4.4）
-    unsafe { lapic.send_init_ipi(apic_id) };      // INIT IPI
-    busy_wait(Duration::from_millis(10));          // 等待 10ms
-    unsafe { lapic.send_sipi(START_PAGE_IDX, apic_id) };  // SIPI #1
-    busy_wait(Duration::from_micros(200));         // 等待 200μs
-    unsafe { lapic.send_sipi(START_PAGE_IDX, apic_id) };  // SIPI #2
-}
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ BSP 侧（CPU 0）                                                  │
+└─────────────────────────────────────────────────────────────────┘
+  1. BSP 完成自身初始化
+  2. BSP 调用 start_secondary_cpus()
+     └─> 遍历所有 AP 核心
+         └─> 为每个 AP 分配栈空间
+             └─> 调用 start_secondary_cpu(apic_id, stack_top)
+                 ├─> setup_startup_page(stack_top)
+                 │   ├─> 将 ap_start.S 代码复制到 0x6000
+                 │   └─> 在 0x6ff8 写入 ap_entry32 地址（multiboot.S 中）
+                 └─> 发送 INIT-SIPI-SIPI 序列
+                     ├─> INIT IPI → AP 复位到实模式
+                     └─> SIPI (向量 0x06) → AP 跳转到 0x6000
+
+                         ↓ (硬件中断触发)
+
+┌─────────────────────────────────────────────────────────────────┐
+│ AP 侧（CPU 1-N）                                                │
+└─────────────────────────────────────────────────────────────────┘
+  3. AP 收到 SIPI，硬件自动跳转到 0x6000
+     └─> 进入 ap_start.S（实模式）
+         ├─> ap_start: 清空段寄存器、加载 GDT
+         ├─> 设置 CR0.PE（进入保护模式）
+         └─> 远跳转到 ap_start32
+
+     └─> ap_start32（32 位保护模式）
+         ├─> 从 0x6ff0 读取栈指针
+         ├─> 从 0x6ff8 读取入口地址（ap_entry32）
+         └─> 跳转到 multiboot.S 的 ap_entry32
+
+         ↓ (代码切换：ap_start.S → multiboot.S)
+
+     └─> 进入 multiboot.S（保护模式）
+         └─> ap_entry32
+             ├─> ENTRY32_COMMON（与 BSP 相同的初始化）
+             └─> 远跳转到 ap_entry64
+
+     └─> ap_entry64（64 位长模式）
+         ├─> ENTRY64_COMMON（清零段选择子）
+         ├─> 调整栈指针到高地址空间
+         └─> 调用 rust_entry_secondary
+
+         ↓ (进入 Rust 运行环境)
+
+     └─> rust_entry_secondary（Rust 入口）
+         └─> rust_main_secondary（运行时初始化）
+             ├─> axhal::percpu::init_secondary
+             ├─> axhal::init_early_secondary
+             ├─> axmm::init_memory_management_secondary
+             ├─> axtask::init_scheduler_secondary
+             └─> 进入就绪状态，等待调度
 ```
 
 **步骤 1：设置启动页面**
 - 调用 `setup_startup_page(stack_top)` 准备启动页面
 - 将 AP 的栈顶指针和入口地址写入 0x6ff0 和 0x6ff8
 
-**步骤 2：发送 INIT IPI**
-- 向目标 AP 发送 INIT IPI（Inter-Processor Interrupt）
-- INIT IPI 使 AP 复位到实模式，等待 SIPI
-- 等待 10ms，确保 AP 完成复位
+**步骤 2：发送 INIT IPI（BSP → AP）**
+- BSP 通过 LAPIC 向目标 AP 发送 INIT IPI
+- INIT IPI 是一个**处理器间中断**，使目标 AP 复位到实模式
+- AP 收到 INIT IPI 后，硬件会自动执行复位操作，进入等待 SIPI 的状态
+- BSP 等待 10ms，确保 AP 完成复位
 
-**步骤 3：发送第一个 SIPI**
-- SIPI（Startup Inter-Processor Interrupt）包含启动向量
-- 启动向量 = 0x06，表示 AP 应该跳转到 0x6000
-- 等待 200μs，给 AP 时间响应
+**步骤 3：发送第一个 SIPI（BSP → AP）**
+- BSP 通过 LAPIC 向目标 AP 发送 SIPI（Startup IPI）
+- SIPI 也是一个**处理器间中断**，包含 8 位启动向量
+- 启动向量 = 0x06，指定 AP 应该跳转到物理地址 0x6000
+- AP 收到 SIPI 后，硬件会自动跳转到指定地址（0x6000）开始执行
+- BSP 等待 200μs，给 AP 时间响应
 
-**步骤 4：发送第二个 SIPI**
-- 发送第二个 SIPI 确保可靠启动
-- 根据 Intel SDM，某些情况下需要两个 SIPI
+**步骤 4：发送第二个 SIPI（BSP → AP）**
+- BSP 发送第二个 SIPI 确保可靠启动
+- 根据 Intel SDM，某些情况下（如总线延迟）需要两个 SIPI
+- 如果 AP 已经响应第一个 SIPI，第二个 SIPI 会被忽略
 
-**关键技术点**：
+**中断响应流程（AP 侧）**：
+1. AP 处于等待 SIPI 状态（未初始化）
+2. 收到 INIT IPI → 硬件自动复位到实模式
+3. 收到 SIPI → 硬件自动跳转到 0x6000
+4. AP 从 0x6000 开始执行启动代码
 
-- **时序要求**：INIT 和 SIPI 之间、两个 SIPI 之间都有严格的时序要求
-- **启动向量**：SIPI 的低 8 位指定 AP 的启动地址（0x06 → 0x6000）
-- **可靠性**：发送两个 SIPI 是为了确保 AP 能够可靠启动
+完整流程图：
+
+```mermaid
+sequenceDiagram
+    participant BSP as BSP (CPU 0)
+    participant APIC as LAPIC
+    participant AP as AP (CPU 1-N)
+
+    Note over BSP: 1. 调用 start_secondary_cpus
+    BSP->>BSP: 遍历所有 AP 核心
+    BSP->>BSP: 为每个 AP 分配栈
+
+    Note over BSP: 2. 调用 start_secondary_cpu
+    BSP->>BSP: setup_startup_page(stack_top)
+    Note right of BSP: 准备启动页面<br/>复制代码到 0x6000<br/>写入栈顶和入口地址
+
+    Note over BSP,APIC: 3. 发送 INIT IPI（中断）
+    BSP->>APIC: send_init_ipi(apic_id)
+    APIC->>AP: INIT IPI（硬件中断）
+    Note over AP: 硬件自动复位<br/>进入实模式<br/>等待 SIPI
+    BSP->>BSP: 等待 10ms
+
+    Note over BSP,APIC: 4. 发送第一个 SIPI（中断）
+    BSP->>APIC: send_sipi(0x06, apic_id)
+    APIC->>AP: SIPI（硬件中断）
+    Note over AP: 硬件跳转到 0x6000<br/>开始执行 ap_start.S
+    BSP->>BSP: 等待 200μs
+
+    Note over BSP,APIC: 5. 发送第二个 SIPI（中断）
+    BSP->>APIC: send_sipi(0x06, apic_id)
+    Note over AP: 如果已启动则忽略
+
+    Note over AP: 6. AP 执行启动代码
+    AP->>AP: ap_start.S（实模式）
+    AP->>AP: ap_entry32（保护模式）
+    AP->>AP: ap_entry64（长模式）
+    AP->>AP: rust_entry_secondary（Rust 入口）
+    Note over AP: 进入就绪状态
+```
 
 #### 2.4.3 ap_start
 
-AP 收到 SIPI 后，从物理地址 0x6000 开始执行 `ap_start.S` 的代码。此时 AP 处于实模式（16 位模式），这是 AP 启动的第一段代码，负责从实模式切换到保护模式。
+AP 收到 SIPI 后，硬件自动跳转到物理地址 0x6000，开始执行 `ap_start.S` 的代码。此时 AP 处于实模式（16 位模式），这是 AP 启动的第一段代码，负责从实模式切换到保护模式。
 
 ```assembly
 # Boot application processors into the protected mode.
@@ -836,7 +997,15 @@ ap_start32:
 
 #### 2.4.5 ap_entry32
 
-AP 跳转到 multiboot.S 后，执行 `ap_entry32` 代码。此时 AP 与 BSP 一样，可以共享 multiboot.S 中的通用初始化代码。
+AP 从 ap_start.S 的 `ap_start32` 跳转到 `multiboot.S` 的 `ap_entry32`。这是 AP 启动过程中的关键切换点：
+
+```
+ap_start.S (ap_start32) → multiboot.S (ap_entry32)
+  读取 0x6ff8            跳转到入口地址
+  获取 ap_entry32        执行通用初始化
+```
+
+此时 AP 已经进入保护模式，与 BSP 一样，可以共享 multiboot.S 中的通用初始化代码。
 
 ```assembly
 # 32 位入口（由 ap_start.S 跳转而来）
@@ -891,7 +1060,7 @@ ap_entry64:
 **步骤 4：停机保护**
 - 如果 `rust_entry_secondary` 返回，跳转到 `.Lhlt` 停机
 
-#### 2.4.7 BSP 与 AP 启动流程对比
+### 2.5 BSP 与 AP 启动流程对比
 
 | 阶段 | BSP（multiboot.S） | AP（ap_start.S + multiboot.S） |
 |------|-------------------|-------------------------------|
@@ -905,27 +1074,7 @@ ap_entry64:
 | **Rust 入口** | rust_entry(magic, mbi) | rust_entry_secondary(magic) |
 | **代码复用** | 独立执行 | 共享 ENTRY32_COMMON 和 ENTRY64_COMMON 宏 |
 
-**关键差异总结**：
-
-1. **启动触发**：BSP 由引导加载器启动，AP 由 BSP 通过 APIC 唤醒
-2. **起始模式**：BSP 从 32 位保护模式开始，AP 从 16 位实模式开始
-3. **代码文件**：BSP 只使用 multiboot.S，AP 需要先执行 ap_start.S 再跳转到 multiboot.S
-4. **参数传递**：BSP 通过寄存器传递参数，AP 通过固定内存位置传递参数
-5. **代码复用**：进入保护模式后，AP 与 BSP 共享相同的初始化代码
-
-| 阶段 | BSP（multiboot.S） | AP（ap_start.S + multiboot.S） |
-|------|-------------------|-------------------------------|
-| **启动方式** | 引导加载器直接跳转 | BSP 通过 APIC 发送 INIT-SIPI-SIPI |
-| **起始位置** | 内核镜像入口（链接脚本指定） | 固定物理页 0x6000 |
-| **起始模式** | 32 位保护模式 | 16 位实模式 |
-| **实模式代码** | 无 | ap_start（清空段寄存器、设置 GDT） |
-| **保护模式入口** | bsp_entry32 | ap_start32 → ap_entry32 |
-| **长模式入口** | bsp_entry64 | ap_entry64 |
-| **栈设置** | 在 bsp_entry64 中设置 | 在 ap_start32 中从 0x6ff0 读取 |
-| **Rust 入口** | rust_entry(magic, mbi) | rust_entry_secondary(magic) |
-| **代码复用** | 独立执行 | 共享 ENTRY32_COMMON 和 ENTRY64_COMMON 宏 |
-
-### 2.5 平台 Rust 入口
+### 2.6 平台 Rust 入口
 
 平台 Rust 入口在 [platform/x86-qemu-q35/src/lib.rs](platform/x86-qemu-q35/src/lib.rs#L40-L50) 中定义，其中会直接跳转到统一的平台处理接口 `axplat::call_main` 中（详见第四章）。
 
@@ -944,10 +1093,8 @@ unsafe extern fn rust_entry_secondary(_magic: usize) {
 }
 ```
 
-**参数说明**：
 - `magic`: Multiboot 魔数（`0x2BADB002`），用于验证引导加载器
 - `mbi`: Multiboot 信息结构体指针，包含内存布局、命令行参数等
-
 
 ## 三、ARM64 平台启动流程
 
