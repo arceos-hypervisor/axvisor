@@ -11,9 +11,9 @@ args = [
   "id=disk0,if=none,format=raw,file=${workspaceFolder}/tmp/rootfs.img",
   "-nographic",
   "-accel",
-  "kvm",
+  "tcg",
   "-cpu",
-  "host",
+  "qemu64",
 ]
 fail_regex = ["System will reboot, press any key to continue ..."]
 success_regex = ["usertests passed!"]
