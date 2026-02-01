@@ -42,7 +42,7 @@ jobs:
           ls -lha .
           ls -lha modules/
 
-          IMAGE_DIR="$(pwd)/.images"
+          IMAGE_DIR="/tmp/.axvisor-images"
           IFS=',' read -ra CONFIGS <<< "${{ matrix.vmconfigs }}"
           IFS=',' read -ra IMAGES <<< "${{ matrix.vmimage_name }}"
           for i in "${!CONFIGS[@]}"; do
