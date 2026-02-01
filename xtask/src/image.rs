@@ -92,9 +92,6 @@ pub enum ImageCommands {
     /// List all available images.
     Ls,
 
-    /// List all available images from the remote registry.
-    LsRemote,
-
     /// Download the specified image and automatically extract it.
     Download {
         /// Name of the image to download.
@@ -123,6 +120,21 @@ pub enum ImageCommands {
     Defconfig,
 }
 
+/// Returns the path to the AxVisor repository root (parent of the xtask crate).
+///
+/// # Returns
+///
+/// * `Ok(PathBuf)` - Path to the repository root
+/// * `Err` - If `CARGO_MANIFEST_DIR` is unset or the parent path cannot be determined
+fn get_axvisor_repo_dir() -> Result<PathBuf> {
+    // CARGO_MANIFEST_DIR contains the path of the xtask crate, and we need to
+    // get the parent directory to get the AxVisor repository directory.
+    Ok(Path::new(&std::env::var("CARGO_MANIFEST_DIR")?)
+        .parent()
+        .ok_or_else(|| anyhow!("Failed to determine AxVisor repository directory"))?
+        .to_path_buf())
+}
+
 impl ImageArgs {
     /// Loads image configuration, merging CLI overrides with values from the config file.
     ///
@@ -148,9 +160,6 @@ impl ImageArgs {
         match &self.command {
             ImageCommands::Ls => {
                 self.list_images().await?;
-            }
-            ImageCommands::LsRemote => {
-                unimplemented!()
             }
             ImageCommands::Download {
                 image_name,
@@ -292,21 +301,6 @@ impl ImageArgs {
         let _ = Storage::new_from_registry(config.registry, config.local_storage).await?;
         Ok(())
     }
-}
-
-/// Returns the path to the AxVisor repository root (parent of the xtask crate).
-///
-/// # Returns
-///
-/// * `Ok(PathBuf)` - Path to the repository root
-/// * `Err` - If `CARGO_MANIFEST_DIR` is unset or the parent path cannot be determined
-fn get_axvisor_repo_dir() -> Result<PathBuf> {
-    // CARGO_MANIFEST_DIR contains the path of the xtask crate, and we need to
-    // get the parent directory to get the AxVisor repository directory.
-    Ok(Path::new(&std::env::var("CARGO_MANIFEST_DIR")?)
-        .parent()
-        .ok_or_else(|| anyhow!("Failed to determine AxVisor repository directory"))?
-        .to_path_buf())
 }
 
 /// Dispatches and runs the image subcommand (ls, download, rm, sync) from parsed CLI arguments.
