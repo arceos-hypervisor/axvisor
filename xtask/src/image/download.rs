@@ -1,3 +1,7 @@
+//! Download utilities and checksum verification.
+//!
+//! Provides async HTTP download with optional progress reporting and SHA256 verification.
+
 use std::{fs, io::Read, path::Path};
 
 use anyhow::{Result, anyhow};

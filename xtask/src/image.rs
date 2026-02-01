@@ -1,6 +1,4 @@
-//! xtask/src/image.rs
 //! Guest Image management commands for the Axvisor build configuration tool
-//! (https://github.com/arceos-hypervisor/xtask).
 //!
 //! This module provides functionality to list, download, and remove
 //! pre-built guest images for various supported boards and architectures. The images
@@ -31,12 +29,9 @@ use clap::{Parser, Subcommand};
 use flate2::read::GzDecoder;
 use tar::Archive;
 
-/// Module for config management.
 mod config;
 mod download;
-/// Module for remote image registry management.
 mod registry;
-/// Module for local image storage management.
 mod storage;
 
 use config::ImageConfig;
@@ -45,6 +40,16 @@ use storage::Storage;
 /// Image management command line arguments.
 #[derive(Parser)]
 pub struct ImageArgs {
+    #[command(flatten)]
+    pub overrides: ImageConfigOverrides,
+
+    /// Image subcommand to run: `ls`, `download`, `rm`, or `sync`.
+    #[command(subcommand)]
+    pub command: ImageCommands,
+}
+
+#[derive(Parser)]
+pub struct ImageConfigOverrides {
     /// The path to the local storage of images. Override the config file.
     #[arg(short('S'), long, global = true)]
     pub local_storage: Option<PathBuf>,
@@ -62,10 +67,23 @@ pub struct ImageArgs {
     /// remote registry. 0 means never. Override the config file.
     #[arg(long, global = true)]
     pub auto_sync_threshold: Option<u64>,
+}
 
-    /// Image subcommand to run: `ls`, `download`, `rm`, or `sync`.
-    #[command(subcommand)]
-    pub command: ImageCommands,
+impl ImageConfigOverrides {
+    pub fn apply_on(&self, config: &mut ImageConfig) {
+        if let Some(local_storage) = self.local_storage.as_ref() {
+            config.local_storage = local_storage.clone();
+        }
+        if let Some(registry) = self.registry.as_ref() {
+            config.registry = registry.clone();
+        }
+        if self.no_auto_sync {
+            config.auto_sync = false;
+        }
+        if let Some(auto_sync_threshold) = self.auto_sync_threshold {
+            config.auto_sync_threshold = auto_sync_threshold;
+        }
+    }
 }
 
 /// Image management commands
@@ -106,23 +124,26 @@ pub enum ImageCommands {
 }
 
 impl ImageArgs {
+    /// Loads image configuration, merging CLI overrides with values from the config file.
+    ///
+    /// CLI arguments override config file values when both are specified.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(ImageConfig)` - Merged configuration
+    /// * `Err` - If config file read fails or AxVisor repo path cannot be determined
     pub async fn get_config(&self) -> Result<ImageConfig> {
         let mut config = ImageConfig::read_config(&get_axvisor_repo_dir()?)?;
-        if let Some(local_storage) = self.local_storage.as_ref() {
-            config.local_storage = local_storage.clone();
-        }
-        if let Some(registry) = self.registry.as_ref() {
-            config.registry = registry.clone();
-        }
-        if self.no_auto_sync {
-            config.auto_sync = false;
-        }
-        if let Some(auto_sync_threshold) = self.auto_sync_threshold {
-            config.auto_sync_threshold = auto_sync_threshold;
-        }
+        self.overrides.apply_on(&mut config);
         Ok(config)
     }
 
+    /// Executes the selected image subcommand (`ls`, `download`, `rm`, `sync`, or `defconfig`).
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - Subcommand completed successfully
+    /// * `Err` - Subcommand failed (e.g. config load, download, or sync error)
     pub async fn execute(&self) -> Result<()> {
         match &self.command {
             ImageCommands::Ls => {
@@ -153,6 +174,14 @@ impl ImageArgs {
         Ok(())
     }
 
+    /// Lists all available images from the local registry to stdout.
+    ///
+    /// Uses merged config and triggers auto-sync if enabled and local storage is out of date.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - Images listed successfully
+    /// * `Err` - Config load, storage init, or sync failed
     pub async fn list_images(&self) -> Result<()> {
         let config = self.get_config().await?;
         let storage = Storage::new_from_config(&config).await?;
@@ -162,6 +191,19 @@ impl ImageArgs {
         Ok(())
     }
 
+    /// Downloads the specified image and optionally extracts it.
+    ///
+    /// # Arguments
+    ///
+    /// * `image_name` - Name of the image to download (e.g. `evm3588_arceos`)
+    /// * `output_dir` - If `Some`, write the `.tar.gz` to this directory; if `None`, use
+    ///   local storage path from config
+    /// * `extract` - If `true`, extract the archive after download
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - Image downloaded (and extracted if requested) successfully
+    /// * `Err` - Config load, storage init, download, or extraction failed
     pub async fn download_image(
         &self,
         image_name: &str,
@@ -214,6 +256,16 @@ impl ImageArgs {
         Ok(())
     }
 
+    /// Removes the specified image from local storage (both `.tar.gz` and extracted directory).
+    ///
+    /// # Arguments
+    ///
+    /// * `image_name` - Name of the image to remove
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - Removal completed; prints a message if no files were found
+    /// * `Err` - Config load, storage init, or file removal failed
     pub async fn remove_image(&self, image_name: &str) -> Result<()> {
         let config = self.get_config().await?;
         let storage = Storage::new_from_config(&config).await?;
@@ -227,6 +279,14 @@ impl ImageArgs {
         Ok(())
     }
 
+    /// Synchronizes the image list from the remote registry to local storage.
+    ///
+    /// Overwrites the local `images.toml` with the registry contents.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - Sync completed successfully
+    /// * `Err` - Config load, registry fetch, or file write failed
     pub async fn sync_registry(&self) -> Result<()> {
         let config: ImageConfig = self.get_config().await?;
         let _ = Storage::new_from_registry(config.registry, config.local_storage).await?;
