@@ -5,7 +5,8 @@ features = [
     "axstd/bus-mmio",
     "fs",
     "driver/sdmmc",
-    "driver/phytium-blk"
+    # driver/phytium-blk 已禁用：上游 phytium-mci 仓库不可用
+    # "driver/phytium-blk"
 ]
 log = "Info"
 target = "aarch64-unknown-none-softfloat"
