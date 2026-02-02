@@ -32,9 +32,11 @@ use tar::Archive;
 mod config;
 mod download;
 mod registry;
+mod spec;
 mod storage;
 
 use config::ImageConfig;
+use spec::ImageSpecRef;
 use storage::Storage;
 
 /// Image management command line arguments.
@@ -70,6 +72,11 @@ pub struct ImageConfigOverrides {
 }
 
 impl ImageConfigOverrides {
+    /// Applies CLI overrides onto the given config (in-place).
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Config to mutate; non-`None` override fields overwrite corresponding values
     pub fn apply_on(&self, config: &mut ImageConfig) {
         if let Some(local_storage) = self.local_storage.as_ref() {
             config.local_storage = local_storage.clone();
@@ -92,9 +99,10 @@ pub enum ImageCommands {
     /// List all available images.
     Ls,
 
-    /// Download the specified image and automatically extract it.
+    /// Download the specified image and automatically extract it. Use ASCII
+    /// colon to specify version, e.g. `evm3588_arceos:0.0.22`; omit for latest.
     Download {
-        /// Name of the image to download.
+        /// Image to download: `name` or `name:version`.
         image_name: String,
 
         /// Output directory for the downloaded image, defaults to
@@ -107,9 +115,10 @@ pub enum ImageCommands {
         no_extract: bool,
     },
 
-    /// Remove the specified image from temp directory.
+    /// Remove the specified image from temp directory. Use ASCII colon to
+    /// specify version, e.g. `evm3588_arceos:0.0.22`; omit for default path.
     Rm {
-        /// Name of the image to remove.
+        /// Image to remove: `name` or `name:version`.
         image_name: String,
     },
 
@@ -120,12 +129,16 @@ pub enum ImageCommands {
     Defconfig,
 }
 
+/// Converts a path to absolute; joins with current dir if relative.
+fn to_absolute_path(path: &Path) -> Result<PathBuf> {
+    Ok(if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(path)
+    })
+}
+
 /// Returns the path to the AxVisor repository root (parent of the xtask crate).
-///
-/// # Returns
-///
-/// * `Ok(PathBuf)` - Path to the repository root
-/// * `Err` - If `CARGO_MANIFEST_DIR` is unset or the parent path cannot be determined
 fn get_axvisor_repo_dir() -> Result<PathBuf> {
     // CARGO_MANIFEST_DIR contains the path of the xtask crate, and we need to
     // get the parent directory to get the AxVisor repository directory.
@@ -137,13 +150,6 @@ fn get_axvisor_repo_dir() -> Result<PathBuf> {
 
 impl ImageArgs {
     /// Loads image configuration, merging CLI overrides with values from the config file.
-    ///
-    /// CLI arguments override config file values when both are specified.
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(ImageConfig)` - Merged configuration
-    /// * `Err` - If config file read fails or AxVisor repo path cannot be determined
     pub async fn get_config(&self) -> Result<ImageConfig> {
         let mut config = ImageConfig::read_config(&get_axvisor_repo_dir()?)?;
         self.overrides.apply_on(&mut config);
@@ -151,11 +157,6 @@ impl ImageArgs {
     }
 
     /// Executes the selected image subcommand (`ls`, `download`, `rm`, `sync`, or `defconfig`).
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(())` - Subcommand completed successfully
-    /// * `Err` - Subcommand failed (e.g. config load, download, or sync error)
     pub async fn execute(&self) -> Result<()> {
         match &self.command {
             ImageCommands::Ls => {
@@ -184,13 +185,6 @@ impl ImageArgs {
     }
 
     /// Lists all available images from the local registry to stdout.
-    ///
-    /// Uses merged config and triggers auto-sync if enabled and local storage is out of date.
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(())` - Images listed successfully
-    /// * `Err` - Config load, storage init, or sync failed
     pub async fn list_images(&self) -> Result<()> {
         let config = self.get_config().await?;
         let storage = Storage::new_from_config(&config).await?;
@@ -204,60 +198,42 @@ impl ImageArgs {
     ///
     /// # Arguments
     ///
-    /// * `image_name` - Name of the image to download (e.g. `evm3588_arceos`)
-    /// * `output_dir` - If `Some`, write the `.tar.gz` to this directory; if `None`, use
-    ///   local storage path from config
+    /// * `spec` - Image spec (name and optional version)
+    /// * `output_dir` - If `Some`, write the `.tar.gz` to this directory; if `None`, use config's local storage path
     /// * `extract` - If `true`, extract the archive after download
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(())` - Image downloaded (and extracted if requested) successfully
-    /// * `Err` - Config load, storage init, download, or extraction failed
     pub async fn download_image(
         &self,
-        image_name: &str,
+        spec: impl Into<ImageSpecRef<'_>>,
         output_dir: Option<&str>,
         extract: bool,
     ) -> Result<()> {
+        let spec = spec.into();
         let config = self.get_config().await?;
         let storage = Storage::new_from_config(&config).await?;
 
         let output_path = match output_dir {
             Some(dir) => {
-                let path = Path::new(&dir);
-                let output_dir = if path.is_absolute() {
-                    path.to_path_buf()
-                } else {
-                    std::env::current_dir()?.join(path)
-                };
-                let output_path = output_dir.join(format!("{image_name}.tar.gz"));
-                storage.download_image_to(image_name, &output_path).await?;
-                output_path
+                storage
+                    .download_image_to(spec, &to_absolute_path(Path::new(dir))?)
+                    .await?
             }
-            None => {
-                storage.download_image(image_name).await?;
-                Storage::image_path(&storage.path, image_name)
-            }
+            None => storage.download_image(spec).await?,
         };
 
         if extract {
             println!("Extracting image...");
 
-            // Determine extraction output directory
             let extract_dir = output_path
                 .parent()
                 .ok_or_else(|| anyhow!("Unable to determine parent directory of downloaded file"))?
-                .join(image_name);
+                .join(storage::image_extract_dir_name(spec));
 
-            // Ensure extraction directory exists
             fs::create_dir_all(&extract_dir)?;
 
-            // Open the compressed tar file
             let tar_gz = fs::File::open(&output_path)?;
             let decoder = GzDecoder::new(tar_gz);
             let mut archive = Archive::new(decoder);
 
-            // Extract the archive
             archive.unpack(&extract_dir)?;
 
             println!("Image extracted to: {}", extract_dir.display());
@@ -269,21 +245,16 @@ impl ImageArgs {
     ///
     /// # Arguments
     ///
-    /// * `image_name` - Name of the image to remove
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(())` - Removal completed; prints a message if no files were found
-    /// * `Err` - Config load, storage init, or file removal failed
-    pub async fn remove_image(&self, image_name: &str) -> Result<()> {
+    /// * `spec` - Image spec (name and optional version)
+    pub async fn remove_image(&self, spec: impl Into<ImageSpecRef<'_>>) -> Result<()> {
+        let spec = spec.into();
         let config = self.get_config().await?;
         let storage = Storage::new_from_config(&config).await?;
 
-        let removed = storage.remove_image(image_name).await?;
-        if !removed {
-            println!("No files found for image: {image_name}");
-        } else {
+        if storage.remove_image(spec).await? {
             println!("Image removed successfully");
+        } else {
+            println!("No files found for image: {}", spec.name);
         }
         Ok(())
     }
@@ -291,11 +262,6 @@ impl ImageArgs {
     /// Synchronizes the image list from the remote registry to local storage.
     ///
     /// Overwrites the local `images.toml` with the registry contents.
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(())` - Sync completed successfully
-    /// * `Err` - Config load, registry fetch, or file write failed
     pub async fn sync_registry(&self) -> Result<()> {
         let config: ImageConfig = self.get_config().await?;
         let _ = Storage::new_from_registry(config.registry, config.local_storage).await?;

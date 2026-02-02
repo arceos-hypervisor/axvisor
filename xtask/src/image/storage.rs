@@ -10,13 +10,108 @@ use anyhow::{Result, anyhow};
 
 use super::config::ImageConfig;
 use super::download::{download_to_path, image_verify_sha256};
-use super::registry::ImageRegistry;
+use super::registry::{ImageEntry, ImageRegistry};
+use super::spec::ImageSpecRef;
 
 /// Filename of the image registry index inside the local storage directory.
 pub const REGISTRY_FILENAME: &str = "images.toml";
 
 /// Filename storing the last sync timestamp (Unix seconds) inside the local storage directory.
 const LAST_SYNC_FILENAME: &str = ".last_sync";
+
+// -----------------------------------------------------------------------------
+// Path and naming helpers (free functions, no Storage instance needed)
+// -----------------------------------------------------------------------------
+
+/// Returns the path to the registry index file within a storage directory.
+///
+/// # Arguments
+///
+/// * `storage_path` - Root path of the local image storage
+pub fn registry_filepath(storage_path: &Path) -> PathBuf {
+    storage_path.join(REGISTRY_FILENAME)
+}
+
+/// Path to `.last_sync` file in the storage directory.
+fn last_sync_filepath(storage_path: &Path) -> PathBuf {
+    storage_path.join(LAST_SYNC_FILENAME)
+}
+
+/// Current time as Unix timestamp (seconds).
+fn current_unix_timestamp() -> Result<u64> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| anyhow!("System time error: {e}"))
+        .map(|d| d.as_secs())
+}
+
+/// Reads the last sync timestamp from `.last_sync`; returns `None` if missing or invalid.
+fn read_last_sync_time(storage_path: &Path) -> Option<u64> {
+    let path = last_sync_filepath(storage_path);
+    if !path.exists() {
+        return None;
+    }
+    let s = match fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(e) => {
+            println!(
+                "Note: could not read last sync file {}: {e}; treating as no previous sync.",
+                path.display()
+            );
+            return None;
+        }
+    };
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    match s.parse::<u64>() {
+        Ok(ts) => Some(ts),
+        Err(_) => {
+            println!(
+                "Note: last sync file {} has invalid content; treating as no previous sync.",
+                path.display()
+            );
+            None
+        }
+    }
+}
+
+/// Writes the current timestamp to `.last_sync`.
+fn write_last_sync_time(storage_path: &Path) -> Result<()> {
+    let now = current_unix_timestamp()?;
+    let path = last_sync_filepath(storage_path);
+    fs::write(&path, now.to_string()).map_err(|e| anyhow!("Failed to write last sync file: {e}"))
+}
+
+/// Canonical archive filename for an image: `{name}.tar.gz` or `{name}-{version}.tar.gz`.
+///
+/// # Arguments
+///
+/// * `spec` - Image spec (name and optional version)
+pub fn image_archive_filename(spec: ImageSpecRef<'_>) -> String {
+    match spec.version {
+        Some(v) => format!("{}-{}.tar.gz", spec.name, v),
+        None => format!("{}.tar.gz", spec.name),
+    }
+}
+
+/// Canonical extract directory name for an image: `{name}` or `{name}-{version}`.
+///
+/// # Arguments
+///
+/// * `spec` - Image spec (name and optional version)
+pub fn image_extract_dir_name(spec: ImageSpecRef<'_>) -> String {
+    match spec.version {
+        Some(v) => format!("{}-{}", spec.name, v),
+        None => spec.name.to_string(),
+    }
+}
+
+/// Returns the path where an image archive (`.tar.gz`) would be stored.
+pub fn image_path(storage_path: &Path, spec: ImageSpecRef<'_>) -> PathBuf {
+    storage_path.join(image_archive_filename(spec))
+}
 
 /// Local image storage backed by a directory and an image registry index.
 pub struct Storage {
@@ -25,6 +120,10 @@ pub struct Storage {
     /// Parsed image registry (list of available images).
     pub image_registry: ImageRegistry,
 }
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
 
 impl Storage {
     /// Creates a storage instance from an existing local directory.
@@ -40,8 +139,43 @@ impl Storage {
     /// * `Ok(Self)` - Storage loaded successfully
     /// * `Err` - Directory or registry file read/parse error
     pub fn new(path: PathBuf) -> Result<Self> {
-        let registry_filepath = Self::registry_filepath(&path);
+        let registry_filepath = registry_filepath(&path);
         let image_registry = ImageRegistry::load_from_file(&registry_filepath)?;
+        Ok(Self {
+            path,
+            image_registry,
+        })
+    }
+
+    /// Creates storage by downloading the registry index from the remote URL. This method does not
+    /// affect existing images in the local storage.
+    ///
+    /// If the registry TOML contains `[[includes]]`, those URLs are fetched recursively
+    /// and merged (deduplicated by name+version). The local saved registry has no `includes`.
+    ///
+    /// # Arguments
+    ///
+    /// * `registry` - URL of the registry TOML file to download
+    /// * `path` - Path to the local storage directory
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Self)` - Registry downloaded and storage created
+    /// * `Err` - Download, directory creation, or parse error
+    pub async fn new_from_registry(registry: String, path: PathBuf) -> Result<Self> {
+        fs::create_dir_all(&path).map_err(|e| anyhow!("Failed to create directory: {e}"))?;
+
+        let registry_filepath = registry_filepath(&path);
+
+        let image_registry = ImageRegistry::fetch_with_includes(&registry).await?;
+        let toml_content = toml::to_string_pretty(&image_registry)
+            .map_err(|e| anyhow!("Failed to serialize registry: {e}"))?;
+        fs::write(&registry_filepath, toml_content)
+            .map_err(|e| anyhow!("Failed to write registry file: {e}"))?;
+        write_last_sync_time(&path)?;
+
+        println!("Image list saved to {}", registry_filepath.display());
+
         Ok(Self {
             path,
             image_registry,
@@ -82,8 +216,8 @@ impl Storage {
             return Ok(storage);
         }
 
-        let now = Self::current_unix_timestamp()?;
-        let last_sync = Self::read_last_sync_time(&storage.path);
+        let now = current_unix_timestamp()?;
+        let last_sync = read_last_sync_time(&storage.path);
         let need_sync = match last_sync {
             None => true,
             Some(ts) => now.saturating_sub(ts) >= auto_sync_threshold,
@@ -102,7 +236,7 @@ impl Storage {
         );
 
         // backup registry file so we can restore on sync failure.
-        let registry_path = Self::registry_filepath(&storage.path);
+        let registry_path = registry_filepath(&storage.path);
         let registry_backup = fs::read_to_string(&registry_path)
             .map_err(|e| anyhow!("Failed to read registry file: {e}"))?;
 
@@ -118,36 +252,6 @@ impl Storage {
                 Ok(storage)
             }
         }
-    }
-
-    /// Creates storage by downloading the registry index from the remote URL.
-    ///
-    /// Creates the storage directory if it does not exist.
-    ///
-    /// # Arguments
-    ///
-    /// * `registry` - URL of the registry TOML file to download
-    /// * `path` - Path to the local storage directory
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(Self)` - Registry downloaded and storage created
-    /// * `Err` - Download, directory creation, or parse error
-    pub async fn new_from_registry(registry: String, path: PathBuf) -> Result<Self> {
-        fs::create_dir_all(&path).map_err(|e| anyhow!("Failed to create directory: {e}"))?;
-
-        let registry_filepath = Self::registry_filepath(&path);
-
-        download_to_path(&registry, &registry_filepath, Some("Syncing image list")).await?;
-        Self::write_last_sync_time(&path)?;
-
-        let image_registry = ImageRegistry::load_from_file(&registry_filepath)?;
-        println!("Image list saved to {}", registry_filepath.display());
-
-        Ok(Self {
-            path,
-            image_registry,
-        })
     }
 
     /// Creates storage from config, optionally auto-syncing when local storage is invalid.
@@ -174,100 +278,51 @@ impl Storage {
     }
 }
 
-impl Storage {
-    /// Returns the path to the registry index file within the storage directory.
-    pub fn registry_filepath(storage_path: &Path) -> PathBuf {
-        storage_path.join(REGISTRY_FILENAME)
-    }
-
-    /// Returns the current Unix timestamp (seconds since epoch).
-    fn current_unix_timestamp() -> Result<u64> {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|e| anyhow!("System time error: {e}"))
-            .map(|d| d.as_secs())
-    }
-
-    /// Returns the path to the file storing the last sync timestamp.
-    fn last_sync_filepath(storage_path: &Path) -> PathBuf {
-        storage_path.join(LAST_SYNC_FILENAME)
-    }
-
-    /// Reads the last sync time (Unix seconds) from storage.
-    /// Returns `None` if the file is missing or invalid; never returns an error.
-    /// Prints a short message when the file exists but cannot be read or parsed.
-    fn read_last_sync_time(storage_path: &Path) -> Option<u64> {
-        let path = Self::last_sync_filepath(storage_path);
-        if !path.exists() {
-            return None;
-        }
-        let s = match fs::read_to_string(&path) {
-            Ok(s) => s,
-            Err(e) => {
-                println!(
-                    "Note: could not read last sync file {}: {e}; treating as no previous sync.",
-                    path.display()
-                );
-                return None;
-            }
-        };
-        let s = s.trim();
-        if s.is_empty() {
-            return None;
-        }
-        match s.parse::<u64>() {
-            Ok(ts) => Some(ts),
-            Err(_) => {
-                println!(
-                    "Note: last sync file {} has invalid content; treating as no previous sync.",
-                    path.display()
-                );
-                None
-            }
-        }
-    }
-
-    /// Writes the current time as the last sync timestamp (Unix seconds).
-    fn write_last_sync_time(storage_path: &Path) -> Result<()> {
-        let now = Self::current_unix_timestamp()?;
-        let path = Self::last_sync_filepath(storage_path);
-        fs::write(&path, now.to_string())
-            .map_err(|e| anyhow!("Failed to write last sync file: {e}"))
-    }
-
-    /// Returns the path where an image archive (`.tar.gz`) would be stored.
-    pub fn image_path(storage_path: &Path, image_name: &str) -> PathBuf {
-        storage_path.join(format!("{image_name}.tar.gz"))
-    }
-}
+// -----------------------------------------------------------------------------
+// Download and remove
+// -----------------------------------------------------------------------------
 
 impl Storage {
-    /// Downloads an image to a specific path and verifies its SHA256 checksum.
+    /// Resolves an image by name and optional version (latest by `released_at` when version is `None`).
+    fn resolve_image(&self, spec: ImageSpecRef<'_>) -> Option<&ImageEntry> {
+        self.image_registry.find(spec)
+    }
+
+    /// Downloads an image into the given directory and verifies its SHA256 checksum.
+    /// The output filename is derived from the image spec (see [`image_archive_filename`]).
     ///
     /// Skips download if the file already exists and matches the expected checksum.
     /// Re-downloads on checksum mismatch.
     ///
     /// # Arguments
     ///
-    /// * `image_name` - Name of the image in the registry
-    /// * `output_path` - Destination path for the `.tar.gz` file (must not be a directory)
+    /// * `spec` - Image spec (name and optional version)
+    /// * `output_dir` - Directory to write the `.tar.gz` file into (created if missing)
     ///
     /// # Returns
     ///
-    /// * `Ok(())` - Image downloaded and verified successfully
+    /// * `Ok(PathBuf)` - Full path to the downloaded (or existing) image file
     /// * `Err` - Image not found, download failed, or checksum verification failed
-    pub async fn download_image_to(&self, image_name: &str, output_path: &Path) -> Result<()> {
-        // find image in registry
-        let image = self
-            .image_registry
-            .find_by_name(image_name)
-            .ok_or_else(|| {
-                anyhow!(
-                    "Image not found: {image_name}. Use 'xtask image ls' to view available images"
-                )
-            })?;
+    pub async fn download_image_to(
+        &self,
+        spec: ImageSpecRef<'_>,
+        output_dir: &Path,
+    ) -> Result<PathBuf> {
+        let image = self.resolve_image(spec).ok_or_else(|| {
+            anyhow!(
+                "Image not found: {}{}. Use 'xtask image ls' to view available images",
+                spec.name,
+                spec.version
+                    .map(|v| format!(" version {}", v))
+                    .unwrap_or_default()
+            )
+        })?;
 
-        // check if output path is a directory
+        fs::create_dir_all(output_dir)
+            .map_err(|e| anyhow!("Failed to create output directory: {e}"))?;
+
+        let output_path = output_dir.join(image_archive_filename(spec));
+
         if output_path.is_dir() {
             return Err(anyhow!(
                 "Output path is a directory: {}",
@@ -275,12 +330,11 @@ impl Storage {
             ));
         }
 
-        // check if output path exists
         if output_path.exists() {
             match image_verify_sha256(&output_path, &image.sha256) {
                 Ok(true) => {
                     println!("Image already exists and verified");
-                    return Ok(());
+                    return Ok(output_path);
                 }
                 Ok(false) => {
                     println!("Existing image verification failed");
@@ -294,68 +348,61 @@ impl Storage {
             let _ = fs::remove_file(&output_path);
         }
 
-        // download image
         println!("Downloading: {}", image.url);
 
         download_to_path(&image.url, &output_path, Some("Downloading")).await?;
 
-        // verify SHA256 checksum
-        let err = match image_verify_sha256(&output_path, &image.sha256) {
+        match image_verify_sha256(&output_path, &image.sha256) {
             Ok(true) => {
                 println!("Download completed and verified successfully");
-                return Ok(());
+                Ok(output_path)
             }
             Ok(false) => {
-                anyhow!("Image downloaded but verification failed: SHA256 verification failed")
+                let err =
+                    anyhow!("Image downloaded but verification failed: SHA256 verification failed");
+                println!("{err}");
+                let _ = fs::remove_file(&output_path);
+                Err(err)
             }
             Err(e) => {
-                anyhow!("Image downloaded but verification failed: Error verifying image: {e}")
+                let err =
+                    anyhow!("Image downloaded but verification failed: Error verifying image: {e}");
+                println!("{err}");
+                let _ = fs::remove_file(&output_path);
+                Err(err)
             }
-        };
-
-        println!("{err}");
-        let _ = fs::remove_file(&output_path);
-
-        Err(err)
+        }
     }
 
     /// Downloads an image to the default location in local storage.
     ///
-    /// Equivalent to `download_image_to(image_name, path/"{image_name}.tar.gz")`.
-    ///
-    /// # Arguments
-    ///
-    /// * `image_name` - Name of the image in the registry
+    /// Equivalent to `download_image_to(spec, &self.path)`.
     ///
     /// # Returns
     ///
-    /// * `Ok(PathBuf)` - Path to the downloaded image file
+    /// * `Ok(PathBuf)` - Full path to the downloaded (or existing) image file
     /// * `Err` - Same as [`download_image_to`](Self::download_image_to)
-    pub async fn download_image(&self, image_name: &str) -> Result<PathBuf> {
-        let output_path = Self::image_path(&self.path, image_name);
-        self.download_image_to(image_name, &output_path).await?;
-        Ok(output_path)
+    pub async fn download_image(&self, spec: ImageSpecRef<'_>) -> Result<PathBuf> {
+        self.download_image_to(spec, &self.path).await
     }
 
     /// Removes an image from local storage (archive and extracted directory).
     ///
     /// # Arguments
     ///
-    /// * `image_name` - Name of the image to remove
+    /// * `spec` - Image spec (name and optional version)
     ///
     /// # Returns
     ///
-    /// * `Ok(true)` - At least one file or directory was removed
-    /// * `Ok(false)` - No matching files found
-    /// * `Err` - File/directory removal error
-    pub async fn remove_image(&self, image_name: &str) -> Result<bool> {
+    /// `true` if at least one file or directory was removed, `false` if none found
+    pub async fn remove_image(&self, spec: ImageSpecRef<'_>) -> Result<bool> {
         let mut anything_removed = false;
-        let output_path = Self::image_path(&self.path, image_name);
+        let output_path = image_path(&self.path, spec);
         if output_path.exists() {
             fs::remove_file(&output_path)?;
             anything_removed = true;
         }
-        let extract_dir = self.path.join(image_name);
+        let extract_dir = self.path.join(image_extract_dir_name(spec));
         if extract_dir.exists() {
             fs::remove_dir_all(&extract_dir)?;
             anything_removed = true;

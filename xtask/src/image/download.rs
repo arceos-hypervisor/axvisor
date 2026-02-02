@@ -2,11 +2,36 @@
 //!
 //! Provides async HTTP download with optional progress reporting and SHA256 verification.
 
-use std::{fs, io::Read, path::Path};
+use std::{fs, io::Read, path::Path, time::Duration};
 
 use anyhow::{Result, anyhow};
+use reqwest::Client;
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncWriteExt, BufWriter};
+
+/// HTTP client with 30s connect timeout and 30min total timeout.
+fn http_client() -> Result<Client> {
+    Client::builder()
+        .connect_timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(1800))
+        .build()
+        .map_err(|e| anyhow!("Failed to create HTTP client: {e}"))
+}
+
+/// Downloads a URL and returns its body as a string.
+///
+/// # Arguments
+///
+/// * `url` - URL to download
+pub async fn download_to_string(url: &str) -> Result<String> {
+    let client = http_client()?;
+    let response = client.get(url).send().await?;
+    if !response.status().is_success() {
+        return Err(anyhow!("failed to download: HTTP {}", response.status()));
+    }
+    let body = response.text().await?;
+    Ok(body)
+}
 
 /// Downloads a URL to a local file, creating parent directories as needed.
 ///
@@ -14,9 +39,10 @@ use tokio::io::{AsyncWriteExt, BufWriter};
 ///
 /// * `url` - URL to download
 /// * `path` - Local path to write the file
-/// * `progress_label` - If `Some`, progress (percent/bytes) is printed with this label
+/// * `progress_label` - If `Some`, prints download progress (percent/bytes) with this label
 pub async fn download_to_path(url: &str, path: &Path, progress_label: Option<&str>) -> Result<()> {
-    let mut response = reqwest::get(url).await?;
+    let client = http_client()?;
+    let mut response = client.get(url).send().await?;
     if !response.status().is_success() {
         return Err(anyhow!("failed to download: HTTP {}", response.status()));
     }
@@ -67,7 +93,7 @@ pub async fn download_to_path(url: &str, path: &Path, progress_label: Option<&st
 /// # Arguments
 ///
 /// * `file_path` - Path to the file to verify
-/// * `expected_sha256` - Expected SHA256 checksum as a lowercase hex string
+/// * `expected_sha256` - Expected SHA256 checksum as lowercase hex
 ///
 /// # Returns
 ///
