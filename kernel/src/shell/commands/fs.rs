@@ -7,7 +7,6 @@ use std::collections::BTreeMap;
 use std::fs::{self, File, FileType};
 #[cfg(feature = "fs")]
 use std::io::{self, Read, Write};
-use std::println;
 use std::string::{String, ToString};
 
 use super::super::parser::{CommandNode, FlagDef, ParsedCommand};

@@ -29,7 +29,7 @@ unsafe fn setup_startup_page(stack_top: PhysAddr) {
         );
     }
     start_page[U64_PER_PAGE - 2] = stack_top.as_usize() as u64; // stack_top
-    start_page[U64_PER_PAGE - 1] = ap_entry32 as usize as _; // entry
+    start_page[U64_PER_PAGE - 1] = ap_entry32 as *const () as usize as _; // entry
 }
 
 /// Starts the given secondary CPU with its boot stack.

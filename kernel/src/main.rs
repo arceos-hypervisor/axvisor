@@ -4,17 +4,20 @@
 #[macro_use]
 extern crate log;
 
+#[allow(unused_imports)]
 #[macro_use]
 extern crate alloc;
 
+#[allow(unused_imports)]
+#[macro_use]
 extern crate axstd as std;
 extern crate driver;
 
 // extern crate axruntime;
 
 mod logo;
-mod task;
 mod shell;
+mod task;
 mod vmm;
 
 pub use shell::*;
