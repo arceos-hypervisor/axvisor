@@ -1,0 +1,13 @@
+[package]
+authors = [
+    "周睿 <zrufo747@outlook.com>"
+]
+edition.workspace = true
+license.workspace = true
+name = "vdev-if"
+version.workspace = true
+
+[dependencies]
+log = "0.4"
+thiserror = {version = "2", default-features = false}
+derive_more = { version = "2", default-features = false, features = ["full"] }
