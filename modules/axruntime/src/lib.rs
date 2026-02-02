@@ -233,7 +233,7 @@ fn init_allocator() {
     info!("  use {} allocator.", axalloc::global_allocator().name());
 
     axalloc::configure_addr_translator(virt_to_phys);
-    
+
     let mut max_region_size = 0;
     let mut max_region_paddr = 0.into();
     let mut use_next_free = false;
