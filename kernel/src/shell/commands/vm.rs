@@ -143,7 +143,7 @@ fn vm_start(cmd: &ParsedCommand) {
                 continue;
             }
 
-            if status != VMStatus::Inited && status != VMStatus::Stopped {
+            if status != VMStatus::Initialized && status != VMStatus::Stopped {
                 println!("⚠ VM[{}] is in {:?} state, cannot start", vm.id(), status);
                 continue;
             }
@@ -289,7 +289,7 @@ fn stop_vm_by_id(vm_id: usize) {
             println!("⚠ VM[{}] is already stopped", vm_id);
             return;
         }
-        VMStatus::Inited => {
+        VMStatus::Initialized => {
             println!("⚠ VM[{}] is not running yet", vm_id);
             return;
         }
@@ -364,7 +364,7 @@ fn delete_vm_by_id(vm_id: usize, force: bool) {
             }
             println!("⚠ Force deleting stopping VM[{}]...", vm_id);
         }
-        VMStatus::Stopped | VMStatus::Inited => {
+        VMStatus::Stopped | VMStatus::Initialized => {
             println!("Deleting VM[{}] (status: {:?})...", vm_id, status);
             // Resources will be automatically released when VM is dropped
             println!("  ✓ VM resources will be released on drop");
@@ -531,7 +531,7 @@ fn show_vm_details(vm_id: usize) {
 
     // Add state-specific information
     match status {
-        VMStatus::Inited => {
+        VMStatus::Initialized => {
             println!();
             println!("  ℹ VM is ready. Use 'vm start {}' to boot.", vm_id);
         }
