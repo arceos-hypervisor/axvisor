@@ -19,7 +19,6 @@ serde_json = "1"
 sha2 = "0.10"
 tokio = {version = "1", features = ["full"]}
 toml.workspace = true
-
 axvmconfig = {workspace = true, features = ["std"]}
 tar = "0.4"
 flate2 = "1.0"
