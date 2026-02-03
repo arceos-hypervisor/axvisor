@@ -2,9 +2,10 @@
 //!
 //! Defines `ImageEntry` and `ImageRegistry` for the TOML-based image list format.
 
-use std::{fs, path::Path};
+use std::{collections::BTreeMap, fs, path::Path};
 
 use anyhow::{Result, anyhow};
+use regex::Regex;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -134,16 +135,71 @@ impl ImageRegistry {
     }
 
     /// Prints the image list in a formatted table to stdout.
-    pub fn print(&self) {
+    ///
+    /// # Arguments
+    ///
+    /// * `verbose` - If `true`, show each version separately; if `false`, merge same-name images and show version count
+    /// * `pattern` - If `Some`, filter by name: try regex match first (partial), fallback to substring
+    pub fn print(&self, verbose: bool, pattern: Option<&str>) {
+        let entries = self.filtered_entries(pattern);
+        if verbose {
+            Self::print_verbose(&entries);
+        } else {
+            Self::print_merged(&entries);
+        }
+    }
+
+    /// Filters entries by pattern: regex match (partial) or substring.
+    fn filtered_entries<'a>(&'a self, pattern: Option<&str>) -> Vec<&'a ImageEntry> {
+        let Some(pat) = pattern else {
+            return self.images.iter().collect();
+        };
+        let re = Regex::new(pat).ok();
+        self.images
+            .iter()
+            .filter(|e| match &re {
+                Some(r) => r.is_match(&e.name),
+                None => e.name.contains(pat),
+            })
+            .collect()
+    }
+
+    fn print_verbose(entries: &[&ImageEntry]) {
         println!(
             "{:<25} {:<12} {:<15} {:<50}",
             "Name", "Version", "Architecture", "Description"
         );
         println!("{}", "-".repeat(102));
-        for image in &self.images {
+        for image in entries {
             println!(
                 "{:<25} {:<12} {:<15} {:<50}",
                 image.name, image.version, image.arch, image.description
+            );
+        }
+    }
+
+    fn print_merged(entries: &[&ImageEntry]) {
+        let by_name: BTreeMap<&str, Vec<&ImageEntry>> =
+            entries.iter().fold(BTreeMap::new(), |mut m, e| {
+                m.entry(e.name.as_str()).or_default().push(*e);
+                m
+            });
+        println!(
+            "{:<25} {:<12} {:<15} {:<50}",
+            "Name", "Version", "Architecture", "Description"
+        );
+        println!("{}", "-".repeat(102));
+        for (name, vers) in by_name {
+            let n = vers.len();
+            let version_str = if n == 1 {
+                "1 version".to_string()
+            } else {
+                format!("{} versions", n)
+            };
+            let first = vers.first().unwrap();
+            println!(
+                "{:<25} {:<12} {:<15} {:<50}",
+                name, version_str, first.arch, first.description
             );
         }
     }

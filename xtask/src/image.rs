@@ -97,7 +97,14 @@ impl ImageConfigOverrides {
 #[derive(Subcommand)]
 pub enum ImageCommands {
     /// List all available images.
-    Ls,
+    Ls {
+        /// Show different versions of the same image in separate lines.
+        #[arg(short, long)]
+        verbose: bool,
+
+        /// Filter images by name pattern.
+        pattern: Option<String>,
+    },
 
     /// Download the specified image and automatically extract it. Use ASCII
     /// colon to specify version, e.g. `evm3588_arceos:0.0.22`; omit for latest.
@@ -159,8 +166,8 @@ impl ImageArgs {
     /// Executes the selected image subcommand (`ls`, `download`, `rm`, `sync`, or `defconfig`).
     pub async fn execute(&self) -> Result<()> {
         match &self.command {
-            ImageCommands::Ls => {
-                self.list_images().await?;
+            ImageCommands::Ls { verbose, pattern } => {
+                self.list_images(*verbose, pattern.as_deref()).await?;
             }
             ImageCommands::Download {
                 image_name,
@@ -185,11 +192,16 @@ impl ImageArgs {
     }
 
     /// Lists all available images from the local registry to stdout.
-    pub async fn list_images(&self) -> Result<()> {
+    ///
+    /// # Arguments
+    ///
+    /// * `verbose` - If `true`, show each version separately; if `false`, merge same-name images and show version count
+    /// * `pattern` - If `Some`, filter by name: try regex match first, fallback to substring
+    pub async fn list_images(&self, verbose: bool, pattern: Option<&str>) -> Result<()> {
         let config = self.get_config().await?;
         let storage = Storage::new_from_config(&config).await?;
 
-        storage.image_registry.print();
+        storage.image_registry.print(verbose, pattern);
 
         Ok(())
     }
