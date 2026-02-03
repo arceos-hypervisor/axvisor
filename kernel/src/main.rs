@@ -12,13 +12,11 @@ extern crate alloc;
 #[macro_use]
 extern crate axstd as std;
 extern crate driver;
-extern crate axdevice;
 
 // extern crate axruntime;
 
 mod logo;
 mod shell;
-mod memory_api;
 mod task;
 mod vmm;
 
