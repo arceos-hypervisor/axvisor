@@ -10,4 +10,4 @@ mod manager;
 
 pub use device::*;
 pub use manager::*;
-
+pub use vdev_if::*;

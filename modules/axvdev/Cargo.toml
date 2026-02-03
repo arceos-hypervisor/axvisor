@@ -11,3 +11,5 @@ version = "0.1.0"
 log = "0.4"
 vdev-if.workspace = true
 derive_more = { version = "2", default-features = false, features = ["full"] }
+id-arena = { version = "2", default-features = false }
+spin = "0.10"
