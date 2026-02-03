@@ -33,6 +33,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          clean: true
 
       - name: Install dependencies
         run: cargo +stable install ostool --version ^0.8
