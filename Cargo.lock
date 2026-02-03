@@ -1132,7 +1132,6 @@ dependencies = [
 [[package]]
 name = "axvm"
 version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/axvm.git?branch=next#e161233e58c0ef0c6ec115ffa5b0d17dadd298be"
 dependencies = [
  "arm_vcpu",
  "arm_vgic 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -6564,8 +6563,6 @@ dependencies = [
 [[package]]
 name = "x86_vcpu"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "873e097d52e94c31be3f0175a9f8d6f2edbc77d7e2f8e6995427df9c08b30a2b"
 dependencies = [
  "axaddrspace",
  "axdevice_base",
@@ -6577,12 +6574,14 @@ dependencies = [
  "cfg-if",
  "crate_interface",
  "log",
+ "memoffset",
  "memory_addr",
  "numeric-enum-macro",
  "page_table_entry",
  "paste",
  "raw-cpuid 11.6.0",
  "spin 0.9.8",
+ "tock-registers 0.10.1",
  "x86",
  "x86_64",
  "x86_vlapic",

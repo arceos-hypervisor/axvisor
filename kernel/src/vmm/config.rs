@@ -200,9 +200,11 @@ pub fn init_guest_vm(raw_cfg: &str) -> AxResult<usize> {
     let mut loader = ImageLoader::new(main_mem, vm_create_config, vm.clone());
     loader.load().expect("Failed to load VM images");
 
+    info!("Before VM[{}] setup...", vm.id());
     if let Err(e) = vm.init() {
         panic!("VM[{}] setup failed: {:?}", vm.id(), e);
     }
+    info!("VM[{}] setup success.", vm.id());
 
     vm.set_vm_status(axvm::VMStatus::Loaded);
 

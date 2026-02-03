@@ -63,7 +63,7 @@ axhvc = {git = "https://github.com/arceos-hypervisor/axhvc.git"}
 axklib = {git = "https://github.com/arceos-hypervisor/axklib.git"}
 axruntime = {path = "modules/axruntime"}
 axvcpu = "0.1"
-axvm = {git = "https://github.com/arceos-hypervisor/axvm.git", branch = "next"}
+axvm = {git = "https://github.com/arceos-hypervisor/axvm.git", branch = "amd_svm"}
 
 # System independent crates provided by ArceOS, these crates could be imported by remote url. 
 axerrno = "0.2"
@@ -91,7 +91,12 @@ axvmconfig = {git = "https://github.com/arceos-hypervisor/axvmconfig.git", branc
 [patch.crates-io]
 axvcpu = {git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "next"}
 axvmconfig = {git = "https://github.com/arceos-hypervisor/axvmconfig.git", branch = "next"}
+x86_vcpu = {path = "modules/x86_vcpu"}
+# x86_vcpu = { git = "https://github.com/arceos-hypervisor/x86_vcpu.git", branch = "amd_svm" }
 
 [patch."https://github.com/arceos-org/arceos"]
 axconfig = {path = "modules/axconfig"}
 axruntime = {path = "modules/axruntime"}
+
+[patch."https://github.com/arceos-hypervisor/axvm"]
+axvm = { path = "modules/axvm" }

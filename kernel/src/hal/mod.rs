@@ -180,8 +180,8 @@ mod memory_api_impl {
                 .unwrap(),
             )
             // .alloc_pages(num_frames, PAGE_SIZE_4K << frame_align_pow2)
-            // .map(|vaddr| <AxMmHalImpl as AxMmHal>::virt_to_phys(vaddr.into()))
-            .map(|vaddr| HostPhysAddr::from(vaddr.as_ptr() as usize))
+            .map(|vaddr| <AxMmHalImpl as AxMmHal>::virt_to_phys((vaddr.as_ptr() as usize).into()))
+            // .map(|vaddr| HostPhysAddr::from(vaddr.as_ptr() as usize))
             .ok()
     }
 
