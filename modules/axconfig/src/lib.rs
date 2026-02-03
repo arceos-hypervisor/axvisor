@@ -36,11 +36,25 @@ pub mod devices {
     #[doc = " Base physical address of the PCIe ECAM space."]
     pub const PCI_ECAM_BASE: usize = 0xb000_0000;
     #[doc = " PCI device memory ranges."]
-    pub const PCI_RANGES: &[(usize, usize)] = &[];
+    pub const PCI_RANGES: &[(usize, usize)] = &[
+        (0x0300_0000, 0x1_0000),        // PIO space (index 0)
+        (0x4000_0000, 0x4000_0000),     // 32-bit MMIO space (index 1)
+    ];
     #[doc = " Timer interrupt num (PPI, physical timer)."]
     pub const TIMER_IRQ: usize = 0xf0;
     #[doc = " VirtIO MMIO regions with format (`base_paddr`, `size`)."]
-    pub const VIRTIO_MMIO_REGIONS: &[(usize, usize)] = &[];
+    pub const VIRTIO_MMIO_REGIONS: &[(usize, usize)] = &[
+        (0x1000_1000, 0x1000),
+        (0x1000_2000, 0x1000),
+        (0x1000_3000, 0x1000),
+        (0x1000_4000, 0x1000),
+        (0x1000_5000, 0x1000),
+        (0x1000_6000, 0x1000),
+        (0x1000_7000, 0x1000),
+        (0x1000_8000, 0x1000),
+    ];
+    #[doc = " VirtIO MMIO ranges (alias for VIRTIO_MMIO_REGIONS)."]
+    pub const VIRTIO_MMIO_RANGES: &[(usize, usize)] = VIRTIO_MMIO_REGIONS;
 }
 #[doc = ""]
 #[doc = " Platform configs"]

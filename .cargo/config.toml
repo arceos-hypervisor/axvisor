@@ -1,3 +1,6 @@
+[target.'cfg(target_os = "none")']
+runner = "cargo osrun"
+
 [target.aarch64-unknown-none-softfloat]
 rustflags = [
     "-Clink-args=-no-pie",
@@ -5,8 +8,12 @@ rustflags = [
     "-Clink-args=-Tlink.x",
 ]
 
-[target.'cfg(target_os = "none")']
-runner = "cargo osrun"
+[target.riscv64gc-unknown-none-elf]
+rustflags = [
+    "-Clink-args=-no-pie",
+    "-Clink-args=-znostart-stop-gc",
+    "-Clink-args=-Tlink.x",
+]
 
 [target.x86_64-unknown-none]
 rustflags = [

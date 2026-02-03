@@ -1,0 +1,84 @@
+# Vm base info configs
+#
+[base]
+# Guest vm id.
+id = 1
+# Guest vm name.
+name = "linux-qemu"
+# Virtualization type.
+vm_type = 1
+# The number of virtual CPUs.
+cpu_num = 1
+# Guest vm physical cpu sets.
+phys_cpu_ids = [0]
+
+#
+# Vm kernel configs
+#
+[kernel]
+# The entry point of the kernel image.
+entry_point = 0x9000_0000
+# The location of image: "memory" | "fs".
+# load from memory.
+image_location = "memory"
+# The file path of the kernel image.
+# kernel_path = "linux-6.6.62.bin"
+kernel_path = "/home/yanlien/Program/console/axvisor_console/tmp/images/qemu_riscv64_linux/qemu-riscv64"
+# The load address of the kernel image.
+kernel_load_addr = 0x9000_0000
+# The file path of the device tree blob (DTB).
+dtb_path = "/home/yanlien/Program/console/axvisor_console/tmp/images/linux-riscv64-qemu-smp1.dtb"
+# The load address of the device tree blob (DTB).
+dtb_load_addr = 0x9200_0000
+# The file path of the ramdisk image.
+ramdisk_path = "/home/yanlien/Program/console/axvisor_console/tmp/images/qemu_riscv64_linux/initramfs.cpio.gz"
+# The load address of the ramdisk image.
+ramdisk_load_addr = 0x9300_0000
+
+# Memory regions with format (`base_paddr`, `size`, `flags`, `map_type`).
+# For `map_type`, 0 means `MAP_ALLOC`, 1 means `MAP_IDENTICAL`, 2 means `MAP_RESERVED`.
+memory_regions = [
+    [0x9000_0000, 0x4000_0000, 0x7, 0], # System RAM 1G MAP_ALLOC
+]
+
+#
+# Device specifications
+#
+[devices]
+# Pass-through devices.
+# Name Base-Ipa Base-Pa Length Alloc-Irq.
+passthrough_devices = [
+    # ["/soc/serial@10000000", 0x1000_0000, 0x1000_0000, 0x1000, 33],
+]
+
+# Passthrough addresses.
+# Base-GPA  Length.
+# Note: UART is no longer passthrough when using VirtIO console
+passthrough_addresses = [
+    # [0x1000_0000, 0x1000],     # uart (disabled - using VirtIO console)
+]
+
+# Devices that are not desired to be passed through to the guest
+excluded_devices = [
+]
+
+# Emu_devices.
+# Name Base-Ipa Ipa_len Alloc-Irq Emu-Type EmuConfig.
+emu_devices = [
+    ["plic", 0x0c00_0000, 0x60_0000, 0, 0x30, [2]],     # [context_num]
+    # Dummy UART device - required even with VirtIO console (Console=0x2)
+    ["uart", 0x1000_0000, 0x1000, 10, 0x2, []],           # Dummy UART
+    # VirtIO block device - matches DTB virtio_mmio@10008000
+    ["virtio-mmio0", 0x1000_8000, 0x1000, 8, 0xE1, []],    # VirtioBlk with IRQ 8
+    # VirtIO console device - matches DTB virtio_mmio@10007000
+    ["virtio-console", 0x1000_7000, 0x1000, 7, 0xE3, []],  # VirtioConsole with IRQ 7
+    # Dummy virtio devices for unused MMIO slots (VirtioNet=0xE2 creates proper dummy)
+    ["virtio-mmio6", 0x1000_6000, 0x1000, 6, 0xE2, []],    # Dummy VirtIO
+    ["virtio-mmio5", 0x1000_5000, 0x1000, 5, 0xE2, []],    # Dummy VirtIO
+    ["virtio-mmio4", 0x1000_4000, 0x1000, 4, 0xE2, []],    # Dummy VirtIO
+    ["virtio-mmio3", 0x1000_3000, 0x1000, 3, 0xE2, []],    # Dummy VirtIO
+    ["virtio-mmio2", 0x1000_2000, 0x1000, 2, 0xE2, []],    # Dummy VirtIO
+    ["virtio-mmio1", 0x1000_1000, 0x1000, 1, 0xE2, []],    # Dummy VirtIO
+]
+
+interrupt_mode = "passthrough"

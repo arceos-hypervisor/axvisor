@@ -13,6 +13,7 @@
 //! - `fs`: Enable filesystem support.
 //! - `net`: Enable networking support.
 //! - `display`: Enable graphics support.
+//! - `hv-blk`: Save block devices for hypervisor use.
 //!
 //! All the features are optional and disabled by default.
 
@@ -25,6 +26,9 @@ extern crate axlog;
 #[cfg(target_arch = "x86_64")]
 extern crate axplat_x86_qemu_q35;
 
+#[cfg(target_arch = "riscv64")]
+extern crate axplat_riscv64_qemu_virt;
+
 #[cfg(target_arch = "aarch64")]
 extern crate axplat_aarch64_dyn;
 
@@ -36,6 +40,12 @@ mod mp;
 
 #[cfg(feature = "smp")]
 pub use self::mp::rust_main_secondary;
+
+#[cfg(feature = "hv-blk")]
+mod hv_blk;
+
+#[cfg(feature = "hv-blk")]
+pub use hv_blk::{take_block_devices, AxBlockDevice, AxDeviceContainer};
 
 const LOGO: &str = r#"
        d8888                            .d88888b.   .d8888b.
@@ -174,13 +184,17 @@ pub fn rust_main(cpu_id: usize, arg: usize) -> ! {
     #[cfg(feature = "multitask")]
     axtask::init_scheduler_with_cpu_num(cpu_count());
 
-    #[cfg(any(feature = "fs", feature = "net", feature = "display"))]
+    #[cfg(any(feature = "fs", feature = "net", feature = "display", feature = "hv-blk"))]
     {
         #[allow(unused_variables)]
         let all_devices = axdriver::init_drivers();
 
         #[cfg(feature = "fs")]
         axfs::init_filesystems(all_devices.block, axhal::dtb::get_chosen_bootargs());
+
+        // Save block devices for hypervisor use (when not using fs)
+        #[cfg(all(feature = "hv-blk", not(feature = "fs")))]
+        hv_blk::save_block_devices(all_devices.block);
 
         #[cfg(feature = "net")]
         axnet::init_network(all_devices.net);
@@ -330,6 +344,8 @@ pub fn cpu_count() -> usize {
             cpu_count = axplat_x86_qemu_q35::cpu_count()
         } else if #[cfg(target_arch = "aarch64")] {
             cpu_count = somehal::mem::cpu_id_list().count()
+        } else if #[cfg(target_arch = "riscv64")] {
+            cpu_count = axplat_riscv64_qemu_virt::cpu_count()
         } else {
             cpu_count = 1;
         }

@@ -1,0 +1,15 @@
+cargo_args = []
+features = [
+    "axstd/myplat",
+    "axstd/bus-mmio",
+    "virtio-blk",
+    "virtio-console",
+    "axplat-riscv64-qemu-virt/virtio-console",
+    "hv-blk",
+    # "fs",
+]
+log = "Debug"
+target = "riscv64gc-unknown-none-elf"
+to_bin = true
+vm_configs = []
+smp = 4

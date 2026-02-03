@@ -34,3 +34,9 @@
 [submodule "platform/axplat-aarch64-dyn"]
 	path = platform/axplat-aarch64-dyn
 	url = https://github.com/arceos-hypervisor/axplat-aarch64-dyn
+[submodule "modules/riscv_vcpu"]
+	path = modules/riscv_vcpu
+	url = https://github.com/arceos-hypervisor/riscv_vcpu.git
+[submodule "modules/riscv_vplic"]
+	path = modules/riscv_vplic
+	url = https://github.com/arceos-hypervisor/riscv_vplic.git

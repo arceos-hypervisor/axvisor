@@ -29,7 +29,11 @@ impl Context {
 
         let mut config_path = self.ctx.paths.workspace.join(".build.toml");
         if let Some(c) = &self.build_config_path {
-            config_path = c.clone();
+            let mut c = c.clone();
+            if !c.is_absolute() {
+                c = self.ctx.paths.workspace.join(&c);
+            }
+            config_path = c;
         }
 
         std::fs::write(

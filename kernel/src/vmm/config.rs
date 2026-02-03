@@ -68,6 +68,8 @@ pub fn build_vmconfig(cfg: AxVMCrateConfig) -> anyhow::Result<AxVMConfig> {
         image_config,
         memory_regions,
         interrupt_mode: cfg.devices.interrupt_mode,
+        emu_devices: cfg.devices.emu_devices,
+        passthrough_addresses: cfg.devices.passthrough_addresses,
     })
 }
 

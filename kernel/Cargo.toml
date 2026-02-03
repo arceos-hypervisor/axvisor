@@ -8,6 +8,13 @@ version.workspace = true
 [features]
 dyn-plat = ["axstd/myplat", "axstd/driver-dyn"]
 fs = ["axstd/fs"]
+virtio-blk = ["axdevice/virtio-blk", "axvm/virtio-blk"]
+virtio-console = ["axdevice/virtio-console", "axvm/virtio-console"]
+hv-blk = ["axruntime/hv-blk"]
+
+# Platform-specific dependencies for RISCV64
+[target.'cfg(target_arch = "riscv64")'.dependencies]
+axplat-riscv64-qemu-virt = { workspace = true }
 
 [dependencies]
 anyhow = {version = "1.0", default-features = false}
@@ -23,14 +30,20 @@ toml = {version = "0.9", default-features = false}
 
 # System dependent modules provided by ArceOS.
 axstd.workspace = true
+axruntime.workspace = true
 
 # System dependent modules provided by ArceOS-Hypervisor.
 axhvc.workspace = true
 axvm.workspace = true
 axvmconfig = { workspace = true }
+axdevice.workspace = true
 
-# System independent crates provided by ArceOS, these crates could be imported by remote url. 
+# System independent crates provided by ArceOS, these crates could be imported by remote url.
+axalloc.workspace = true
 axerrno.workspace = true
+axhal.workspace = true
+axplat.workspace = true
+axvisor_api.workspace = true
 byte-unit = {version = "5", default-features = false, features = ["byte"]}
 extern-trait = "0.2"
 memory_addr.workspace = true

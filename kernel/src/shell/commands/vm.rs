@@ -289,7 +289,7 @@ fn stop_vm_by_id(vm_id: usize) {
             println!("⚠ VM[{}] is already stopped", vm_id);
             return;
         }
-        VMStatus::Initialized => {
+        VMStatus::Inited => {
             println!("⚠ VM[{}] is not running yet", vm_id);
             return;
         }
@@ -364,7 +364,7 @@ fn delete_vm_by_id(vm_id: usize, force: bool) {
             }
             println!("⚠ Force deleting stopping VM[{}]...", vm_id);
         }
-        VMStatus::Stopped | VMStatus::Initialized => {
+        VMStatus::Stopped | VMStatus::Inited => {
             println!("Deleting VM[{}] (status: {:?})...", vm_id, status);
             // Resources will be automatically released when VM is dropped
             println!("  ✓ VM resources will be released on drop");
@@ -531,7 +531,7 @@ fn show_vm_details(vm_id: usize) {
 
     // Add state-specific information
     match status {
-        VMStatus::Initialized => {
+        VMStatus::Inited => {
             println!();
             println!("  ℹ VM is ready. Use 'vm start {}' to boot.", vm_id);
         }

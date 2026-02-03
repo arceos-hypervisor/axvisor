@@ -423,14 +423,21 @@ name = "axdevice"
 version = "0.1.0"
 dependencies = [
  "arm_vgic",
+ "arrayvec",
  "axaddrspace",
  "axdevice_base",
+ "axdriver_block 0.1.2 (git+https://github.com/arceos-org/axdriver_crates.git?tag=dev-v01)",
  "axerrno 0.1.2",
+ "axplat",
+ "axvirtio-blk 0.1.0",
+ "axvirtio-common 0.1.0",
+ "axvirtio-console",
  "axvmconfig",
  "cfg-if",
  "log",
  "memory_addr",
  "range-alloc",
+ "riscv_vplic",
  "spin 0.9.8",
 ]
 
@@ -438,6 +445,7 @@ dependencies = [
 name = "axdevice_base"
 version = "0.1.0"
 dependencies = [
+ "arrayvec",
  "axaddrspace",
  "axerrno 0.1.2",
  "axvmconfig",
@@ -640,7 +648,7 @@ dependencies = [
  "axplat",
  "axplat-aarch64-qemu-virt",
  "axplat-loongarch64-qemu-virt",
- "axplat-riscv64-qemu-virt",
+ "axplat-riscv64-qemu-virt 0.3.0 (git+https://github.com/arceos-org/axplat_crates.git?tag=dev-v03)",
  "axplat-x86-pc",
  "cfg-if",
  "fdt-parser",
@@ -856,6 +864,24 @@ dependencies = [
 [[package]]
 name = "axplat-riscv64-qemu-virt"
 version = "0.3.0"
+dependencies = [
+ "axconfig-macros",
+ "axcpu",
+ "axplat",
+ "axvisor_api",
+ "kspin",
+ "lazyinit",
+ "log",
+ "riscv",
+ "riscv_goldfish",
+ "riscv_plic",
+ "sbi-rt",
+ "uart_16550",
+]
+
+[[package]]
+name = "axplat-riscv64-qemu-virt"
+version = "0.3.0"
 source = "git+https://github.com/arceos-org/axplat_crates.git?tag=dev-v03#0df0713b1c20eafaeebdc6b0e194b2985e857949"
 dependencies = [
  "axconfig-macros",
@@ -944,6 +970,7 @@ dependencies = [
  "axnet",
  "axplat",
  "axplat-aarch64-dyn",
+ "axplat-riscv64-qemu-virt 0.3.0",
  "axplat-x86-qemu-q35",
  "axtask",
  "cfg-if",
@@ -955,6 +982,7 @@ dependencies = [
  "percpu",
  "percpu_macros",
  "somehal",
+ "spin 0.9.8",
 ]
 
 [[package]]
@@ -1078,14 +1106,76 @@ dependencies = [
 ]
 
 [[package]]
+name = "axvirtio-blk"
+version = "0.1.0"
+dependencies = [
+ "axaddrspace",
+ "axvirtio-common 0.1.0",
+ "log",
+ "memory_addr",
+ "spin 0.9.8",
+]
+
+[[package]]
+name = "axvirtio-blk"
+version = "0.1.0"
+source = "git+https://github.com/arceos-hypervisor/axvirtio-devices.git?branch=yanlien%2Fnext#c7260f5c6b45305ffeee978cde9c3f6994a8b794"
+dependencies = [
+ "axaddrspace",
+ "axvirtio-common 0.1.0 (git+https://github.com/arceos-hypervisor/axvirtio-devices.git?branch=yanlien%2Fnext)",
+ "log",
+ "memory_addr",
+ "spin 0.9.8",
+]
+
+[[package]]
+name = "axvirtio-common"
+version = "0.1.0"
+dependencies = [
+ "axaddrspace",
+ "log",
+ "memory_addr",
+ "spin 0.10.0",
+]
+
+[[package]]
+name = "axvirtio-common"
+version = "0.1.0"
+source = "git+https://github.com/arceos-hypervisor/axvirtio-devices.git?branch=yanlien%2Fnext#c7260f5c6b45305ffeee978cde9c3f6994a8b794"
+dependencies = [
+ "axaddrspace",
+ "log",
+ "memory_addr",
+ "spin 0.10.0",
+]
+
+[[package]]
+name = "axvirtio-console"
+version = "0.1.0"
+dependencies = [
+ "axaddrspace",
+ "axvirtio-common 0.1.0",
+ "log",
+ "memory_addr",
+ "spin 0.9.8",
+]
+
+[[package]]
 name = "axvisor"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "axalloc 0.3.0",
  "axconfig",
+ "axdevice",
  "axerrno 0.2.2",
+ "axhal",
  "axhvc",
+ "axplat",
+ "axplat-riscv64-qemu-virt 0.3.0",
+ "axruntime",
  "axstd",
+ "axvisor_api",
  "axvm",
  "axvmconfig",
  "bitflags 2.10.0",
@@ -1137,11 +1227,18 @@ dependencies = [
  "anyhow",
  "arm_vcpu",
  "axaddrspace",
+ "axdevice",
+ "axdevice_base",
+ "axdriver_block 0.1.2 (git+https://github.com/arceos-org/axdriver_crates.git?tag=dev-v01)",
  "axerrno 0.1.2",
  "axhal",
+ "axplat",
+ "axplat-riscv64-qemu-virt 0.3.0",
  "axplat-x86-qemu-q35",
  "axruntime",
  "axstd",
+ "axvirtio-blk 0.1.0 (git+https://github.com/arceos-hypervisor/axvirtio-devices.git?branch=yanlien%2Fnext)",
+ "axvisor_api",
  "axvm-types",
  "axvmconfig",
  "bitmap-allocator",
@@ -1157,7 +1254,9 @@ dependencies = [
  "page_table_multiarch",
  "ranges-ext",
  "raw-cpuid 11.6.0",
- "ringbuf",
+ "riscv",
+ "riscv_vcpu",
+ "sbi-rt",
  "spin 0.10.0",
  "thiserror 2.0.18",
  "timer_list",
@@ -1202,6 +1301,12 @@ dependencies = [
  "rustc-demangle",
  "windows-link",
 ]
+
+[[package]]
+name = "bare-metal"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8fe8f5a8a398345e52358e18ff07cc17a568fbca5c6f73873d3a62056309603"
 
 [[package]]
 name = "bare-test-macros"
@@ -3465,6 +3570,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 
 [[package]]
+name = "memoffset"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
 name = "memory_addr"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4565,15 +4679,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ringbuf"
-version = "0.4.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe47b720588c8702e34b5979cb3271a8b1842c7cb6f57408efa70c779363488c"
-dependencies = [
- "crossbeam-utils",
-]
-
-[[package]]
 name = "riscv"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4584,6 +4689,25 @@ dependencies = [
  "paste",
  "riscv-macros",
  "riscv-pac",
+]
+
+[[package]]
+name = "riscv-decode"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68b59d645e392e041ad18f5e529ed13242d8405c66bb192f59703ea2137017d0"
+
+[[package]]
+name = "riscv-h"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cffa652689d01c5f7033abe105e69f4d57ac85bf7e17da688bab10e4b9d3a2d8"
+dependencies = [
+ "bare-metal",
+ "bit_field",
+ "bitflags 2.10.0",
+ "log",
+ "riscv",
 ]
 
 [[package]]
@@ -4604,12 +4728,60 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8188909339ccc0c68cfb5a04648313f09621e8b87dc03095454f1a11f6c5d436"
 
 [[package]]
+name = "riscv_goldfish"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07aac72f95e774476db82916d79f2d303191310393830573c1ab5c821b21660a"
+
+[[package]]
 name = "riscv_plic"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e701d1c6ea06c35a19cb80d213fab87d264798f9bac0aed2730c0e86d297394a"
 dependencies = [
  "tock-registers 0.10.1",
+]
+
+[[package]]
+name = "riscv_vcpu"
+version = "0.1.2"
+dependencies = [
+ "axaddrspace",
+ "axerrno 0.1.2",
+ "axhal",
+ "axvcpu",
+ "axvisor_api",
+ "axvm-types",
+ "bit_field",
+ "bitflags 2.10.0",
+ "cfg-if",
+ "crate_interface",
+ "log",
+ "memoffset",
+ "memory_addr",
+ "page_table_entry",
+ "riscv",
+ "riscv-decode",
+ "riscv-h",
+ "rustsbi",
+ "sbi-rt",
+ "sbi-spec",
+ "tock-registers 0.9.0",
+]
+
+[[package]]
+name = "riscv_vplic"
+version = "0.1.0"
+dependencies = [
+ "axaddrspace",
+ "axdevice_base",
+ "axerrno 0.1.2",
+ "axplat-riscv64-qemu-virt 0.3.0",
+ "axvisor_api",
+ "bitmaps",
+ "log",
+ "riscv-h",
+ "spin 0.9.8",
 ]
 
 [[package]]
@@ -4804,6 +4976,28 @@ dependencies = [
  "ring",
  "rustls-pki-types",
  "untrusted",
+]
+
+[[package]]
+name = "rustsbi"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44c13763120794ed11d64bac885fb31d384ae385c3287b0697711b97affbf8ab"
+dependencies = [
+ "rustsbi-macros",
+ "sbi-rt",
+ "sbi-spec",
+]
+
+[[package]]
+name = "rustsbi-macros"
+version = "0.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a71347da9582cc6b6f3652c7d2c06516c9555690b3738ecdff7e84297f4e17fc"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.114",
 ]
 
 [[package]]

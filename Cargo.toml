@@ -89,7 +89,7 @@ axbacktrace = "0.1"
 percpu = {version = "=0.2.0", features = ["arm-el2"]}
 percpu_macros = "=0.2.0"
 
-axdevice = {git = "https://github.com/arceos-hypervisor/axdevice.git"}
+axdevice = {path = "modules/axdevice"}
 axdevice_base = "0.1"
 axplat-aarch64-dyn = {path = "platform/axplat-aarch64-dyn", features = ["irq", "smp", "hv"]}
 axvisor_api = "0.1"
@@ -98,6 +98,7 @@ driver = {path = "modules/driver"}
 
 # platform
 axplat-x86-qemu-q35 = {path = "platform/x86-qemu-q35"}
+axplat-riscv64-qemu-virt = {path = "platform/riscv64-qemu-virt"}
 axvmconfig = {version = "0.1", default-features = false}
 
 [patch.crates-io]
@@ -111,10 +112,13 @@ axvmconfig = {path = "modules/axvmconfig"}
 x86_vcpu = {path = "modules/x86_vcpu"}
 x86_vlapic = {path = "modules/x86_vlapic"}
 
+[patch."https://github.com/arceos-hypervisor/riscv_vplic"]
+riscv_vplic = {path = "modules/riscv_vplic"}
+
 [patch."https://github.com/arceos-hypervisor/axdevice".axdevice]
 path = "modules/axdevice"
 
-[patch."https://github.com/arceos-org/arceos"]
+[patch."https://github.com/arceos-org/arceos.git"]
 axconfig = {path = "modules/axconfig"}
 axruntime = {path = "modules/axruntime"}
 axfs = {path = "modules/axfs"}
