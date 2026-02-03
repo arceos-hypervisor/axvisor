@@ -33,9 +33,6 @@ arm_vcpu = { path = "modules/arm_vcpu/" }
 [patch."https://github.com/arceos-hypervisor/arm_vgic"]
 arm_vgic = { path = "modules/arm_vgic/" }
 
-[patch."https://github.com/arceos-hypervisor/axdevice"]
-axdevice = { path = "modules/axdevice/" }
-
 [patch."https://github.com/arceos-hypervisor/axvcpu"]
 axvcpu = { path = "modules/axvcpu/" }
 

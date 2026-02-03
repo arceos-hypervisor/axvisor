@@ -1,0 +1,13 @@
+[package]
+authors = [
+  "周睿 <zrufo747@outlook.com>",
+]
+edition.workspace = true
+license.workspace = true
+name = "axvdev"
+version = "0.1.0"
+
+[dependencies]
+log = "0.4"
+vdev-if.workspace = true
+derive_more = { version = "2", default-features = false, features = ["full"] }

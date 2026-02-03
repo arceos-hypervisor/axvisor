@@ -420,22 +420,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "axdevice"
-version = "0.1.0"
-dependencies = [
- "arm_vgic",
- "axaddrspace",
- "axdevice_base",
- "axerrno 0.1.2",
- "axvmconfig",
- "cfg-if",
- "log",
- "memory_addr",
- "range-alloc",
- "spin 0.9.8",
-]
-
-[[package]]
 name = "axdevice_base"
 version = "0.1.0"
 dependencies = [
@@ -1079,6 +1063,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "axvdev"
+version = "0.1.0"
+dependencies = [
+ "derive_more",
+ "log",
+ "vdev-if",
+]
+
+[[package]]
 name = "axvisor"
 version = "0.3.0"
 dependencies = [
@@ -1143,6 +1136,7 @@ dependencies = [
  "axplat-x86-qemu-q35",
  "axruntime",
  "axstd",
+ "axvdev",
  "axvm-types",
  "axvmconfig",
  "bitmap-allocator",
@@ -4223,11 +4217,6 @@ checksum = "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c"
 dependencies = [
  "getrandom 0.3.4",
 ]
-
-[[package]]
-name = "range-alloc"
-version = "0.1.4"
-source = "git+https://github.com/arceos-hypervisor/range-alloc.git#fc826e54dab9072be5358a1b0e7fc34503d6630d"
 
 [[package]]
 name = "ranges-ext"

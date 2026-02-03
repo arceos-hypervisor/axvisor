@@ -72,6 +72,9 @@ axruntime = {path = "modules/axruntime"}
 axfs = {path = "modules/axfs"}
 axvcpu = "0.1"
 axvm = {path = "modules/axvm"}
+vdev-if = {path = "modules/vdev-if"}
+axvdev = {path = "modules/axvdev"}
+
 
 # System independent crates provided by ArceOS, these crates could be imported by remote url. 
 axerrno = "0.2"
@@ -89,7 +92,6 @@ axbacktrace = "0.1"
 percpu = {version = "=0.2.0", features = ["arm-el2"]}
 percpu_macros = "=0.2.0"
 
-axdevice = {git = "https://github.com/arceos-hypervisor/axdevice.git"}
 axdevice_base = "0.1"
 axplat-aarch64-dyn = {path = "platform/axplat-aarch64-dyn", features = ["irq", "smp", "hv"]}
 axvisor_api = "0.1"
@@ -110,9 +112,7 @@ axvisor_api = {path = "modules/axvisor_api"}
 axvmconfig = {path = "modules/axvmconfig"}
 x86_vcpu = {path = "modules/x86_vcpu"}
 x86_vlapic = {path = "modules/x86_vlapic"}
-
-[patch."https://github.com/arceos-hypervisor/axdevice".axdevice]
-path = "modules/axdevice"
+axvdev = {path = "modules/axvdev"}
 
 [patch."https://github.com/arceos-org/arceos"]
 axconfig = {path = "modules/axconfig"}
