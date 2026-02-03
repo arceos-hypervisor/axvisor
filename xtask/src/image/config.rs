@@ -12,7 +12,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Default registry URL for the image list.
-pub const DEFAULT_REGISTRY_URL: &str = "https://raw.githubusercontent.com/arceos-hypervisor/axvisor-guest-registry/refs/heads/main/default.toml";
+pub const DEFAULT_REGISTRY_URL: &str = "https://raw.githubusercontent.com/arceos-hypervisor/axvisor-guest/refs/heads/main/registry/default.toml";
 
 /// Relative path to the image config file under the repository root.
 const IMAGE_CONFIG_PATH: &str = ".image.toml";
