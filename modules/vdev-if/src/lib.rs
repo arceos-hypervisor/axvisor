@@ -16,7 +16,7 @@ pub trait VirtDeviceOp: Send + Any + 'static {
     fn name(&self) -> &str;
 }
 
-pub trait VirtPlatformOp {
+pub trait VirtPlatformOp: Send + Clone + 'static {
     fn alloc_mmio_region(
         &self,
         addr: Option<GuestPhysAddr>,
@@ -33,46 +33,4 @@ pub struct MmioRegion {
     pub size: usize,
 }
 
-pub fn init(plat: &'static dyn VirtPlatformOp) {
-    if INITED
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
-    {
-        return;
-    }
-    unsafe {
-        GLOBAL_PLAT = plat;
-    }
-}
-
-pub fn get_platform() -> &'static dyn VirtPlatformOp {
-    if !INITED.load(Ordering::Acquire) {
-        panic!("VirtPlatform Not initialized");
-    }
-
-    unsafe { GLOBAL_PLAT }
-}
-
-static mut GLOBAL_PLAT: &dyn VirtPlatformOp = &NopPlat;
-static INITED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
-
-struct NopPlat;
-
-impl VirtPlatformOp for NopPlat {
-    fn alloc_mmio_region(
-        &self,
-        _addr: Option<GuestPhysAddr>,
-        _size: usize,
-        _percpu: bool,
-    ) -> Option<MmioRegion> {
-        unimplemented!()
-    }
-
-    fn alloc_irq(&self, _irq: Option<IrqNum>) -> Option<IrqNum> {
-        unimplemented!()
-    }
-
-    fn invoke_irq(&self, _irq: IrqNum) {
-        unimplemented!()
-    }
-}
+unsafe impl Send for MmioRegion {}

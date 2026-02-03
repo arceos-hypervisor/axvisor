@@ -113,6 +113,7 @@ axvmconfig = {path = "modules/axvmconfig"}
 x86_vcpu = {path = "modules/x86_vcpu"}
 x86_vlapic = {path = "modules/x86_vlapic"}
 axvdev = {path = "modules/axvdev"}
+vdev-if = {path = "modules/vdev-if"}
 
 [patch."https://github.com/arceos-org/arceos"]
 axconfig = {path = "modules/axconfig"}
