@@ -136,7 +136,7 @@ use axvmm::{init, start};  // 虚拟机管理
   - 提供任务创建、切换、销毁接口
   - **依赖 axhal，不依赖 axruntime**
 
-### 1.3 平台抽象层
+### 1.4 平台抽象层
 
 平台抽象层（axplat）提供跨平台的统一接口，屏蔽不同架构的差异。其通过在构建时根据目标架构选择对应的平台实现，实现依赖注入，解耦平台代码和运行时代码。
 
@@ -1098,24 +1098,139 @@ unsafe extern fn rust_entry_secondary(_magic: usize) {
 
 ## 三、ARM64 平台启动流程
 
-ARM64 平台使用设备树（Device Tree）和 UEFI/GRUB/QEMU 引导加载器，启动流程如下：
+ARM64 平台使用设备树（Device Tree）和 UEFI/GRUB/QEMU 引导加载器，启动流程与 x86_64 平台有显著差异。本章将详细分析 ARM64 平台的启动流程，包括 **Primary CPU**（主 CPU）和 **Secondary CPU**（次级 CPU）的启动路径。
+
+与 x86_64 平台不同，ARM64 平台的启动过程涉及两个 ARM 特有的 crates，它们负责处理 ARM64 架构特定的硬件初始化和启动流程。
+
+| Crate | 位置 | 职责 | 关键文件 |
+|-------|------|------|---------|
+| **somehal** | `modules/somehal` | 底层硬件抽象层，提供 ARM64 启动代码和硬件抽象接口 | `arch/aarch64/mod.rs`（启动代码）、`common/entry.rs`（虚拟入口） |
+| **axplat-aarch64-dyn** | `modules/axplat-aarch64-dyn` | ARM64 平台层实现，提供平台特定的初始化和驱动支持 | `boot.rs`（平台入口）、`init.rs`（初始化）、`mem.rs`（内存管理）、`irq/`（中断控制器）、`time.rs`（定时器） |
+
+- `somehal`
+
+    **位置**：`modules/somehal`
+    
+    **职责**：
+    - 提供 ARM64 内核头部和启动代码（`_start`、`primary_entry`、`_start_secondary`）
+    - 提供 loader 二进制代码（`loader.bin`），完成早期初始化（设置页表、启用 MMU）
+    - 提供 `BootInfo` 结构，包含设备树地址、内存区域等启动信息
+    - 提供硬件抽象接口（异常向量表、缓存操作、电源管理等）
+    - 提供 `#[somehal::entry]` 和 `#[somehal::secondary_entry]` 宏，标记入口点
+    
+    **关键文件**：
+    - `arch/aarch64/mod.rs`：启动代码（`_start`、`primary_entry`、`_start_secondary`）
+    - `arch/aarch64/el2.rs` 或 `el1.rs`：异常级别切换和 MMU 初始化
+    - `common/entry.rs`：虚拟入口（`virt_entry`）
+    - `loader.rs`：loader 二进制代码
+    
+    **依赖关系**：
+    - 依赖 `pie_boot_if`、`pie_boot_loader_aarch64`、`pie_boot_macros`（PIE 启动相关）
+    - 不依赖 axplat 或 axruntime
+
+- `axplat-aarch64-dyn`
+
+    **位置**：`modules/axplat-aarch64-dyn`
+    
+    **职责**：
+    - 实现平台层的启动代码（`boot.rs`：`main`、`secondary`、`switch_sp`）
+    - 实现设备树解析（`lib.rs`、`fdt.rs`）
+    - 实现平台初始化（`init.rs`：早期初始化、后期初始化）
+    - 实现内存管理（`mem.rs`：内存区域解析、地址转换）
+    - 实现中断控制器支持（`irq/`：GICv2/GICv3）
+    - 实现定时器支持（`time.rs`：ARM Generic Timer）
+    - 实现 SMP 支持（`smp.rs`：CPU ID 转换、PSCI 调用）
+    - 实现电源管理（`power.rs`：PSCI 接口）
+    
+    **关键文件**：
+    - `boot.rs`：平台入口（`main`、`secondary`、`switch_sp`）
+    - `init.rs`：平台初始化（`InitIf` trait 实现）
+    - `mem.rs`：内存管理（`MemIf` trait 实现）
+    - `irq/mod.rs`：中断控制器初始化
+    - `time.rs`：定时器初始化
+    - `smp.rs`：多核支持（CPU ID 转换）
+    
+    **依赖关系**：
+    - 依赖 `somehal`（获取 `BootInfo`）
+    - 依赖 `axplat`（实现平台接口 trait）
+    - 依赖 `fdt_parser`（解析设备树）
+    - 依赖 `arm_gic_driver`（GIC 驱动）
 
 ### 3.1 启动流程图
 
+ARM64 平台的启动流程分为 **Primary CPU**（主 CPU，CPU 0）和 **Secondary CPU**（次级 CPU，CPU 1-N）两条路径：
+
 ```mermaid
 graph TD
-    A[Bootloader<br/>UEFI/GRUB/QEMU] --> B[_start<br/>汇编入口点]
-    B --> C[boot.S<br/>设置EL2/页表]
-    C --> D[rust_entry<br/>平台Rust入口]
-    D --> E[axplat::call_main<br/>调用主函数<br/>传递 DTB 地址]
-    E --> F[rust_main<br/>运行时初始化]
-    F --> G[axtask::init_scheduler<br/>调度器初始化]
-    G --> H[main<br/>应用入口]
+    subgraph "Primary CPU 启动流程（CPU 0）"
+        A1[Bootloader<br/>UEFI/GRUB/QEMU] --> B1[_start<br/>内核头部]
+        B1 --> C1[primary_entry<br/>主 CPU 入口]
+        C1 --> D1[preserve_boot_args<br/>保存启动参数]
+        D1 --> E1[loader.bin<br/>执行 loader]
+        E1 --> F1[switch_sp<br/>切换栈指针]
+        F1 --> G1[virt_entry<br/>虚拟入口]
+        G1 --> H1[__pie_boot_main<br/>调用 main]
+        H1 --> I1[axplat::call_main<br/>平台主函数]
+        I1 --> J1[rust_main<br/>运行时初始化]
+        J1 --> K1[axtask::init_scheduler<br/>调度器初始化]
+        K1 --> L1[main<br/>应用入口]
+    end
+
+    subgraph "Secondary CPU 启动流程（CPU 1-N）"
+        A2[PSCI 启动<br/>固件唤醒] --> B2[_start_secondary<br/>次级 CPU 入口]
+        B2 --> C2[switch_to_elx<br/>切换到 EL2/EL1]
+        C2 --> D2[enable_fp<br/>启用浮点]
+        D2 --> E2[init_mmu<br/>初始化 MMU]
+        E2 --> F2[__pie_boot_secondary<br/>调用 secondary]
+        F2 --> G2[axplat::call_secondary_main<br/>平台次级函数]
+        G2 --> H2[rust_main_secondary<br/>运行时初始化]
+        H2 --> I2[进入就绪状态<br/>等待调度]
+    end
+
+    K1 -.->|PSCI| A2
+    I2 -.->|就绪| K1
+
+    style A1 fill:#e1f5ff
+    style A2 fill:#ffe1f0
+    style L1 fill:#90EE90
+    style I2 fill:#FFD700
 ```
 
-### 3.2 链接器入口点配置
+1. **Primary CPU 启动流程**（左侧蓝色）：
+   - 由引导加载器启动，执行内核头部代码
+   - 通过 loader 二进制代码完成早期初始化
+   - 切换到虚拟地址空间后调用 Rust 入口
+   - 完成运行时初始化后，初始化调度器
+   - 通过 PSCI（Power State Coordination Interface）唤醒次级 CPU
+   - 进入应用主函数
 
-ARM64 平台的链接器脚本由 [modules/axplat-aarch64-dyn](modules/axplat-aarch64-dyn) crate 提供，与 x86_64 平台相比有显著差异。
+2. **Secondary CPU 启动流程**（右侧粉色）：
+   - 由主 CPU 通过 PSCI 接口唤醒
+   - 执行启动代码（`_start_secondary`）
+   - 切换到目标特权级（EL2 或 EL1）
+   - 初始化 MMU 并调整栈指针
+   - 完成运行时初始化后进入就绪状态
+
+3. **汇合点**：
+   - 主 CPU 和次级 CPU 最终都进入运行时环境
+   - 次级 CPU 就绪后，调度器可以调度任务到所有 CPU
+   - 调度器开始工作时，所有 CPU 都可以参与任务调度
+
+**与 x86_64 平台的关键差异**：
+
+| 特性 | x86_64 | ARM64 |
+|------|--------|-------|
+| **启动方式** | Multiboot 协议 | ARM64 镜像协议 |
+| **硬件描述** | Multiboot 信息结构体 | 设备树（DTB） |
+| **次级 CPU 唤醒机制** | INIT-SIPI-SIPI（通过 APIC） | PSCI（通过固件调用） |
+| **特权级** | Long Mode（Ring 0） | EL2（虚拟化）或 EL1 |
+| **中断控制器** | APIC（本地 + I/O） | GIC（Generic Interrupt Controller） |
+| **定时器** | LAPIC Timer | ARM Generic Timer |
+| **页表机制** | 4 级页表（PML4） | 4 级页表（TTBR0_EL2） |
+
+### 3.2 程序入口点
+
+ARM64 平台的链接器脚本由 [modules/axplat-aarch64-dyn](modules/axplat-aarch64-dyn) 这个 crate 提供，与 x86_64 平台相比有显著差异。
 
 **核心要点**：
 
@@ -1144,30 +1259,420 @@ ARM64 平台的链接器脚本由 [modules/axplat-aarch64-dyn](modules/axplat-aa
 
 关于 ARM64 平台链接器脚本的模板设计、构建脚本处理流程、内存布局等详细信息，请参阅 [构建文档 - 链接器脚本处理](00_AXVISOR_BUILD.md#3336-链接器脚本处理) 章节。
 
-### 3.3 汇编启动代码
+### 3.3 mod.rs 与 _start
 
-ARM64 平台的启动代码在 [modules/axplat-aarch64-dyn/src/boot.rs](modules/axplat-aarch64-dyn/src/boot.rs) 中实现：
+[modules/somehal/somehal/src/arch/aarch64/mod.rs](modules/somehal/somehal/src/arch/aarch64/mod.rs) 负责处理 ARM64 平台的启动流程。该文件定义了内核头部、主 CPU 入口点和次级 CPU 入口点。
+
+#### 3.3.1 _start - 内核头部
+
+`_start` 是 ARM64 内核镜像的入口点，包含 ARM64 镜像协议要求的头部信息：
 
 ```rust
-use core::arch::naked_asm;
-use aarch64_cpu_ext::cache::{CacheOp, dcache_all};
-use somehal::BootInfo;
+#[unsafe(naked)]
+#[unsafe(no_mangle)]
+#[unsafe(link_section = ".head.text")]
+pub unsafe extern "C" fn _start() -> ! {
+    naked_asm!(
+        // code0/code1: 跳转到实际入口点
+        "nop",
+        "bl {entry}",
+        // text_offset: 内核镜像加载偏移
+        ".quad 0",
+        // image_size: 镜像大小
+        ".quad __kernel_load_end - _start",
+        // flags: 标志位
+        ".quad {flags}",
+        // Reserved fields
+        ".quad 0",
+        ".quad 0",
+        ".quad 0",
+        // magic: ARM64 镜像魔数
+        ".ascii \"ARM\\x64\"",
+        // Another reserved field
+        ".byte 0, 0, 0, 0",
+        flags = const FLAG_LE | FLAG_PAGE_SIZE_4K | FLAG_ANY_MEM,
+        entry = sym primary_entry,
+    )
+}
+```
 
+**ARM64 镜像头部结构**：
+
+```
+偏移    大小    字段                说明
+0x00    4       code0              跳转指令或空操作
+0x04    4       code1              跳转指令或空操作
+0x08    8       text_offset        镜像加载偏移
+0x10    8       image_size         镜像大小
+0x18    8       flags              标志位
+0x20    8       res1               保留字段
+0x28    8       res2               保留字段
+0x30    8       res3               保留字段
+0x38    8       magic              魔数 "ARM\x64"
+0x40    4       res4               保留字段
+```
+
+**标志位说明**：
+
+- `FLAG_LE (0b0)`：小端序
+- `FLAG_PAGE_SIZE_4K (0b10)`：4KB 页面大小
+- `FLAG_ANY_MEM (0b1000)`：可以在任意内存地址加载
+
+引导加载器（UEFI/GRUB/QEMU）会识别这个头部，并将内核镜像加载到合适的内存位置，然后跳转到 `code0/code1` 指定的地址（即 `primary_entry`）。
+
+#### 3.3.2 primary_entry - Primary CPU 入口
+
+`primary_entry` 是 **Primary CPU**（主 CPU）的真正入口点，负责保存启动参数并跳转到 loader：
+
+```rust
+#[start_code(naked)]
+fn primary_entry() -> ! {
+    naked_asm!(
+        "
+        bl  {preserve_boot_args}",  // 保存启动参数
+        adr_l!(x0, "{boot_args}"),  // 获取 BOOT_ARGS 地址
+        adr_l!(x8, "{loader}"),     // 获取 loader 地址
+        "
+        br   x8",                    // 跳转到 loader
+        preserve_boot_args = sym preserve_boot_args,
+        boot_args = sym crate::BOOT_ARGS,
+        loader = sym crate::loader::LOADER_BIN,
+    )
+}
+```
+
+**步骤说明**：
+
+1. **调用 `preserve_boot_args`**：保存启动参数到 `BOOT_ARGS` 结构
+2. **获取 BOOT_ARGS 地址**：使用 `adr_l!` 宏计算 `BOOT_ARGS` 的地址
+3. **获取 loader 地址**：使用 `adr_l!` 宏计算 `LOADER_BIN` 的地址
+4. **跳转到 loader**：使用 `br x8` 跳转到 loader 二进制代码
+
+**关键技术点**：
+
+- **`adr_l!` 宏**：计算符号的地址（支持位置无关代码）
+- **`br` 指令**：无条件跳转到寄存器指定的地址
+- **loader 二进制**：包含早期初始化代码（设置页表、MMU 等）
+
+#### 3.3.3 preserve_boot_args - 保存启动参数
+
+`preserve_boot_args` 函数负责保存引导加载器传递的启动参数：
+
+```rust
+#[start_code(naked)]
+fn preserve_boot_args() {
+    naked_asm!(
+        adr_l!(x8, "{boot_args}"),  // 获取 BOOT_ARGS 地址
+        "
+        stp    x0,  x1, [x8]        // 保存 x0, x1
+        stp    x2,  x3, [x8, #16]   // 保存 x2, x3
+
+        LDR    x0,  ={virt_entry}   // 加载虚拟入口地址
+        str    x0,  [x8, {args_of_entry_vma}]",
+
+        adr_l!(x0, "_start"),       // 获取 _start 地址
+        "
+        str    x0,  [x8, {args_of_kimage_addr_lma}]",
+
+        LDR    x0,  =_start         // 加载 _start 虚拟地址
+        str    x0,  [x8, {args_of_kimage_addr_vma}]",
+
+        adr_l!(x0, "__cpu0_stack_top"),  // 获取栈顶地址
+        "
+        str    x0,  [x8, {args_of_stack_top_lma}]",
+
+        LDR    x0,  =__cpu0_stack_top    // 加载栈顶虚拟地址
+        str    x0,  [x8, {args_of_stack_top_vma}]",
+
+        adr_l!(x0, "__kernel_code_end"),  // 获取内核代码结束地址
+        "
+        str    x0,  [x8, {args_of_kcode_end}]",
+
+        // 设置目标 EL
+        mov    x0, {el_value}             // EL2 或 EL1
+        str    x0,  [x8, {args_of_el}]",
+
+        LDR    x0,  ={kliner_offset}      // 内核线性偏移
+        str    x0,  [x8, {args_of_kliner_offset}]",
+
+        mov    x0, {page_size}            // 页面大小
+        str    x0,  [x8, {args_of_page_size}]",
+
+        mov    x0, #1                     // 启用调试
+        str    x0,  [x8, {args_of_debug}]",
+
+        dmb    sy                         // 数据内存屏障
+        mov    x0, x8
+        add    x1, x0, {boot_arg_size}    // 计算结束地址
+        b      {dcache_inval_poc}",       // 使数据缓存失效
+        boot_args = sym crate::BOOT_ARGS,
+        virt_entry = sym switch_sp,
+        args_of_entry_vma = const offset_of!(EarlyBootArgs, virt_entry),
+        args_of_kimage_addr_lma = const offset_of!(EarlyBootArgs, kimage_addr_lma),
+        args_of_kimage_addr_vma = const offset_of!(EarlyBootArgs, kimage_addr_vma),
+        args_of_stack_top_lma = const offset_of!(EarlyBootArgs, stack_top_lma),
+        args_of_stack_top_vma = const offset_of!(EarlyBootArgs, stack_top_vma),
+        args_of_kcode_end = const offset_of!(EarlyBootArgs, kcode_end),
+        args_of_el = const offset_of!(EarlyBootArgs, el),
+        el_value = const if cfg!(feature = "hv") { 2 } else { 1 },
+        kliner_offset = const KLINER_OFFSET,
+        args_of_kliner_offset = const offset_of!(EarlyBootArgs, kliner_offset),
+        page_size = const PAGE_SIZE,
+        args_of_page_size = const offset_of!(EarlyBootArgs, page_size),
+        args_of_debug = const offset_of!(EarlyBootArgs, debug),
+        dcache_inval_poc = sym cache::__dcache_inval_poc,
+        boot_arg_size = const size_of::<EarlyBootArgs>()
+    )
+}
+```
+
+**EarlyBootArgs 结构**（由 `pie_boot_loader_aarch64` 提供）：
+
+```rust
+pub struct EarlyBootArgs {
+    pub virt_entry: usize,          // 虚拟入口地址
+    pub kimage_addr_lma: usize,     // 内核镜像物理地址
+    pub kimage_addr_vma: usize,     // 内核镜像虚拟地址
+    pub stack_top_lma: usize,       // 栈顶物理地址
+    pub stack_top_vma: usize,       // 栈顶虚拟地址
+    pub kcode_end: usize,           // 内核代码结束地址
+    pub el: usize,                  // 目标异常级别（EL2 或 EL1）
+    pub kliner_offset: usize,       // 内核线性偏移
+    pub page_size: usize,           // 页面大小
+    pub debug: usize,               // 调试标志
+    // ... 其他字段
+}
+```
+
+**保存的启动参数**：
+
+1. **x0-x3 寄存器**：引导加载器传递的参数（设备树地址等）
+2. **virt_entry**：虚拟入口地址（`switch_sp`）
+3. **内核镜像地址**：物理地址和虚拟地址
+4. **栈顶地址**：物理地址和虚拟地址
+5. **内核代码结束地址**：用于计算内核大小
+6. **目标 EL**：EL2（虚拟化）或 EL1
+7. **内核线性偏移**：虚拟地址与物理地址的差值
+8. **页面大小**：4KB
+9. **调试标志**：启用早期调试输出
+
+#### 3.3.4 loader.bin - 早期初始化
+
+loader 二进制代码（[modules/somehal/somehal/src/loader.rs](modules/somehal/somehal/src/loader.rs)）包含早期初始化代码，负责设置页表和 MMU：
+
+```rust
+macro_rules! loader_bin_slice {
+    () => {
+        include_bytes!(concat!(env!("OUT_DIR"), "/loader.bin"))
+    };
+}
+
+const LOADER_BIN_LEN: usize = loader_bin_slice!().len();
+
+const fn loader_bin() -> [u8; LOADER_BIN_LEN] {
+    let mut buf = [0u8; LOADER_BIN_LEN];
+    let bin = loader_bin_slice!();
+    buf.copy_from_slice(bin);
+    buf
+}
+
+#[unsafe(link_section = ".boot_loader")]
+pub static LOADER_BIN: [u8; LOADER_BIN_LEN] = loader_bin();
+```
+
+**loader 功能**：
+
+1. **设置页表**：创建初始页表，映射内核镜像
+2. **启用 MMU**：启用内存管理单元
+3. **切换到虚拟地址**：跳转到虚拟地址空间
+4. **设置异常级别**：切换到 EL2 或 EL1
+
+loader 二进制代码由 `pie_boot_loader_aarch64` crate 提供，在编译时生成并嵌入到内核镜像中。
+
+#### 3.3.5 switch_sp - 切换栈指针
+
+`switch_sp` 函数负责切换到新的栈指针，并跳转到虚拟入口：
+
+```rust
+#[unsafe(naked)]
+unsafe extern "C" fn switch_sp(_args: usize) -> ! {
+    naked_asm!(
+        "
+        adrp x8, __cpu0_stack_top    // 获取栈顶页地址
+        add  x8, x8, :lo12:__cpu0_stack_top  // 加上低 12 位偏移
+        mov  sp, x8                  // 设置栈指针
+        bl   {next}                  // 调用虚拟入口
+        ",
+        next = sym crate::common::entry::virt_entry,
+    )
+}
+```
+
+**步骤说明**：
+
+1. **获取栈顶地址**：使用 `adrp` 和 `add` 指令计算 `__cpu0_stack_top` 的地址
+2. **设置栈指针**：将栈顶地址加载到 `sp` 寄存器
+3. **调用虚拟入口**：跳转到 `virt_entry` 函数
+
+**栈空间分配**：
+
+```rust
 const BOOT_STACK_SIZE: usize = 0x40000; // 256KB
 
-/* 启动栈（BSS 段） */
 #[unsafe(link_section = ".bss.stack")]
 static mut BOOT_STACK: [u8; BOOT_STACK_SIZE] = [0; BOOT_STACK_SIZE];
+```
 
-/* 主 CPU 入口点（由 somehal::entry 宏标记） */
+栈空间位于 BSS 段，大小为 256KB，足够支持早期的函数调用和中断处理。
+
+### 3.4 entry.rs 与 virt_entry
+
+[modules/somehal/somehal/src/common/entry.rs](modules/somehal/somehal/src/common/entry.rs) 负责处理虚拟入口，完成从物理地址到虚拟地址的切换。
+
+#### 3.4.1 virt_entry - 虚拟入口
+
+`virt_entry` 是第一个在虚拟地址空间执行的函数：
+
+```rust
+pub(crate) unsafe fn virt_entry(args: &BootInfo) {
+    common::mem::clean_bss();                    // 清零 BSS 段
+    BOOT_INFO.init(args.clone());                // 初始化 BootInfo
+    common::fdt::init_debugcon(boot_info().fdt); // 初始化调试控制台
+    println!("SomeHAL booting...");
+    setup_exception_vectors();                    // 设置异常向量表
+    power::init_by_fdt(boot_info().fdt);         // 初始化电源管理
+    common::fdt::setup_plat_info();              // 设置平台信息
+    common::mem::init_regions(&args.memory_regions); // 初始化内存区域
+
+    unsafe {
+        BOOT_INFO.edit(|info| {
+            info.free_memory_start = common::mem::init_percpu_stack()
+        });
+
+        let (region_ptr, region_len) =
+            common::mem::with_regions(|regions| (regions.as_mut_ptr(), regions.len()));
+        let region_slice = core::slice::from_raw_parts_mut(region_ptr, region_len);
+        BOOT_INFO.edit(|info| {
+            info.memory_regions = region_slice.into();
+        });
+
+        unsafe extern "Rust" {
+            fn __pie_boot_main(args: &BootInfo);
+        }
+        println!("Goto main...");
+        __pie_boot_main(&BOOT_INFO);  // 调用主函数
+
+        power::shutdown();
+    }
+}
+```
+
+**步骤说明**：
+
+1. **清零 BSS 段**：将未初始化的全局变量清零
+2. **初始化 BootInfo**：保存启动信息到全局变量
+3. **初始化调试控制台**：从设备树解析 UART 配置
+4. **设置异常向量表**：安装异常处理函数
+5. **初始化电源管理**：从设备树解析电源管理信息
+6. **设置平台信息**：解析设备树并保存平台信息
+7. **初始化内存区域**：解析内存区域并初始化内存管理
+8. **初始化 per-CPU 栈**：为每个 CPU 分配栈空间
+9. **调用主函数**：跳转到 `__pie_boot_main`
+
+**关键技术点**：
+
+- **虚拟地址空间**：此时已经启用 MMU，所有地址都是虚拟地址
+- **设备树解析**：从 DTB 中解析硬件配置信息
+- **异常向量表**：设置异常处理函数（中断、系统调用等）
+- **per-CPU 栈**：为每个 CPU 分配独立的栈空间
+
+#### 3.4.2 __pie_boot_main - 主函数调用
+
+`__pie_boot_main` 是由 `#[somehal::entry]` 宏生成的包装函数，调用用户定义的 `main` 函数：
+
+```rust
+// modules/axplat-aarch64-dyn/src/boot.rs
+
 #[somehal::entry]
 fn main(args: &BootInfo) -> ! {
     unsafe {
         switch_sp(args);
     }
 }
+```
 
-/* 切换栈指针（naked 函数，纯汇编） */
+**`#[somehal::entry]` 宏展开**：
+
+```rust
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn __pie_boot_main(args: &BootInfo) -> ! {
+    // 调用用户定义的 main 函数
+    main(args);
+}
+```
+
+**宏的工作原理**（[modules/somehal/macros/pie-boot-macros/src/entry.rs](modules/somehal/macros/pie-boot-macros/src/entry.rs)）：
+
+```rust
+pub fn entry(args: TokenStream, input: TokenStream, name: &str) -> TokenStream {
+    let f = parse_macro_input!(input as ItemFn);
+
+    // 检查函数签名
+    if f.sig.inputs.len() != 1 {
+        return parse::Error::new(
+            f.sig.inputs.last().unwrap().span(),
+            "`#[entry]` function need one argument `&BootArgs`",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    // 生成包装函数
+    let attrs = f.attrs;
+    let unsafety = f.sig.unsafety;
+    let args = f.sig.inputs;
+    let stmts = f.block.stmts;
+    let name = format_ident!("{}", name);
+
+    quote!(
+        #[allow(non_snake_case)]
+        #[unsafe(no_mangle)]
+        #(#attrs)*
+        pub #unsafety extern "C" fn #name(#args) {
+            #(#stmts)*
+        }
+    )
+    .into()
+}
+```
+
+### 3.5 boot.rs 与 switch_sp
+
+[modules/axplat-aarch64-dyn/src/boot.rs](modules/axplat-aarch64-dyn/src/boot.rs) 是平台层的启动代码，负责切换栈指针并调用平台主函数。
+
+#### 3.5.1 main - 主 CPU 入口
+
+`main` 函数是平台层的主 CPU 入口点：
+
+```rust
+#[somehal::entry]
+fn main(args: &BootInfo) -> ! {
+    unsafe {
+        switch_sp(args);
+    }
+}
+```
+
+**参数说明**：
+
+- `args`: 启动信息结构，包含设备树地址、内存区域等
+
+#### 3.5.2 switch_sp - 切换栈指针
+
+`switch_sp` 函数负责切换到平台层的栈指针：
+
+```rust
 #[unsafe(naked)]
 unsafe extern "C" fn switch_sp(_args: &BootInfo) -> ! {
     naked_asm!(
@@ -1186,76 +1691,306 @@ unsafe extern "C" fn switch_sp(_args: &BootInfo) -> ! {
         next = sym sp_reset,
     )
 }
+```
 
-/* 栈重置后的入口点 */
+**步骤说明**：
+
+1. **获取栈地址**：使用 `adrp` 和 `add` 指令计算 `BOOT_STACK` 的地址
+2. **计算栈顶**：加上栈大小，得到栈顶地址
+3. **设置栈指针**：将栈顶地址加载到 `sp` 寄存器
+4. **调用下一个函数**：跳转到 `sp_reset`
+
+**栈空间分配**：
+
+```rust
+const BOOT_STACK_SIZE: usize = 0x40000; // 256KB
+
+#[unsafe(link_section = ".bss.stack")]
+static mut BOOT_STACK: [u8; BOOT_STACK_SIZE] = [0; BOOT_STACK_SIZE];
+```
+
+栈空间位于 BSS 段，大小为 256KB，与 somehal 的栈空间不同，这是平台层的栈。
+
+#### 3.5.3 sp_reset - 栈重置
+
+`sp_reset` 函数在栈切换完成后调用平台主函数：
+
+```rust
 fn sp_reset(args: &BootInfo) -> ! {
-    /* 调用 axplat::call_main，传递 FDT 地址 */
     axplat::call_main(
         0,  /* CPU ID（主 CPU 为 0） */
         args.fdt.map(|p| p.as_ptr() as usize).unwrap_or_default()
     );
 }
+```
 
-/* 次级 CPU 入口点（仅在 smp feature 启用时编译） */
+**参数说明**：
+
+- `cpu_id`: CPU 逻辑 ID（主 CPU 为 0）
+- `fdt_ptr`: 设备树（Device Tree Blob）物理地址
+
+**调用链**：
+
+```
+sp_reset
+  └─> axplat::call_main(cpu_id, fdt_ptr)
+       └─> rust_main(cpu_id, fdt_ptr)  [axruntime/src/lib.rs]
+            └─> main()  [kernel/src/main.rs]
+```
+
+### 3.6 mod.rs 与 _start_secondary
+
+[modules/somehal/somehal/src/arch/aarch64/mod.rs](modules/somehal/somehal/src/arch/aarch64/mod.rs) 中的 `_start_secondary` 函数负责处理次级 CPU 的启动。
+
+#### 3.6.1 _start_secondary - Secondary CPU 入口
+
+`_start_secondary` 是 **Secondary CPU**（次级 CPU）的入口点：
+
+```rust
+#[start_code(naked)]
+pub fn _start_secondary(_stack_top: usize) -> ! {
+    naked_asm!(
+        "
+        mrs     x19, mpidr_el1        // 获取 CPU ID
+        and     x19, x19, #0xffffff   // 提取 CPU ID
+        mov     x20, x0               // 保存栈顶
+
+        mov     sp, x20               // 设置栈指针
+        mov     x0, x20               // 传递栈顶参数
+        bl      {switch_to_elx}       // 切换到目标 EL
+        bl      {enable_fp}           // 启用浮点
+        bl      {init_mmu}            // 初始化 MMU，返回 va_offset
+        add     sp, sp, x0            // 调整栈指针到虚拟地址
+
+        mov     x0, x19               // 传递 CPU ID
+        ldr     x8, =__pie_boot_secondary  // 加载次级入口地址
+        blr     x8                    // 调用次级入口
+        b       .",                   // 如果返回则死循环
+
+        switch_to_elx = sym el::switch_to_elx,
+        init_mmu = sym init_mmu,
+        enable_fp = sym enable_fp,
+    )
+}
+```
+
+**步骤说明**：
+
+1. **获取 CPU ID**：从 `mpidr_el1` 寄存器读取 CPU ID
+2. **设置栈指针**：使用传递的栈顶地址
+3. **切换到目标 EL**：调用 `switch_to_elx` 切换到 EL2 或 EL1
+4. **启用浮点**：调用 `enable_fp` 启用 SIMD/浮点指令
+5. **初始化 MMU**：调用 `init_mmu` 初始化内存管理单元
+6. **调整栈指针**：加上虚拟地址偏移，调整栈指针到虚拟地址空间
+7. **调用次级入口**：跳转到 `__pie_boot_secondary`
+
+**与 x86_64 的差异**：
+
+| 特性 | x86_64 | ARM64 |
+|------|--------|-------|
+| **启动方式** | INIT-SIPI-SIPI（通过 APIC） | PSCI（通过固件调用） |
+| **起始位置** | 固定物理页 0x6000 | 由 PSCI 指定 |
+| **起始模式** | 16 位实模式 | 当前 EL（通常是 EL3） |
+| **栈传递** | 通过固定内存位置（0x6ff0） | 通过寄存器（x0） |
+| **代码切换** | ap_start.S → multiboot.S | 单一启动路径 |
+
+#### 3.6.2 switch_to_elx - 切换异常级别
+
+`switch_to_elx` 函数负责切换到目标异常级别（EL2 或 EL1）：
+
+```rust
+// modules/somehal/somehal/src/arch/aarch64/el2.rs（虚拟化模式）
+
+#[start_code]
+pub fn switch_to_elx(bootargs: usize) {
+    SPSel.write(SPSel::SP::ELx);  // 使用 ELx 栈指针
+    SP_EL0.set(0);
+    let current_el = CurrentEL.read(CurrentEL::EL);
+    let ret = sym_lma!(super::_start_secondary);
+
+    if current_el == 3 {
+        // 从 EL3 切换到 EL2
+        // 设置 EL2 为 64 位并启用 HVC 指令
+        SCR_EL3.write(
+            SCR_EL3::NS::NonSecure
+                + SCR_EL3::HCE::HvcEnabled
+                + SCR_EL3::RW::NextELIsAarch64,
+        );
+
+        // 设置返回地址和异常级别
+        SPSR_EL3.write(
+            SPSR_EL3::M::EL1h
+                + SPSR_EL3::D::Masked
+                + SPSR_EL3::A::Masked
+                + SPSR_EL3::I::Masked
+                + SPSR_EL3::F::Masked,
+        );
+
+        ELR_EL3.set(ret as _);
+        barrier::isb(barrier::SY);
+
+        unsafe {
+            asm!(
+                "
+                    mov x0, {}
+                    eret
+                    ",
+                in(reg) bootargs,
+                options(nostack, noreturn),
+            );
+        }
+    }
+}
+```
+
+**步骤说明**：
+
+1. **设置栈指针选择**：使用 ELx 栈指针（SP_ELx）
+2. **检查当前 EL**：读取 `CurrentEL` 寄存器
+3. **从 EL3 切换到 EL2**：
+   - 设置 `SCR_EL3` 寄存器：非安全模式 + 启用 HVC + 64 位
+   - 设置 `SPSR_EL3` 寄存器：目标 EL 为 EL1h
+   - 设置 `ELR_EL3` 寄存器：返回地址为 `_start_secondary`
+   - 执行 `eret` 指令：切换到 EL2
+
+**关键技术点**：
+
+- **异常级别**：ARM64 有 4 个异常级别（EL0-EL3），EL3 最高
+- **虚拟化**：EL2 用于虚拟化，EL1 用于操作系统
+- **eret 指令**：异常返回指令，用于切换异常级别
+
+#### 3.6.3 enable_fp - 启用浮点
+
+`enable_fp` 函数负责启用 SIMD/浮点指令：
+
+```rust
+#[start_code]
+fn enable_fp() {
+    CPACR_EL1.write(CPACR_EL1::FPEN::TrapNothing);
+    barrier::isb(barrier::SY);
+}
+```
+
+**步骤说明**：
+
+1. **设置 CPACR_EL1**：启用 FP/SIMD 访问（不陷入）
+2. **指令同步屏障**：确保设置生效
+
+**CPACR_EL1 寄存器**：
+
+- `FPEN` 字段：控制 FP/SIMD 访问
+  - `0b00`：在 EL0 陷入
+  - `0b01`：在 EL0 和 EL1 陷入
+  - `0b10`：在 EL0 陷入
+  - `0b11`：不陷入（TrapNothing）
+
+#### 3.6.4 init_mmu - 初始化 MMU
+
+`init_mmu` 函数负责初始化内存管理单元：
+
+```rust
+#[start_code]
+fn init_mmu() -> usize {
+    dcache_all(CacheOp::Invalidate);  // 使数据缓存失效
+    setup_table_regs();                // 设置页表寄存器
+
+    let addr = boot_info().pg_start as usize;
+    set_table(addr);                   // 设置页表
+    setup_sctlr();                     // 设置系统控制寄存器
+
+    boot_info().kcode_offset()         // 返回虚拟地址偏移
+}
+```
+
+**步骤说明**：
+
+1. **使数据缓存失效**：确保缓存一致性
+2. **设置页表寄存器**：配置页表基地址寄存器
+3. **设置页表**：将页表地址加载到 `TTBR0_EL2` 寄存器
+4. **设置系统控制寄存器**：启用 MMU 和缓存
+5. **返回虚拟地址偏移**：用于调整栈指针
+
+**关键技术点**：
+
+- **页表**：4 级页表（类似于 x86_64 的 PML4）
+- **TTBR0_EL2**：EL2 的页表基地址寄存器
+- **SCTLR_EL2**：EL2 的系统控制寄存器
+- **虚拟地址偏移**：虚拟地址与物理地址的差值
+
+#### 3.6.5 __pie_boot_secondary - 次级 CPU 主函数
+
+`__pie_boot_secondary` 是由 `#[somehal::secondary_entry]` 宏生成的包装函数，调用用户定义的 `secondary` 函数：
+
+```rust
+// modules/axplat-aarch64-dyn/src/boot.rs
+
 #[cfg(feature = "smp")]
 #[somehal::secondary_entry]
 fn secondary(cpu_id: usize) {
-    /* 使数据缓存失效 */
-    dcache_all(CacheOp::Invalidate);
-
-    /* 将硬件 CPU ID 转换为逻辑 CPU 索引 */
-    let cpu_idx = crate::smp::cpu_id_to_idx(cpu_id);
-
-    /* 调用次级 CPU 主函数 */
-    axplat::call_secondary_main(cpu_idx)
+    dcache_all(CacheOp::Invalidate);  // 使数据缓存失效
+    let cpu_idx = crate::smp::cpu_id_to_idx(cpu_id);  // 转换 CPU ID
+    axplat::call_secondary_main(cpu_idx)  // 调用次级主函数
 }
 ```
 
-**关键特点**：
-1. **使用 `somehal` crate**：提供硬件抽象层，包括 `BootInfo` 结构
-2. **`#[somehal::entry]` 宏**：标记主 CPU 入口点
-3. **`#[somehal::secondary_entry]` 宏**：标记次级 CPU 入口点
-4. **naked_asm**：使用 naked 函数和内联汇编切换栈指针
-5. **数据缓存失效**：次级 CPU 启动时使数据缓存失效（`dcache_all`）
-6. **CPU ID 转换**：将硬件 CPU ID（MPIDR）转换为逻辑 CPU 索引
-
-**BootInfo 结构**（由 `somehal` 提供）：
+**`#[somehal::secondary_entry]` 宏展开**：
 
 ```rust
-/* somehal 提供的启动信息结构（简化） */
-pub struct BootInfo {
-    /* FDT（设备树）物理地址 */
-    pub fdt: Option<PhysAddr>,
-
-    /* CPU ID（硬件 ID，来自 MPIDR_EL1） */
-    pub cpu_id: usize,
-
-    /* 内核镜像加载地址（物理地址） */
-    pub kimage_start_lma: PhysAddr,
-
-    /* 内核镜像虚拟地址 */
-    pub kimage_start_vma: VirtAddr,
-
-    /* 内核代码偏移（虚拟地址 - 物理地址） */
-    pub kcode_offset: usize,
-
-    /* 页表起始地址（物理地址） */
-    pub pg_start: PhysAddr,
-
-    /* 内存区域列表 */
-    pub memory_regions: &'static [MemoryRegion],
-
-    /* 调试控制台配置 */
-    pub debug_console: Option<DebugConsole>,
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn __pie_boot_secondary(cpu_id: usize) {
+    // 调用用户定义的 secondary 函数
+    secondary(cpu_id);
 }
 ```
 
-### 3.4 平台 Rust 入口
+**步骤说明**：
 
-ARM64 平台的 Rust 入口由 `axplat-aarch64-dyn` crate 提供，实际实现如上节所示（[boot.rs](modules/axplat-aarch64-dyn/src/boot.rs)）：
+1. **使数据缓存失效**：确保缓存一致性
+2. **转换 CPU ID**：将硬件 CPU ID（MPIDR）转换为逻辑 CPU 索引
+3. **调用次级主函数**：跳转到 `axplat::call_secondary_main`
+
+**调用链**：
+
+```
+secondary
+  └─> axplat::call_secondary_main(cpu_idx)
+       └─> rust_main_secondary(cpu_idx)  [axruntime/src/lib.rs]
+            └─> 进入就绪状态，等待调度
+```
+
+### 3.7 Primary CPU 与 Secondary CPU 启动流程对比
+
+| 阶段 | Primary CPU（主 CPU） | Secondary CPU（次级 CPU） |
+|------|---------------------|------------------------|
+| **启动方式** | 引导加载器直接跳转 | PSCI 接口唤醒 |
+| **起始位置** | 内核镜像入口（`_start`） | 由 PSCI 指定 |
+| **起始 EL** | EL3 或 EL2 | EL3 或 EL2 |
+| **早期初始化** | 执行 loader.bin | 直接执行启动代码 |
+| **栈设置** | 在 `switch_sp` 中设置 | 通过寄存器传递 |
+| **页表初始化** | 由 loader.bin 完成 | 在 `init_mmu` 中完成 |
+| **Rust 入口** | `__pie_boot_main` | `__pie_boot_secondary` |
+| **平台入口** | `axplat::call_main` | `axplat::call_secondary_main` |
+| **运行时入口** | `rust_main` | `rust_main_secondary` |
+| **最终状态** | 进入应用 `main` | 进入就绪状态 |
+
+**与 x86_64 的术语对比**：
+
+| ARM64 术语 | x86_64 术语 | 说明 |
+|-----------|------------|------|
+| Primary CPU | BSP（Bootstrap Processor） | 第一个启动的 CPU |
+| Secondary CPU | AP（Application Processor） | 其他需要被唤醒的 CPU |
+| PSCI 接口 | INIT-SIPI-SIPI | 唤醒次级 CPU 的机制 |
+
+### 3.8 平台 Rust 入口
+
+ARM64 平台的 Rust 入口由 `axplat-aarch64-dyn` crate 提供，实际实现如前面章节所示（[boot.rs](modules/axplat-aarch64-dyn/src/boot.rs)）。
+
+#### 3.8.1 Primary CPU 入口
 
 ```rust
-/* 主 CPU 入口点 */
+// modules/axplat-aarch64-dyn/src/boot.rs
+
 #[somehal::entry]
 fn main(args: &BootInfo) -> ! {
     unsafe {
@@ -1263,53 +1998,169 @@ fn main(args: &BootInfo) -> ! {
     }
 }
 
-/* 栈重置后调用 axplat::call_main */
+// 栈重置后调用 axplat::call_main
 fn sp_reset(args: &BootInfo) -> ! {
     axplat::call_main(
-        0,  /* CPU ID（主 CPU 为 0） */
+        0,  /* CPU ID（Primary CPU 为 0） */
         args.fdt.map(|p| p.as_ptr() as usize).unwrap_or_default()
     );
-}
-
-/* 次级 CPU 入口点 */
-#[cfg(feature = "smp")]
-#[somehal::secondary_entry]
-fn secondary(cpu_id: usize) {
-    dcache_all(CacheOp::Invalidate);
-    let cpu_idx = crate::smp::cpu_id_to_idx(cpu_id);
-    axplat::call_secondary_main(cpu_idx)
 }
 ```
 
 **参数说明**：
-- `cpu_id`: CPU 逻辑 ID（主 CPU 为 0，次级 CPU 由 `smp::cpu_id_to_idx` 转换）
+- `cpu_id`: CPU 逻辑 ID（Primary CPU 为 0）
 - `fdt_ptr`: 设备树（Device Tree Blob）物理地址，包含硬件配置信息
 
-### 3.5 设备树解析
+**调用链**：
 
-**设备树解析**（[modules/axplat-aarch64-dyn/src/lib.rs](modules/axplat-aarch64-dyn/src/lib.rs)）：
+```
+main (somehal::entry)
+  └─> switch_sp
+       └─> sp_reset
+            └─> axplat::call_main(cpu_id, fdt_ptr)
+                 └─> rust_main(cpu_id, fdt_ptr)  [axruntime/src/lib.rs]
+                      └─> main()  [kernel/src/main.rs]
+```
+
+#### 3.8.2 Secondary CPU 入口
+
+```rust
+// modules/axplat-aarch64-dyn/src/boot.rs
+
+#[cfg(feature = "smp")]
+#[somehal::secondary_entry]
+fn secondary(cpu_id: usize) {
+    dcache_all(CacheOp::Invalidate);  // 使数据缓存失效
+    let cpu_idx = crate::smp::cpu_id_to_idx(cpu_id);  // 转换 CPU ID
+    axplat::call_secondary_main(cpu_idx)  // 调用次级主函数
+}
+```
+
+**参数说明**：
+- `cpu_id`: 硬件 CPU ID（MPIDR），需要转换为逻辑 CPU 索引
+
+**调用链**：
+
+```
+secondary (somehal::secondary_entry)
+  └─> dcache_all(CacheOp::Invalidate)
+  └─> cpu_id_to_idx(cpu_id)
+  └─> axplat::call_secondary_main(cpu_idx)
+       └─> rust_main_secondary(cpu_idx)  [axruntime/src/lib.rs]
+            └─> 进入就绪状态，等待调度
+```
+
+**与 x86_64 的差异**：
+
+| 特性 | x86_64 | ARM64 |
+|------|--------|-------|
+| **Primary CPU 入口** | `rust_entry(magic, mbi)` | `main(args: &BootInfo)` |
+| **Secondary CPU 入口** | `rust_entry_secondary(_magic)` | `secondary(cpu_id: usize)` |
+| **参数传递** | Multiboot 魔数和信息结构体 | BootInfo 结构（包含 FDT） |
+| **CPU ID** | 从 APIC 读取 | 从 MPIDR 寄存器读取 |
+| **硬件描述** | Multiboot 信息结构体 | 设备树（DTB） |
+
+### 3.9 设备树解析
+
+ARM64 平台使用设备树（Device Tree）描述硬件配置，与 x86_64 平台的 Multiboot 信息结构体有显著差异。
+
+#### 3.9.1 FDT 解析器
+
+**获取 FDT 解析器**（[modules/axplat-aarch64-dyn/src/lib.rs](modules/axplat-aarch64-dyn/src/lib.rs)）：
 
 ```rust
 use fdt_parser::Fdt;
 use axplat::mem::phys_to_virt;
 
-/* 获取 FDT 解析器 */
 fn fdt() -> Fdt<'static> {
-    /* 从 somehal 获取 FDT 物理地址 */
+    // 从 somehal 获取 FDT 物理地址
     let paddr = somehal::boot_info()
         .fdt
         .expect("FDT is not available, please check the bootloader configuration");
 
-    /* 将物理地址转换为虚拟地址 */
+    // 将物理地址转换为虚拟地址
     let addr = phys_to_virt((paddr.as_ptr() as usize).into());
 
-    /* 创建 FDT 解析器 */
+    // 创建 FDT 解析器
     Fdt::from_ptr(NonNull::new(addr.as_mut_ptr()).unwrap())
         .expect("Failed to parse FDT")
 }
 ```
 
-**CPU ID 转换**（[modules/axplat-aarch64-dyn/src/smp.rs](modules/axplat-aarch64-dyn/src/smp.rs)）：
+**步骤说明**：
+
+1. **获取 FDT 物理地址**：从 `BootInfo` 中读取
+2. **转换为虚拟地址**：使用 `phys_to_virt` 转换
+3. **创建解析器**：使用 `fdt_parser` crate 解析 DTB
+
+**设备树结构**：
+
+```
+/dts-v1/;
+
+/ {
+    model = "QEMU ARM64 Virt Machine";
+    compatible = "linux,dummy-virt";
+
+    #address-cells = <2>;
+    #size-cells = <2>;
+
+    cpus {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        cpu@0 {
+            device_type = "cpu";
+            compatible = "arm,cortex-a57";
+            reg = <0x0>;
+            enable-method = "psci";
+        };
+
+        cpu@1 {
+            device_type = "cpu";
+            compatible = "arm,cortex-a57";
+            reg = <0x1>;
+            enable-method = "psci";
+        };
+    };
+
+    memory@40000000 {
+        device_type = "memory";
+        reg = <0x0 0x40000000 0x0 0x80000000>;
+    };
+
+    timer {
+        compatible = "arm,armv8-timer";
+        interrupts = <1 13 0xff01>,
+                     <1 14 0xff01>,
+                     <1 11 0xff01>,
+                     <1 10 0xff01>;
+    };
+
+    interrupt-controller@8000000 {
+        compatible = "arm,gic-v3";
+        reg = <0x0 0x8000000 0x0 0x10000>,
+              <0x0 0x80a0000 0x0 0xf60000>;
+        interrupts = <1 9 0xff04>;
+    };
+
+    uart@9000000 {
+        compatible = "ns16550a";
+        reg = <0x0 0x9000000 0x0 0x200>;
+        clock-frequency = <0>;
+        current-speed = <115200>;
+    };
+
+    psci {
+        compatible = "arm,psci-1.0";
+        method = "smc";
+    };
+};
+```
+
+#### 3.9.2 CPU ID 转换
+
+**CPU ID 列表初始化**（[modules/axplat-aarch64-dyn/src/smp.rs](modules/axplat-aarch64-dyn/src/smp.rs)）：
 
 ```rust
 use alloc::vec::Vec;
@@ -1319,25 +2170,35 @@ use spin::Once;
 
 static CPU_ID_LIST: Once<Vec<usize>> = Once::new();
 
-/* 初始化 CPU ID 列表 */
 pub fn init() {
     CPU_ID_LIST.call_once(|| {
         let mut ls = Vec::new();
-        let current = boot_info().cpu_id;
-        ls.push(current);
+        let current = boot_info().cpu_id;  // 当前 CPU 的硬件 ID（MPIDR）
+        ls.push(current);  // 首先添加 Primary CPU
 
-        /* 从设备树中解析所有 CPU */
+        // 从设备树中解析所有 CPU
         let cpu_id_ls = cpu_id_list();
         for cpu_id in cpu_id_ls {
             if cpu_id != current {
-                ls.push(cpu_id);
+                ls.push(cpu_id);  // 添加所有 Secondary CPU
             }
         }
         ls
     });
-}
 
-/* 从设备树中获取 CPU ID 列表 */
+    debug!("CPU ID list: {:#x?}", CPU_ID_LIST.wait());
+
+    unsafe {
+        let offset = boot_info().kcode_offset();
+        PHYS_VIRT_OFFSET = offset;
+        BOOT_PT = boot_info().pg_start as usize;
+    }
+}
+```
+
+**从设备树解析 CPU ID**：
+
+```rust
 fn cpu_id_list() -> Vec<usize> {
     let fdt = fdt();
     let nodes = fdt.find_nodes("/cpus/cpu");
@@ -1345,7 +2206,7 @@ fn cpu_id_list() -> Vec<usize> {
         .filter(|node| node.name().contains("cpu@"))
         .filter(|node| !matches!(node.status(), Some(Status::Disabled)))
         .map(|node| {
-            /* 获取 CPU 的 reg 属性（MPIDR） */
+            // 获取 CPU 的 reg 属性（MPIDR）
             let reg = node
                 .reg()
                 .unwrap_or_else(|| panic!("cpu {} reg not found", node.name()))
@@ -1355,8 +2216,12 @@ fn cpu_id_list() -> Vec<usize> {
         })
         .collect()
 }
+```
 
-/* 将逻辑 CPU 索引转换为硬件 CPU ID */
+**CPU ID 转换函数**：
+
+```rust
+// 将逻辑 CPU 索引转换为硬件 CPU ID
 pub fn cpu_idx_to_id(cpu_idx: usize) -> usize {
     let cpu_id_list = CPU_ID_LIST.wait();
     if cpu_idx < cpu_id_list.len() {
@@ -1366,7 +2231,7 @@ pub fn cpu_idx_to_id(cpu_idx: usize) -> usize {
     }
 }
 
-/* 将硬件 CPU ID 转换为逻辑 CPU 索引 */
+// 将硬件 CPU ID 转换为逻辑 CPU 索引
 pub fn cpu_id_to_idx(cpu_id: usize) -> usize {
     let cpu_id_list = CPU_ID_LIST.wait();
     if let Some(idx) = cpu_id_list.iter().position(|&id| id == cpu_id) {
@@ -1376,6 +2241,418 @@ pub fn cpu_id_to_idx(cpu_id: usize) -> usize {
     }
 }
 ```
+
+**设备树 CPU 节点示例**：
+
+```dts
+cpus {
+    #address-cells = <1>;
+    #size-cells = <0>;
+
+    cpu@0 {
+        device_type = "cpu";
+        compatible = "arm,cortex-a57";
+        reg = <0x0>;  // MPIDR (CPU ID)
+        enable-method = "psci";
+    };
+
+    cpu@1 {
+        device_type = "cpu";
+        compatible = "arm,cortex-a57";
+        reg = <0x1>;  // MPIDR (CPU ID)
+        enable-method = "psci";
+    };
+};
+```
+
+**MPIDR 寄存器格式**：
+
+```
+MPIDR_EL1 (Multiprocessor Affinity Register)
+
+Bits   Field        Description
+-----  -----------  --------------------------------
+[0]    Aff0         CPU 核心号
+[7:1]  Aff1         CPU 集群号
+[15:8] Aff2         集群组号
+[23:16] Aff3        集群组组号
+[30:24] -           保留
+[31]   U            位 0 的有效性（1 = 有效）
+```
+
+**与 x86_64 的差异**：
+
+| 特性 | x86_64 | ARM64 |
+|------|--------|-------|
+| **CPU ID 获取** | 从 APIC ID 读取 | 从设备树读取 |
+| **CPU ID 格式** | APIC ID（本地 APIC） | MPIDR（Multiprocessor Affinity Register） |
+| **CPU 唤醒** | INIT-SIPI-SIPI | PSCI 调用 |
+| **CPU 数量** | 从 MADT 表读取 | 从设备树读取 |
+| **CPU 拓扑** | 从 MADT 表读取 | 从设备树读取 |
+| **多处理器术语** | BSP + AP | Primary CPU + Secondary CPU |
+
+#### 3.9.3 内存区域解析
+
+**从 BootInfo 获取内存区域**（[modules/axplat-aarch64-dyn/src/mem.rs](modules/axplat-aarch64-dyn/src/mem.rs)）：
+
+```rust
+use axplat::mem::{MemIf, PhysAddr, VirtAddr};
+use somehal::{boot_info, MemoryRegionKind};
+use spin::Once;
+
+struct MemIfImpl;
+
+static RAM_LIST: Once<Vec<RawRange, 32>> = Once::new();
+static RESERVED_LIST: Once<Vec<RawRange, 32>> = Once::new();
+static MMIO: Once<Vec<RawRange, 32>> = Once::new();
+
+// 设置内存管理
+pub fn setup() {
+    // 计算虚拟地址偏移
+    unsafe {
+        VA_OFFSET = boot_info().kimage_start_vma as usize
+                  - boot_info().kimage_start_lma as usize;
+    };
+
+    // 初始化 RAM 列表
+    RAM_LIST.call_once(|| {
+        let mut ram_list = Vec::new();
+        for region in boot_info()
+            .memory_regions
+            .iter()
+            .filter(|one| matches!(one.kind, MemoryRegionKind::Ram))
+            .map(|one| (one.start, one.end - one.start))
+        {
+            let _ = ram_list.push(region);
+        }
+        ram_list
+    });
+
+    // 初始化保留区域列表
+    RESERVED_LIST.call_once(|| {
+        let mut rsv_list = Vec::new();
+
+        // 添加内核镜像区域
+        let head_start = boot_info().kimage_start_lma as usize;
+        let head_section = (head_start, (_skernel as usize) - va_offset() - head_start);
+        rsv_list.push(head_section).unwrap();
+
+        // 添加保留区域
+        for region in boot_info()
+            .memory_regions
+            .iter()
+            .filter(|one| {
+                matches!(
+                    one.kind,
+                    MemoryRegionKind::Reserved | MemoryRegionKind::Bootloader
+                )
+            })
+            .map(|one| {
+                (
+                    one.start.align_down_4k(),
+                    one.end.align_up_4k() - one.start.align_down_4k(),
+                )
+            })
+        {
+            let _ = rsv_list.push(region);
+        }
+
+        rsv_list
+    });
+
+    // 初始化 MMIO 区域
+    MMIO.call_once(|| {
+        let mut mmio_list = Vec::new();
+        if let Some(debug) = &boot_info().debug_console {
+            let start = debug.base_phys.align_down_4k();
+            let _ = mmio_list.push((start, 0x1000));
+        }
+        mmio_list
+    });
+}
+```
+
+**MemoryRegionKind 枚举**：
+
+```rust
+pub enum MemoryRegionKind {
+    Ram,           // 可用内存
+    Reserved,      // 保留内存
+    Bootloader,    // 引导加载器使用的内存
+    Unknown,       // 未知类型
+}
+```
+
+**设备树内存节点示例**：
+
+```dts
+memory@40000000 {
+    device_type = "memory";
+    reg = <0x0 0x40000000 0x0 0x80000000>;  // 起始地址，大小
+};
+
+reserved-memory {
+    #address-cells = <2>;
+    #size-cells = <2>;
+    ranges;
+
+    /* 保留区域 1 */
+    reserved@80000000 {
+        reg = <0x0 0x80000000 0x0 0x100000>;
+        no-map;
+    };
+
+    /* 保留区域 2 */
+    reserved@90000000 {
+        reg = <0x0 0x90000000 0x0 0x100000>;
+        no-map;
+    };
+};
+```
+
+#### 3.9.4 中断控制器解析
+
+**从设备树解析 GIC**（[modules/axplat-aarch64-dyn/src/irq/mod.rs](modules/axplat-aarch64-dyn/src/irq/mod.rs)）：
+
+```rust
+use arm_gic_driver::{v2::Gic, v3::Gic};
+use rdrive::Device;
+use rdif_intc::Intc;
+use core::sync::atomic::AtomicI32;
+
+static VERSION: AtomicI32 = AtomicI32::new(0);
+
+// 初始化 GIC（分发器）
+pub(crate) fn init() {
+    let intc = get_gicd();
+    debug!("Initializing GICD...");
+    let mut gic = intc.lock().unwrap();
+    gic.open().unwrap();
+    debug!("GICD initialized");
+}
+
+// 初始化当前 CPU 的中断接口
+pub(crate) fn init_current_cpu() {
+    let mut intc = get_gicd().lock().unwrap();
+
+    // 检测 GIC 版本并初始化
+    if let Some(v) = intc.typed_mut::<v2::Gic>() {
+        let cpu = v.cpu_interface();
+        v2::TRAP.call_once(|| cpu.trap_operations());
+        v2::CPU_IF.with_current(|c| {
+            c.call_once(|| Mutex::new(cpu));
+        });
+        VERSION.store(2, core::sync::atomic::Ordering::SeqCst);
+    }
+
+    if let Some(v) = intc.typed_mut::<v3::Gic>() {
+        let cpu = v.cpu_interface();
+        v3::TRAP.call_once(|| cpu.trap_operations());
+        v3::CPU_IF.with_current(|c| {
+            c.call_once(|| Mutex::new(cpu));
+        });
+        VERSION.store(3, core::sync::atomic::Ordering::SeqCst);
+    }
+
+    // 调用特定版本的初始化函数
+    match gic_version() {
+        2 => v2::init_current_cpu(),
+        3 => v3::init_current_cpu(),
+        _ => panic!("Unsupported GIC version"),
+    }
+
+    debug!("GIC initialized for current CPU");
+}
+
+// 获取 GIC 版本
+fn gic_version() -> i32 {
+    VERSION.load(core::sync::atomic::Ordering::SeqCst)
+}
+```
+
+**设备树 GIC 节点示例**：
+
+```dts
+/* GICv2 */
+interrupt-controller@8000000 {
+    compatible = "arm,gic-400";
+    reg = <0x0 0x8000000 0x0 0x1000>,  // 分发器
+          <0x0 0x8010000 0x0 0x1000>,  // CPU 接口
+          <0x0 0x8020000 0x0 0x2000>,  // 虚拟 CPU 接口
+          <0x0 0x8040000 0x0 0x2000>;  // 虚拟 CPU 接口
+    interrupts = <1 9 0xff04>;
+};
+
+/* GICv3 */
+interrupt-controller@8000000 {
+    compatible = "arm,gic-v3";
+    reg = <0x0 0x8000000 0x0 0x10000>,  // 分发器
+          <0x0 0x80a0000 0x0 0xf60000>; // 重分发器
+    interrupts = <1 9 0xff04>;
+};
+```
+
+**与 x86_64 的差异**：
+
+| 特性 | x86_64 | ARM64 |
+|------|--------|-------|
+| **中断控制器** | APIC（本地 + I/O） | GIC（Generic Interrupt Controller） |
+| **中断控制器版本** | 固定（Local APIC + IOAPIC） | 可变（GICv2 或 GICv3） |
+| **中断控制器检测** | 从 MADT 表读取 | 从设备树读取 |
+| **中断数量** | 256 个 | 最多 1020 个（GICv3） |
+| **中断类型** | 固定中断、PIE、SMI、NMI | SGI、PPI、SPI |
+
+#### 3.9.5 定时器解析
+
+**从设备树解析定时器**（[modules/axplat-aarch64-dyn/src/time.rs](modules/axplat-aarch64-dyn/src/time.rs)）：
+
+```rust
+use aarch64_cpu::registers::*;
+use axplat::time::TimeIf;
+use rdrive::{IrqConfig, PlatformDevice, module_driver};
+
+static TIMER_IRQ_CONFIG: LazyInit<IrqConfig> = LazyInit::new();
+
+struct TimeIfImpl;
+
+// 实现 TimeIf trait
+#[impl_plat_interface]
+impl TimeIf for TimeIfImpl {
+    // 获取当前硬件时钟滴答数
+    fn current_ticks() -> u64 {
+        CNTPCT_EL0.get()  // 物理计数寄存器
+    }
+
+    // 将硬件滴答转换为纳秒
+    fn ticks_to_nanos(ticks: u64) -> u64 {
+        let freq = CNTFRQ_EL0.get();  // 计数器频率
+        (ticks * axplat::time::NANOS_PER_SEC) / freq
+    }
+
+    // 将纳秒转换为硬件滴答
+    fn nanos_to_ticks(nanos: u64) -> u64 {
+        let freq = CNTFRQ_EL0.get();
+        (nanos * freq) / axplat::time::NANOS_PER_SEC
+    }
+
+    // 获取定时器中断号
+    #[cfg(feature = "irq")]
+    fn irq_num() -> usize {
+        TIMER_IRQ_CONFIG.irq.into()
+    }
+
+    // 设置单次定时器
+    #[cfg(feature = "irq")]
+    fn set_oneshot_timer(deadline_ns: u64) {
+        let cnptct = CNTPCT_EL0.get();
+        let cnptct_deadline = Self::nanos_to_ticks(deadline_ns);
+        if cnptct < cnptct_deadline {
+            let interval = cnptct_deadline - cnptct;
+            debug_assert!(interval <= u32::MAX as u64);
+            set_tval(interval);
+        } else {
+            set_tval(0);
+        }
+    }
+}
+
+// 设置定时器值寄存器
+fn set_tval(tval: u64) {
+    #[cfg(feature = "hv")]
+    unsafe {
+        // 虚拟化模式：使用 EL2 物理定时器
+        core::arch::asm!("msr CNTHP_TVAL_EL2, {0:x}", in(reg) tval);
+    }
+    #[cfg(not(feature = "hv"))]
+    {
+        // 非虚拟化模式：使用 EL0 物理定时器
+        CNTP_TVAL_EL0.set(tval);
+    }
+}
+
+// 启用定时器
+#[cfg(feature = "hv")]
+pub fn enable() {
+    CNTHP_CTL_EL2.write(CNTHP_CTL_EL2::ENABLE::SET);
+    set_tval(0);
+}
+#[cfg(not(feature = "hv"))]
+pub fn enable() {
+    CNTP_CTL_EL0.write(CNTP_CTL_EL0::ENABLE::SET);
+    set_tval(0);
+}
+
+// 驱动探测（通过设备树）
+module_driver!(
+    name: "ARMv8 Timer",
+    level: ProbeLevel::PreKernel,
+    priority: ProbePriority::DEFAULT,
+    probe_kinds: &[
+        ProbeKind::Fdt {
+            compatibles: &["arm,armv8-timer"],
+            on_probe: probe
+        }
+    ],
+);
+
+fn probe(_fdt: FdtInfo<'_>, _dev: PlatformDevice) -> Result<(), OnProbeError> {
+    #[cfg(not(feature = "irq"))]
+    let irq = IrqConfig {
+        irq: 0.into(),
+        trigger: rdif_intc::Trigger::EdgeBoth,
+        is_private: true,
+    };
+    #[cfg(feature = "irq")]
+    let irq = {
+        // 从设备树中解析定时器中断配置
+        #[cfg(not(feature = "hv"))]
+        let irq_idx = 1;  // 非虚拟化模式
+        #[cfg(feature = "hv")]
+        let irq_idx = 3;  // 虚拟化模式
+        crate::irq::parse_fdt_irqs(&_fdt.interrupts()[irq_idx])
+    };
+    TIMER_IRQ_CONFIG.call_once(|| irq);
+    Ok(())
+}
+```
+
+**设备树定时器节点示例**：
+
+```dts
+timer {
+    compatible = "arm,armv8-timer";
+    /* 中断列表 */
+    interrupts = <1 13 0xff01>,  // EL1 物理定时器
+                 <1 14 0xff01>,  // EL1 虚拟定时器
+                 <1 11 0xff01>,  // EL1 物理定时器（安全）
+                 <1 10 0xff01>;  // EL1 虚拟定时器（安全）
+    clock-frequency = <0>;  // 0 表示使用 CNTFRQ_EL0 的值
+};
+```
+
+**ARM Generic Timer 寄存器**：
+
+| 寄存器 | 说明 | 访问级别 |
+|--------|------|---------|
+| **CNTFRQ_EL0** | 定时器频率寄存器 | EL0/EL1 |
+| **CNTPCT_EL0** | 物理计数寄存器（只读） | EL0/EL1 |
+| **CNTVCT_EL0** | 虚拟计数寄存器（只读） | EL0/EL1 |
+| **CNTP_TVAL_EL0** | 物理定时器值寄存器 | EL0/EL1 |
+| **CNTP_CTL_EL0** | 物理定时器控制寄存器 | EL0/EL1 |
+| **CNTV_TVAL_EL0** | 虚拟定时器值寄存器 | EL0/EL1 |
+| **CNTV_CTL_EL0** | 虚拟定时器控制寄存器 | EL0/EL1 |
+| **CNTHP_TVAL_EL2** | EL2 物理定时器值寄存器 | EL2 |
+| **CNTHP_CTL_EL2** | EL2 物理定时器控制寄存器 | EL2 |
+
+**与 x86_64 的差异**：
+
+| 特性 | x86_64 | ARM64 |
+|------|--------|-------|
+| **定时器** | LAPIC Timer | ARM Generic Timer |
+| **定时器数量** | 每个 CPU 一个 | 每个 CPU 多个（物理/虚拟） |
+| **定时器频率** | 可配置（通过 APIC） | 固定（通过 CNTFRQ_EL0） |
+| **中断向量** | 固定（通常为 32） | 可配置（从设备树读取） |
+| **定时器模式** | 周期性/单次 | 单次 |
 
 ---
 
