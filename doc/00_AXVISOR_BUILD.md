@@ -569,9 +569,7 @@ x86_64 平台使用 `x86_64-unknown-none` 目标三元组，工具链选择过�
 
 ##### 3.2.3.1 加载配置文件
 
-配置加载是构建流程的第一步，负责将板级配置文件转换为 Cargo 可以理解的构建配置结构。这个过程涉及多个数据结构的转换和环境变量的设置。
-
-**1.1 读取板级配置文件**
+读取板级配置文件是构建流程的第一步，负责将板级配置文件转换为 Cargo 可以理解的构建配置结构 `.build.toml`。这个过程涉及多个数据结构的转换和环境变量的设置。
 
 当用户执行 `cargo xtask defconfig qemu-x86_64` 时，xtask 会执行以下操作：
 
@@ -596,9 +594,7 @@ pub fn run_defconfig(&mut self, board: &str) -> anyhow::Result<()> {
 }
 ```
 
-**1.2 解析配置为 Cargo 结构**
-
-在执行 `cargo xtask build` 时，xtask 会读取 `.build.toml` 并进行详细解析：
+在执行 `cargo xtask build` 时，xtask 会读取 `.build.toml` 并解析配置为 Cargo 结构：
 
 ```rust
 // xtask/src/tbuld.rs
@@ -688,8 +684,6 @@ pub fn load_config(&mut self) -> anyhow::Result<Cargo> {
 }
 ```
 
-**配置转换的关键点**：
-
 1. **数据结构转换**：从板级配置的 `Config` 结构转换为 ostool 的 `Cargo` 结构
 2. **环境变量设置**：将配置项转换为环境变量，供后续 build.rs 使用
 3. **特性扩展**：根据日志级别自动添加对应的 feature
@@ -697,123 +691,121 @@ pub fn load_config(&mut self) -> anyhow::Result<Cargo> {
 
 ##### 3.2.3.2 生成编译命令
 
-在配置加载完成后，ostool 的 CargoBuilder 负责构建实际的 cargo 命令。这个过程涉及多个参数的组装和环境变量的传递。
+在加载 `.build.toml` 配置文件完成后，ostool 的 CargoBuilder 负责构建实际的 cargo 命令。这个过程涉及多个参数的组装和环境变量的传递。
 
-**2.1 创建基础命令**
+1. **准备生成 cargo 命令**
 
-```rust
-// tmp/ostool/ostool/src/build/cargo_builder.rs
-async fn build_cargo_command(&mut self) -> anyhow::Result<Command> {
-    // 1. 创建 cargo 命令
-    let mut cmd = self.ctx.command("cargo");
-    cmd.arg("build");  // 指定子命令
-
-    // 2. 设置环境变量（从配置中获取）
-    // 
-    // 重要说明：此处的 cmd.env(k, v) 是在【执行阶段】从配置中读取
-    // 环境变量并设置到实际的子进程（std::process::Command）中。
-    // 这些环境变量将在执行 cargo 命令时生效，被 cargo 子进程继承。
-    //
-    // 完整流程：
-    //   配置阶段（tbuld.rs）: cargo.env.insert() → 存储到 HashMap
-    //         ↓
-    //   执行阶段（cargo_builder.rs）: cmd.env(k, v) → 设置到子进程
-    //         ↓
-    //   子进程执行：cargo 子进程继承这些环境变量
-    //
-    for (key, value) in &self.config.env {
-        println!("{}", format!("{key}={value}").cyan());  // 打印环境变量
-        cmd.env(key, value);
-        // 设置的环境变量包括：
-        // - AXVISOR_SMP=1
-        // - AXVISOR_VM_CONFIGS=...
-        // 这些环境变量会被 cargo 子进程及其调用的 build.rs 继承
+    ```rust
+    // tmp/ostool/ostool/src/build/cargo_builder.rs
+    async fn build_cargo_command(&mut self) -> anyhow::Result<Command> {
+        // 1. 创建 cargo 命令
+        let mut cmd = self.ctx.command("cargo");
+        cmd.arg("build");  // 指定子命令
+    
+        // 2. 设置环境变量（从配置中获取）
+        // 
+        // 重要说明：此处的 cmd.env(k, v) 是在【执行阶段】从配置中读取
+        // 环境变量并设置到实际的子进程（std::process::Command）中。
+        // 这些环境变量将在执行 cargo 命令时生效，被 cargo 子进程继承。
+        //
+        // 完整流程：
+        //   配置阶段（tbuld.rs）: cargo.env.insert() → 存储到 HashMap
+        //         ↓
+        //   执行阶段（cargo_builder.rs）: cmd.env(k, v) → 设置到子进程
+        //         ↓
+        //   子进程执行：cargo 子进程继承这些环境变量
+        //
+        for (key, value) in &self.config.env {
+            println!("{}", format!("{key}={value}").cyan());  // 打印环境变量
+            cmd.env(key, value);
+            // 设置的环境变量包括：
+            // - AXVISOR_SMP=1
+            // - AXVISOR_VM_CONFIGS=...
+            // 这些环境变量会被 cargo 子进程及其调用的 build.rs 继承
+        }
+    
+        // 3. 指定要构建的包
+        cmd.arg("-p").arg(&self.config.package);
+        // 例如: -p axvisor
+    
+        // 4. 指定目标三元组
+        cmd.arg("--target").arg(&self.config.target);
+        // 例如: --target x86_64-unknown-none
+    
+        Ok(cmd)
     }
+    ```
 
-    // 3. 指定要构建的包
-    cmd.arg("-p").arg(&self.config.package);
-    // 例如: -p axvisor
+2. **处理编译特性**
 
-    // 4. 指定目标三元组
-    cmd.arg("--target").arg(&self.config.target);
-    // 例如: --target x86_64-unknown-none
+    ```rust
+    // 继续在 build_cargo_command 中
+    // 5. 构建特性列表
+    let features = self.build_features();
+    
+    fn build_features(&self) -> Vec<String> {
+        let mut features = self.config.features.clone();
+    
+        // 添加日志级别特性（已在 3.2.3.1 加载配置文件中添加）
+        // features 现在包含:
+        // - "axstd/myplat"
+        // - "ept-level-4"
+        // - "fs"
+        // - "log/release_max_level_info"
+    
+        features
+    }
+    
+    // 6. 添加特性参数
+    cmd.arg("--features").arg(features.join(","));
+    // 例如: --features axstd/myplat,ept-level-4,fs,log/release_max_level_info
+    ```
 
-    Ok(cmd)
-}
-```
+3. **设置编译模式**
 
-**2.2 处理编译特性**
+    ```rust
+    // 7. 根据调试/发布模式设置参数
+    if !self.ctx.debug {
+        cmd.arg("--release");
+        // 如果不是 debug 模式，添加 --release 参数
+    }
+    
+    // 8. 添加额外的 cargo 参数
+    for arg in &self.config.args {
+        cmd.arg(arg);
+        // 添加用户指定的额外参数
+    }
+    
+    Ok(cmd)  // 返回完整的 Command 对象
+    ```
 
-```rust
-// 继续在 build_cargo_command 中
-// 5. 构建特性列表
-let features = self.build_features();
+4. **实际执行的命令**
 
-fn build_features(&self) -> Vec<String> {
-    let mut features = self.config.features.clone();
-
-    // 添加日志级别特性（已在 3.2.3.1 加载配置文件中添加）
-    // features 现在包含:
-    // - "axstd/myplat"
-    // - "ept-level-4"
-    // - "fs"
-    // - "log/release_max_level_info"
-
-    features
-}
-
-// 6. 添加特性参数
-cmd.arg("--features").arg(features.join(","));
-// 例如: --features axstd/myplat,ept-level-4,fs,log/release_max_level_info
-```
-
-**2.3 设置编译模式**
-
-```rust
-// 7. 根据调试/发布模式设置参数
-if !self.ctx.debug {
-    cmd.arg("--release");
-    // 如果不是 debug 模式，添加 --release 参数
-}
-
-// 8. 添加额外的 cargo 参数
-for arg in &self.config.args {
-    cmd.arg(arg);
-    // 添加用户指定的额外参数
-}
-
-Ok(cmd)  // 返回完整的 Command 对象
-```
-
-**2.4 实际执行的命令**
-
-经过上述步骤，最终生成的 cargo 命令为：
-
-```bash
-cargo build \
-    -p axvisor \
-    --target x86_64-unknown-none \
-    --features axstd/myplat,ept-level-4,fs,log/release_max_level_info \
-    --release
-```
-
-**命令参数详解**：
-
-- `cargo build`: Cargo 的构建子命令
-- `-p axvisor`: 指定构建 axvisor 包（对应 kernel/Cargo.toml）
-- `--target x86_64-unknown-none`: 指定目标平台为 x86_64 裸机
-- `--features ...`: 启用指定的编译特性
-  - `axstd/myplat`: 使用静态平台配置
-  - `ept-level-4`: 启用 4 级扩展页表
-  - `fs`: 启用文件系统支持
-  - `log/release_max_level_info`: 设置日志级别为 Info
-- `--release`: 使用 release 模式编译（优化）
+    经过上述步骤，最终生成的 cargo 命令为：
+    
+    ```bash
+    cargo build \
+        -p axvisor \
+        --target x86_64-unknown-none \
+        --features axstd/myplat,ept-level-4,fs,log/release_max_level_info \
+        --release
+    ```
+    
+    **命令参数详解**：
+    
+    - `cargo build`: Cargo 的构建子命令
+    - `-p axvisor`: 指定构建 axvisor 包（对应 kernel/Cargo.toml）
+    - `--target x86_64-unknown-none`: 指定目标平台为 x86_64 裸机
+    - `--features ...`: 启用指定的编译特性
+      - `axstd/myplat`: 使用静态平台配置
+      - `ept-level-4`: 启用 4 级扩展页表
+      - `fs`: 启用文件系统支持
+      - `log/release_max_level_info`: 设置日志级别为 Info
+    - `--release`: 使用 release 模式编译（优化）
 
 ##### 3.2.3.3 解析 Cargo.toml
 
-AxVisor 是一个 Cargo workspace 项目，包含多个 crate，每个都有自己的 `Cargo.toml` 文件。Cargo 按照以下顺序处理这些文件：
-
-**3.1 完整处理流程**
+AxVisor 是一个 Cargo workspace 项目，包含多个 crate，每个都有自己的 `Cargo.toml` 文件。执行生成的 cargo 命令后就会按照以下顺序处理这些文件：
 
 ```
 1. 用户执行: cargo build --target x86_64-unknown-none
@@ -860,20 +852,14 @@ AxVisor 是一个 Cargo workspace 项目，包含多个 crate，每个都有自�
    └── 最后编译 kernel（生成 axvisor 可执行文件）
 ```
 
-**3.2 条件依赖的解析时机**
-
-关键点：**Cargo 在解析每个 Cargo.toml 时（在 3.2.3.3 的步骤 4 中），直接根据命令行参数 `--target` 判断条件依赖，不依赖环境变量**
+**条件依赖的解析时机：Cargo 在解析每个 Cargo.toml 时（在 3.2.3.3 的步骤 4 中），直接根据命令行参数 `--target` 判断条件依赖，不依赖环境变量**
 
 - 每个 `Cargo.toml` 在被解析时，Cargo 都会根据命令行参数 `--target` 判断其中的条件依赖
 - 这意味着 `axruntime/Cargo.toml` 中的 `[target.'cfg(target_arch = "x86_64")'.dependencies]` 会在解析该文件时立即判断
 - 不匹配平台的依赖（如 ARM 平台编译时的 x86 依赖）会被完全忽略，不会下载或编译
 - 环境变量是在后续执行 build.rs 之前才设置的
 
-**3.2.1 条件依赖的判断机制**
-
 根据 [Cargo 官方文档 - Platform Specific Dependencies](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#platform-specific-dependencies)，Cargo 使用以下机制判断条件依赖：
-
-**判断流程**：
 
 ```
 1. Cargo 读取命令行参数 --target
@@ -901,8 +887,6 @@ AxVisor 是一个 Cargo workspace 项目，包含多个 crate，每个都有自�
 
 5. 只包含匹配成功的依赖到依赖图中
 ```
-
-**实际示例**：
 
 以 [modules/axruntime/Cargo.toml](../modules/axruntime/Cargo.toml) 为例：
 
@@ -965,8 +949,6 @@ rustc --print=cfg --target aarch64-unknown-none-softfloat
 # 但不包含：axplat-x86-qemu-q35
 ```
 
-**关键要点**：
-
 1. **不依赖环境变量**：判断条件依赖时，Cargo 不使用 `CARGO_CFG_*` 环境变量，而是直接调用 `rustc --print=cfg`
 2. **早期判断**：在解析 Cargo.toml 时就立即判断，而不是等到编译时
 3. **完全忽略**：不匹配的依赖会被完全忽略，不会下载、编译或链接
@@ -976,15 +958,7 @@ rustc --print=cfg --target aarch64-unknown-none-softfloat
 
 在解析完所有 Cargo.toml 并确定编译顺序后，Cargo 在**执行 build.rs 之前**会设置一系列 `CARGO_CFG_*` 环境变量，供 build.rs 使用。
 
-**官方文档依据**：
-
-根据 [Cargo Build Scripts 官方文档](https://doc.rust-lang.org/cargo/reference/build-scripts.html#inputs-to-the-build-script)：
-
-> When the build script is run, there are a number of inputs to the build script, all passed in the form of environment variables.
-
-**环境变量的作用**：
-
-这些 `CARGO_CFG_*` 环境变量（如 `CARGO_CFG_TARGET_ARCH`、`CARGO_CFG_TARGET_OS` 等）是：
+根据 [Cargo Build Scripts 官方文档](https://doc.rust-lang.org/cargo/reference/build-scripts.html#inputs-to-the-build-script)：`When the build script is run, there are a number of inputs to the build script, all passed in the form of environment variables.`这些 `CARGO_CFG_*` 环境变量（如 `CARGO_CFG_TARGET_ARCH`、`CARGO_CFG_TARGET_OS` 等）是：
 - **设置时机**：在执行 build.rs 之前
 - **用途**：供 build.rs 脚本读取和使用
 - **不用于**：解析 Cargo.toml 中的条件依赖
@@ -1012,11 +986,7 @@ CARGO_CFG_TARGET_FEATURE=
 
 ##### 3.2.3.5 build.rs 执行
 
-build.rs 是 Cargo 的构建脚本，在编译主代码之前执行。它可以根据环境变量和配置文件生成代码、设置编译选项等。
-
-**build.rs 的编译和执行流程**：
-
-根据 [Cargo 官方文档 - Build Scripts](https://doc.rust-lang.org/cargo/reference/build-scripts.html#life-cycle-of-a-build-script)，build.rs 的执行分为以下阶段：
+build.rs 是 Cargo 的构建脚本，在编译主代码之前执行。它可以根据环境变量和配置文件生成代码、设置编译选项等。根据 [Cargo 官方文档 - Build Scripts](https://doc.rust-lang.org/cargo/reference/build-scripts.html#life-cycle-of-a-build-script)，build.rs 的执行分为以下阶段：
 
 ```
 阶段 1: 编译 build.rs
@@ -1118,7 +1088,7 @@ fn main() -> anyhow::Result<()> {
 }
 ```
 
-**4.2 读取 VM 配置**
+**读取 VM 配置**
 
 ```rust
 // 4. 读取 VM 配置文件
@@ -1152,7 +1122,7 @@ let config_files = get_configs()?;  // 从 AXVISOR_VM_CONFIGS 环境变量
 let mut output_file = open_output_file();  // $(OUT_DIR)/vm_configs.rs
 ```
 
-**4.3 生成 vm_configs.rs**
+**生成 vm_configs.rs**
 
 ```rust
 // 5. 生成 vm_configs.rs 文件
@@ -1193,7 +1163,7 @@ match config_files {
 }
 ```
 
-**4.4 设置重新构建触发器**
+**设置重新构建触发器**
 
 ```rust
 // 6. 设置重新构建触发器
@@ -1205,7 +1175,6 @@ Ok(())
 }
 ```
 
-**build.rs 的作用总结**：
 1. **平台识别**：根据目标架构确定平台标识
 2. **条件编译设置**：设置 `platform` cfg 供代码使用
 3. **配置嵌入**：将 VM 配置文件内容嵌入到生成的代码中
@@ -1709,227 +1678,224 @@ ARM64 平台的构建流程与 x86_64 平台在整体架构上保持一致，但
 
 ARM64 平台的配置加载流程与 x86_64 类似，但处理的是 ARM 特定的配置参数。
 
-**1.1 读取板级配置文件**
+1. **读取板级配置文件**
 
-当用户执行 `cargo xtask defconfig phytiumpi` 时，xtask 会执行以下操作：
-
-```rust
-// xtask/src/tbuld.rs 中的简化流程
-pub fn run_defconfig(&mut self, board: &str) -> anyhow::Result<()> {
-    // 1. 定位板级配置文件
-    let board_config_path = format!("configs/board/{}.toml", board);
-    // 例如: configs/board/phytiumpi.toml
-
-    // 2. 读取板级配置内容
-    let board_config_str = std::fs::read_to_string(&board_config_path)?;
-
-    // 3. 解析为 Config 结构体
-    let config: Config = toml::from_str(&board_config_str)?;
-
-    // 4. 转换并保存为 .build.toml（供后续使用）
-    let build_config_path = ".build.toml";
-    std::fs::write(build_config_path, board_config_str)?;
-
-    Ok(())
-}
-```
-
-**1.2 解析配置为 Cargo 结构**
-
-在执行 `cargo xtask build` 时，xtask 会读取 `.build.toml` 并进行详细解析：
-
-```rust
-// xtask/src/tbuld.rs
-pub fn load_config(&mut self) -> anyhow::Result<Cargo> {
-    // 1. 读取 .build.toml（由 defconfig 生成）
-    let config_path = ".build.toml";
-    let config_str = std::fs::read_to_string(config_path)?;
-
-    // 2. 解析 TOML 为 Config 结构体
-    let config: Config = toml::from_str(&config_str)?;
-
-    // Config 结构包含以下字段：
-    // - target: "aarch64-unknown-none-softfloat"
-    // - features: ["dyn-plat", "axstd/bus-mmio", "fs", ...]
-    // - log: Some("Info")
-    // - cargo_args: []
-    // - to_bin: true（与 x86 的关键差异）
-    // - smp: Some(1)
-    // - vm_configs: []
-
-    // 3. 转换为 ostool 的 Cargo 结构
-    let mut cargo = Cargo {
-        target: config.target,
-        package: "axvisor".to_string(),
-        features: config.features,
-        log: config.log,
-        args: config.cargo_args,
-        to_bin: config.to_bin,  // true（ARM 平台需要生成 .bin 文件）
-        env: HashMap::new(),
-        ..Default::default()
-    };
-
-    // 4. 处理 VM 配置文件
-    let vm_config_paths = if config.vm_configs.is_empty() {
-        vec![]  // 使用默认配置
-    } else {
-        // 解析 VM 配置文件路径
-        config.vm_configs.iter()
-            .map(|vm_path| std::path::PathBuf::from(vm_path))
-            .collect()
-    };
-
-    // 5. 设置环境变量（关键步骤）
-    // 
-    // 重要说明：此处的 cargo.env.insert() 是在【配置阶段】将环境变量
-    // 存储到 Cargo 结构体的 env 字段（HashMap<String, String>）中，
-    // 此时还没有执行任何命令。这些环境变量将在后续的执行阶段
-    //（cargo_builder.rs 的 build_cargo_command 函数中）被读取并
-    // 设置到实际的子进程中。
-    //
-    // 详细流程：
-    //   配置阶段（tbuld.rs）: cargo.env.insert() → 存储到 HashMap
-    //         ↓
-    //   执行阶段（cargo_builder.rs）: cmd.env(k, v) → 设置到子进程
-    //
-    // 5.1 设置 SMP 核心数
-    if let Some(smp) = config.smp {
-        cargo.env.insert(
-            "AXVISOR_SMP".to_string(),
-            smp.to_string()
-        );
-        // 例如: AXVISOR_SMP=1
-        // 此时环境变量被存储在 cargo.env HashMap 中，供后续使用
+    当用户执行 `cargo xtask defconfig phytiumpi` 时，xtask 会执行以下操作：
+    
+    ```rust
+    // xtask/src/tbuld.rs 中的简化流程
+    pub fn run_defconfig(&mut self, board: &str) -> anyhow::Result<()> {
+        // 1. 定位板级配置文件
+        let board_config_path = format!("configs/board/{}.toml", board);
+        // 例如: configs/board/phytiumpi.toml
+    
+        // 2. 读取板级配置内容
+        let board_config_str = std::fs::read_to_string(&board_config_path)?;
+    
+        // 3. 解析为 Config 结构体
+        let config: Config = toml::from_str(&board_config_str)?;
+    
+        // 4. 转换并保存为 .build.toml（供后续使用）
+        let build_config_path = ".build.toml";
+        std::fs::write(build_config_path, board_config_str)?;
+    
+        Ok(())
     }
+    ```
 
-    // 5.2 设置 VM 配置文件路径列表
-    if !vm_config_paths.is_empty() {
-        let value = std::env::join_paths(&vm_config_paths)?;
-        cargo.env.insert(
-            "AXVISOR_VM_CONFIGS".to_string(),
-            value
-        );
-        // 此时环境变量被存储在 cargo.env HashMap 中，供后续使用
+2. **解析配置为 Cargo 结构**
+
+    在执行 `cargo xtask build` 时，xtask 会读取 `.build.toml` 并进行详细解析：
+    
+    ```rust
+    // xtask/src/tbuld.rs
+    pub fn load_config(&mut self) -> anyhow::Result<Cargo> {
+        // 1. 读取 .build.toml（由 defconfig 生成）
+        let config_path = ".build.toml";
+        let config_str = std::fs::read_to_string(config_path)?;
+    
+        // 2. 解析 TOML 为 Config 结构体
+        let config: Config = toml::from_str(&config_str)?;
+    
+        // Config 结构包含以下字段：
+        // - target: "aarch64-unknown-none-softfloat"
+        // - features: ["dyn-plat", "axstd/bus-mmio", "fs", ...]
+        // - log: Some("Info")
+        // - cargo_args: []
+        // - to_bin: true（与 x86 的关键差异）
+        // - smp: Some(1)
+        // - vm_configs: []
+    
+        // 3. 转换为 ostool 的 Cargo 结构
+        let mut cargo = Cargo {
+            target: config.target,
+            package: "axvisor".to_string(),
+            features: config.features,
+            log: config.log,
+            args: config.cargo_args,
+            to_bin: config.to_bin,  // true（ARM 平台需要生成 .bin 文件）
+            env: HashMap::new(),
+            ..Default::default()
+        };
+    
+        // 4. 处理 VM 配置文件
+        let vm_config_paths = if config.vm_configs.is_empty() {
+            vec![]  // 使用默认配置
+        } else {
+            // 解析 VM 配置文件路径
+            config.vm_configs.iter()
+                .map(|vm_path| std::path::PathBuf::from(vm_path))
+                .collect()
+        };
+    
+        // 5. 设置环境变量（关键步骤）
+        // 
+        // 重要说明：此处的 cargo.env.insert() 是在【配置阶段】将环境变量
+        // 存储到 Cargo 结构体的 env 字段（HashMap<String, String>）中，
+        // 此时还没有执行任何命令。这些环境变量将在后续的执行阶段
+        //（cargo_builder.rs 的 build_cargo_command 函数中）被读取并
+        // 设置到实际的子进程中。
+        //
+        // 详细流程：
+        //   配置阶段（tbuld.rs）: cargo.env.insert() → 存储到 HashMap
+        //         ↓
+        //   执行阶段（cargo_builder.rs）: cmd.env(k, v) → 设置到子进程
+        //
+        // 5.1 设置 SMP 核心数
+        if let Some(smp) = config.smp {
+            cargo.env.insert(
+                "AXVISOR_SMP".to_string(),
+                smp.to_string()
+            );
+            // 例如: AXVISOR_SMP=1
+            // 此时环境变量被存储在 cargo.env HashMap 中，供后续使用
+        }
+    
+        // 5.2 设置 VM 配置文件路径列表
+        if !vm_config_paths.is_empty() {
+            let value = std::env::join_paths(&vm_config_paths)?;
+            cargo.env.insert(
+                "AXVISOR_VM_CONFIGS".to_string(),
+                value
+            );
+            // 此时环境变量被存储在 cargo.env HashMap 中，供后续使用
+        }
+    
+        // 6. 处理日志级别
+        if let Some(log_level) = config.log {
+            let log_feature = format!("log/release_max_level_{}", log_level.to_lowercase());
+            cargo.features.push(log_feature);
+        }
+    
+        Ok(cargo)
     }
-
-    // 6. 处理日志级别
-    if let Some(log_level) = config.log {
-        let log_feature = format!("log/release_max_level_{}", log_level.to_lowercase());
-        cargo.features.push(log_feature);
-    }
-
-    Ok(cargo)
-}
-```
-
-**ARM64 配置的关键差异**：
-- `to_bin = true`：需要生成纯二进制文件用于裸机启动
-- `target = "aarch64-unknown-none-softfloat"`：使用软浮点 ABI
-- `features` 包含 ARM 特定特性：`dyn-plat`、`axstd/bus-mmio`、驱动支持等
+    ```
+    
+    **ARM64 配置的关键差异**：
+    - `to_bin = true`：需要生成纯二进制文件用于裸机启动
+    - `target = "aarch64-unknown-none-softfloat"`：使用软浮点 ABI
+    - `features` 包含 ARM 特定特性：`dyn-plat`、`axstd/bus-mmio`、驱动支持等
 
 ##### 3.3.3.2 生成构建命令
 
-**2.1 创建基础命令**
+1. **创建基础命令**
 
-```rust
-// tmp/ostool/ostool/src/build/cargo_builder.rs
-async fn build_cargo_command(&mut self) -> anyhow::Result<Command> {
-    // 1. 创建 cargo 命令
-    let mut cmd = self.ctx.command("cargo");
-    cmd.arg("build");
-
-    // 2. 设置环境变量（从配置中获取）
-    // 
-    // 重要说明：此处的 cmd.env(k, v) 是在【执行阶段】从配置中读取
-    // 环境变量并设置到实际的子进程（std::process::Command）中。
-    // 这些环境变量将在执行 cargo 命令时生效，被 cargo 子进程继承。
-    //
-    // 完整流程：
-    //   配置阶段（tbuld.rs）: cargo.env.insert() → 存储到 HashMap
-    //         ↓
-    //   执行阶段（cargo_builder.rs）: cmd.env(k, v) → 设置到子进程
-    //         ↓
-    //   子进程执行：cargo 子进程继承这些环境变量
-    //
-    for (key, value) in &self.config.env {
-        println!("{}", format!("{key}={value}").cyan());  // 打印环境变量
-        cmd.env(key, value);
-        // 设置的环境变量会被 cargo 子进程及其调用的 build.rs 继承
+    ```rust
+    // tmp/ostool/ostool/src/build/cargo_builder.rs
+    async fn build_cargo_command(&mut self) -> anyhow::Result<Command> {
+        // 1. 创建 cargo 命令
+        let mut cmd = self.ctx.command("cargo");
+        cmd.arg("build");
+    
+        // 2. 设置环境变量（从配置中获取）
+        // 
+        // 重要说明：此处的 cmd.env(k, v) 是在【执行阶段】从配置中读取
+        // 环境变量并设置到实际的子进程（std::process::Command）中。
+        // 这些环境变量将在执行 cargo 命令时生效，被 cargo 子进程继承。
+        //
+        // 完整流程：
+        //   配置阶段（tbuld.rs）: cargo.env.insert() → 存储到 HashMap
+        //         ↓
+        //   执行阶段（cargo_builder.rs）: cmd.env(k, v) → 设置到子进程
+        //         ↓
+        //   子进程执行：cargo 子进程继承这些环境变量
+        //
+        for (key, value) in &self.config.env {
+            println!("{}", format!("{key}={value}").cyan());  // 打印环境变量
+            cmd.env(key, value);
+            // 设置的环境变量会被 cargo 子进程及其调用的 build.rs 继承
+        }
+    
+        // 3. 指定要构建的包
+        cmd.arg("-p").arg(&self.config.package);
+    
+        // 4. 指定目标三元组（ARM64 软浮点）
+        cmd.arg("--target").arg(&self.config.target);
+        // 例如: --target aarch64-unknown-none-softfloat
+    
+        Ok(cmd)
     }
+    ```
 
-    // 3. 指定要构建的包
-    cmd.arg("-p").arg(&self.config.package);
+2. **处理编译特性**
 
-    // 4. 指定目标三元组（ARM64 软浮点）
-    cmd.arg("--target").arg(&self.config.target);
-    // 例如: --target aarch64-unknown-none-softfloat
-
+    ```rust
+    // 5. 构建特性列表
+    let features = self.build_features();
+    
+    fn build_features(&self) -> Vec<String> {
+        let mut features = self.config.features.clone();
+    
+        // features 现在包含:
+        // - "dyn-plat"（动态平台配置）
+        // - "axstd/bus-mmio"（MMIO 总线支持）
+        // - "fs"（文件系统）
+        // - "driver/sdmmc"（SD/MMC 驱动）
+        // - "driver/phytium-blk"（飞腾块设备驱动）
+        // - "log/release_max_level_info"
+    
+        features
+    }
+    
+    // 6. 添加特性参数
+    cmd.arg("--features").arg(features.join(","));
+    ```
+    
+    **2.3 设置编译模式**
+    
+    ```rust
+    // 7. 根据调试/发布模式设置参数
+    if !self.ctx.debug {
+        cmd.arg("--release");
+    }
+    
+    // 8. 添加额外的 cargo 参数
+    for arg in &self.config.args {
+        cmd.arg(arg);
+    }
+    
     Ok(cmd)
-}
-```
+    ```
 
-**2.2 处理编译特性**
+3. **实际执行的命令**
 
-```rust
-// 5. 构建特性列表
-let features = self.build_features();
+    ```bash
+    cargo build \
+        -p axvisor \
+        --target aarch64-unknown-none-softfloat \
+        --features dyn-plat,axstd/bus-mmio,fs,driver/sdmmc,driver/phytium-blk,log/release_max_level_info \
+        --release
+    ```
 
-fn build_features(&self) -> Vec<String> {
-    let mut features = self.config.features.clone();
-
-    // features 现在包含:
-    // - "dyn-plat"（动态平台配置）
-    // - "axstd/bus-mmio"（MMIO 总线支持）
-    // - "fs"（文件系统）
-    // - "driver/sdmmc"（SD/MMC 驱动）
-    // - "driver/phytium-blk"（飞腾块设备驱动）
-    // - "log/release_max_level_info"
-
-    features
-}
-
-// 6. 添加特性参数
-cmd.arg("--features").arg(features.join(","));
-```
-
-**2.3 设置编译模式**
-
-```rust
-// 7. 根据调试/发布模式设置参数
-if !self.ctx.debug {
-    cmd.arg("--release");
-}
-
-// 8. 添加额外的 cargo 参数
-for arg in &self.config.args {
-    cmd.arg(arg);
-}
-
-Ok(cmd)
-```
-
-**2.4 实际执行的命令**
-
-```bash
-cargo build \
-    -p axvisor \
-    --target aarch64-unknown-none-softfloat \
-    --features dyn-plat,axstd/bus-mmio,fs,driver/sdmmc,driver/phytium-blk,log/release_max_level_info \
-    --release
-```
-
-**命令参数详解**：
-- `--target aarch64-unknown-none-softfloat`: ARM64 软浮点目标
-- `--features dyn-plat`: 动态平台配置（与 x86 的 myplat 相对）
-- `--features axstd/bus-mmio`: MMIO 总线支持（ARM 特有）
-- `--features driver/sdmmc`: SD/MMC 卡驱动
-- `--features driver/phytium-blk`: 飞腾平台块设备驱动
+    - `--target aarch64-unknown-none-softfloat`: ARM64 软浮点目标
+    - `--features dyn-plat`: 动态平台配置（与 x86 的 myplat 相对）
+    - `--features axstd/bus-mmio`: MMIO 总线支持（ARM 特有）
+    - `--features driver/sdmmc`: SD/MMC 卡驱动
+    - `--features driver/phytium-blk`: 飞腾平台块设备驱动
 
 ##### 3.3.3.3 解析 Cargo.toml
 
 与 x86_64 平台一样，ARM64 平台的 Cargo 也按照以下顺序处理多个 `Cargo.toml` 文件：
-
-**3.1 完整处理流程**
 
 ```
 1. 用户执行: cargo build --target aarch64-unknown-none-softfloat
@@ -1976,20 +1942,14 @@ cargo build \
    └── 最后编译 kernel（生成 axvisor 可执行文件）
 ```
 
-**3.2 条件依赖的解析时机**
-
-关键点：**Cargo 在解析每个 Cargo.toml 时（在 3.3.3.3 的步骤 4 中），直接根据命令行参数 `--target` 判断条件依赖，不依赖环境变量**
+**条件依赖的解析时机：Cargo 在解析每个 Cargo.toml 时（在 3.3.3.3 的步骤 4 中），直接根据命令行参数 `--target` 判断条件依赖，不依赖环境变量**
 
 - 每个 `Cargo.toml` 在被解析时，Cargo 都会根据命令行参数 `--target` 判断其中的条件依赖
 - 这意味着 `axruntime/Cargo.toml` 中的 `[target.'cfg(target_arch = "aarch64")'.dependencies]` 会在解析该文件时立即判断
 - 不匹配平台的依赖（如 x86 平台编译时的 ARM 依赖）会被完全忽略
 - 环境变量是在后续执行 build.rs 之前才设置的
 
-**3.2.1 条件依赖的判断机制**
-
 根据 [Cargo 官方文档 - Platform Specific Dependencies](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#platform-specific-dependencies)，Cargo 使用以下机制判断条件依赖：
-
-**判断流程**：
 
 ```
 1. Cargo 读取命令行参数 --target
@@ -2017,8 +1977,6 @@ cargo build \
 
 5. 只包含匹配成功的依赖到依赖图中
 ```
-
-**实际示例**：
 
 以 [modules/axruntime/Cargo.toml](../modules/axruntime/Cargo.toml) 为例：
 
@@ -2081,8 +2039,6 @@ rustc --print=cfg --target x86_64-unknown-none
 # 但不包含：axplat-aarch64-dyn, somehal
 ```
 
-**关键要点**：
-
 1. **不依赖环境变量**：判断条件依赖时，Cargo 不使用 `CARGO_CFG_*` 环境变量，而是直接调用 `rustc --print=cfg`
 2. **早期判断**：在解析 Cargo.toml 时就立即判断，而不是等到编译时
 3. **完全忽略**：不匹配的依赖会被完全忽略，不会下载、编译或链接
@@ -2092,25 +2048,10 @@ rustc --print=cfg --target x86_64-unknown-none
 
 在解析完所有 Cargo.toml 并确定编译顺序后，Cargo 在**执行 build.rs 之前**会设置一系列 `CARGO_CFG_*` 环境变量，供 build.rs 使用。
 
-**官方文档依据**：
-
-根据 [Cargo Build Scripts 官方文档](https://doc.rust-lang.org/cargo/reference/build-scripts.html#inputs-to-the-build-script)：
-
-> When the build script is run, there are a number of inputs to the build script, all passed in the form of environment variables.
-
-**环境变量的作用**：
-
-这些 `CARGO_CFG_*` 环境变量（如 `CARGO_CFG_TARGET_ARCH`、`CARGO_CFG_TARGET_OS` 等）是：
+根据 [Cargo Build Scripts 官方文档](https://doc.rust-lang.org/cargo/reference/build-scripts.html#inputs-to-the-build-script)：`When the build script is run, there are a number of inputs to the build script, all passed in the form of environment variables.` 这些 `CARGO_CFG_*` 环境变量（如 `CARGO_CFG_TARGET_ARCH`、`CARGO_CFG_TARGET_OS` 等）是：
 - **设置时机**：在执行 build.rs 之前
 - **用途**：供 build.rs 脚本读取和使用
 - **不用于**：解析 Cargo.toml 中的条件依赖
-
-**重要区别**：
-
-| 阶段 | 时机 | 依据 | 用途 |
-|------|------|------|------|
-| **解析条件依赖** | 解析 Cargo.toml 时 | 命令行参数 `--target` | 判断 `[target.'cfg(...)'.dependencies]` |
-| **设置环境变量** | 执行 build.rs 之前 | 从目标三元组提取 | 供 build.rs 脚本使用 |
 
 **环境变量示例**：
 
@@ -2128,11 +2069,7 @@ CARGO_CFG_TARGET_FEATURE=
 
 ##### 3.3.3.5 build.rs 执行
 
-ARM64 平台的 build.rs 执行流程与 x86_64 类似，但会识别为 ARM 平台。
-
-**build.rs 的编译和执行流程**：
-
-根据 [Cargo 官方文档 - Build Scripts](https://doc.rust-lang.org/cargo/reference/build-scripts.html#life-cycle-of-a-build-script)，build.rs 的执行分为以下阶段：
+ARM64 平台的 build.rs 执行流程与 x86_64 类似，但会识别为 ARM 平台。根据 [Cargo 官方文档 - Build Scripts](https://doc.rust-lang.org/cargo/reference/build-scripts.html#life-cycle-of-a-build-script)，build.rs 的执行分为以下阶段：
 
 ```
 阶段 1: 编译 build.rs
@@ -2196,8 +2133,6 @@ cargo:rerun-if-env-changed=AXVISOR_VM_CONFIGS
 # target/aarch64-unknown-none-softfloat/debug/build/axvisor-<hash>/out/vm_configs.rs
 ```
 
-**关键要点**：
-
 1. **先编译后执行**：build.rs 首先被编译成可执行文件，然后才被执行
 2. **独立编译**：build.rs 的编译与主代码的编译是独立的
 3. **环境变量传递**：Cargo 通过环境变量向 build.rs 传递构建信息
@@ -2211,7 +2146,7 @@ cargo:rerun-if-env-changed=AXVISOR_VM_CONFIGS
 - **环境变量变化**：如果 `rerun-if-env-changed` 指定的环境变量变化，会重新执行
 - **增量编译**：如果没有变化，Cargo 会缓存 build.rs 的输出，跳过执行
 
-**4.1 获取目标架构**
+**获取目标架构**
 
 ```rust
 fn main() -> anyhow::Result<()> {
@@ -2233,7 +2168,7 @@ fn main() -> anyhow::Result<()> {
 }
 ```
 
-**4.2 读取 VM 配置**
+**读取 VM 配置**
 
 ```rust
 // 4. 读取 VM 配置文件
@@ -2259,7 +2194,7 @@ let config_files = get_configs()?;
 let mut output_file = open_output_file();
 ```
 
-**4.3 生成 vm_configs.rs**
+**生成 vm_configs.rs**
 
 ```rust
 // 5. 生成 vm_configs.rs 文件
@@ -2286,7 +2221,7 @@ match config_files {
 }
 ```
 
-**4.4 设置重新构建触发器**
+**设置重新构建触发器**
 
 ```rust
 // 6. 设置重新构建触发器
@@ -2296,8 +2231,6 @@ println!("cargo:rerun-if-changed=build.rs");
 Ok(())
 }
 ```
-
-**build.rs 的作用总结**：
 1. **平台识别**：识别为 ARM64 平台
 2. **条件编译设置**：设置 `platform = "aarch64-generic"`
 3. **配置嵌入**：将 VM 配置嵌入到生成的代码中
