@@ -430,7 +430,7 @@ dependencies = [
  "cfg-if",
  "log",
  "memory_addr",
- "range-alloc",
+ "range-alloc-arceos",
  "spin 0.9.8",
 ]
 
@@ -4224,9 +4224,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "range-alloc"
-version = "0.1.4"
-source = "git+https://github.com/arceos-hypervisor/range-alloc.git#fc826e54dab9072be5358a1b0e7fc34503d6630d"
+name = "range-alloc-arceos"
+version = "0.1.4-pre.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b63358c741a7a22b7b99bc27dcdf5b79339b132bd4380920fed7f7219ece58dd"
 
 [[package]]
 name = "ranges-ext"
