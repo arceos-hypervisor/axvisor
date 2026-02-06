@@ -110,6 +110,7 @@ axvisor_api = {path = "modules/axvisor_api"}
 axvmconfig = {path = "modules/axvmconfig"}
 x86_vcpu = {path = "modules/x86_vcpu"}
 x86_vlapic = {path = "modules/x86_vlapic"}
+somehal = {git = "https://github.com/bullhh/somehal.git"}
 
 [patch."https://github.com/arceos-hypervisor/axdevice".axdevice]
 path = "modules/axdevice"
