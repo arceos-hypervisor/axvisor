@@ -252,7 +252,7 @@ version = "0.1.0"
 dependencies = [
  "aarch64-cpu 10.0.0",
  "aarch64_sysreg",
- "axaddrspace",
+ "axaddrspace 0.2.0",
  "axdevice_base",
  "axerrno 0.1.2",
  "axvisor_api",
@@ -303,6 +303,26 @@ name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
+
+[[package]]
+name = "axaddrspace"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "06b129114ab36be728ef11dd6540559c30deb6332378157d22bdc0aae6803a63"
+dependencies = [
+ "axerrno 0.1.2",
+ "bit_field",
+ "bitflags 2.10.0",
+ "cfg-if",
+ "lazyinit",
+ "log",
+ "memory_addr",
+ "memory_set",
+ "numeric-enum-macro",
+ "page_table_entry",
+ "page_table_multiarch",
+ "x86",
+]
 
 [[package]]
 name = "axaddrspace"
@@ -420,16 +440,17 @@ dependencies = [
 
 [[package]]
 name = "axdevice"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arm_vgic",
- "axaddrspace",
+ "axaddrspace 0.1.3",
  "axdevice_base",
  "axerrno 0.1.2",
  "axvmconfig",
  "cfg-if",
  "log",
  "memory_addr",
+ "range-alloc-arceos",
  "spin 0.9.8",
 ]
 
@@ -437,7 +458,7 @@ dependencies = [
 name = "axdevice_base"
 version = "0.1.0"
 dependencies = [
- "axaddrspace",
+ "axaddrspace 0.2.0",
  "axerrno 0.1.2",
  "axvmconfig",
  "cfg-if",
@@ -1068,7 +1089,7 @@ dependencies = [
 name = "axvcpu"
 version = "0.1.2"
 dependencies = [
- "axaddrspace",
+ "axaddrspace 0.2.0",
  "axerrno 0.1.2",
  "axvisor_api",
  "memory_addr",
@@ -1110,7 +1131,7 @@ dependencies = [
 name = "axvisor_api"
 version = "0.1.0"
 dependencies = [
- "axaddrspace",
+ "axaddrspace 0.2.0",
  "axvisor_api_proc",
  "crate_interface",
  "memory_addr",
@@ -1134,7 +1155,7 @@ dependencies = [
  "aarch64-cpu-ext",
  "anyhow",
  "arm_vcpu",
- "axaddrspace",
+ "axaddrspace 0.2.0",
  "axerrno 0.1.2",
  "axhal",
  "axplat-x86-qemu-q35",
@@ -4215,6 +4236,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "range-alloc-arceos"
+version = "0.1.4-pre.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b63358c741a7a22b7b99bc27dcdf5b79339b132bd4380920fed7f7219ece58dd"
+
+[[package]]
 name = "ranges-ext"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6584,7 +6611,7 @@ dependencies = [
 name = "x86_vcpu"
 version = "0.1.0"
 dependencies = [
- "axaddrspace",
+ "axaddrspace 0.2.0",
  "axdevice_base",
  "bit_field",
  "bitflags 2.10.0",
@@ -6606,7 +6633,7 @@ dependencies = [
 name = "x86_vlapic"
 version = "0.1.0"
 dependencies = [
- "axaddrspace",
+ "axaddrspace 0.2.0",
  "axdevice_base",
  "axerrno 0.1.2",
  "bit",
