@@ -255,6 +255,7 @@ dependencies = [
  "aarch64_sysreg",
  "bitmaps",
  "log",
+ "mmio-api",
  "spin 0.10.0",
  "tock-registers 0.10.1",
  "vdev-if",
@@ -1122,16 +1123,18 @@ dependencies = [
 
 [[package]]
 name = "axvm"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aarch64-cpu 11.2.0",
  "aarch64-cpu-ext",
  "anyhow",
+ "arm-gic-driver",
  "arm_vcpu",
  "arm_vgic",
  "axaddrspace",
  "axerrno 0.1.2",
  "axhal",
+ "axklib",
  "axplat-x86-qemu-q35",
  "axruntime",
  "axstd",
@@ -1147,10 +1150,13 @@ dependencies = [
  "lazyinit",
  "log",
  "memory_addr",
+ "mmio-api",
  "page_table_entry",
  "page_table_multiarch",
  "ranges-ext",
  "raw-cpuid 11.6.0",
+ "rdif-intc",
+ "rdrive",
  "ringbuf",
  "spin 0.10.0",
  "thiserror 2.0.18",
@@ -3516,6 +3522,17 @@ dependencies = [
  "log",
  "wasi",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "mmio-api"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51558f80a3d418f0349082adb0e47d7dbbe945a8d5261673a5ebb4daf4e5e679"
+dependencies = [
+ "anyhow",
+ "derive_more",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
