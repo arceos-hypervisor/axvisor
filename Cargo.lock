@@ -1363,6 +1363,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bytemuck"
+version = "1.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c8efb64bd706a16a1bdde310ae86b351e4d21550d98d056f22f8a7f7a2183fec"
+
+[[package]]
 name = "byteorder"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2055,6 +2061,12 @@ dependencies = [
 
 [[package]]
 name = "dma-api"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "624f4a84cc1031cfceb56780b82570a785f6cfdcee4f34c06c4e8f1fba25c970"
+
+[[package]]
+name = "dma-api"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d51274fe946b4c27cdada87cc6de09a50c0d9192c0f30ba455b29dae09caa0b"
@@ -2089,6 +2101,7 @@ version = "0.1.0"
 dependencies = [
  "axklib",
  "log",
+ "phytium-mci",
  "rdif-block",
  "rdif-clk",
  "rdrive",
@@ -3907,6 +3920,23 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.111",
+]
+
+[[package]]
+name = "phytium-mci"
+version = "0.1.0"
+source = "git+https://github.com/YanQD/phytium-mci.git?rev=99c9ee5#99c9ee5f66490fbf41370be3b3d7a42cf4406b0c"
+dependencies = [
+ "bare-test-macros",
+ "bitflags 2.10.0",
+ "bytemuck",
+ "dma-api 0.2.2",
+ "lazy_static",
+ "log",
+ "nb",
+ "rlsf",
+ "spin 0.10.0",
+ "tock-registers 0.9.0",
 ]
 
 [[package]]
