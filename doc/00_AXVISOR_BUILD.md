@@ -2387,9 +2387,188 @@ SECTIONS
 | `.init_array` | 初始化函数数组 | C++ 风格构造函数 |
 | `__cpu0_stack` | CPU0 专用栈 | 256KB 固定大小 |
 
-###### 3.3.3.6.2 pie_boot.x
+###### 3.3.3.6.2 构建脚本处理
 
-ARM64 平台的链接器脚本处理与 x86_64 平台的一个关键区别是引入了 **PIE（Position Independent Executable，位置无关可执行）启动支持**。这是通过 `somehal` crate 生成的 `pie_boot.x` 链接器脚本片段实现的，为 ARM64 平台提供了从物理地址到虚拟地址的平滑过渡机制。
+构建脚本 [modules/axplat-aarch64-dyn/build.rs](../modules/axplat-aarch64-dyn/build.rs) 负责处理模板并生成最终的链接器脚本：
+
+```rust
+fn main() {
+    // 设置链接器搜索路径
+    println!("cargo:rustc-link-search={}", out_dir().display());
+
+    // 使用自定义链接器脚本
+    println!("cargo::rustc-link-arg=-Tlink.x");
+    println!("cargo:rustc-link-arg=-no-pie");           /* 禁用 PIE */
+    println!("cargo:rustc-link-arg=-znostart-stop-gc"); /* 保留启动和停止代码 */
+
+    // 读取链接器脚本模板
+    let ld_content = std::fs::read_to_string("link.ld").unwrap();
+
+    // 替换 SMP 占位符（默认为 16 核）
+    let ld_content = ld_content.replace("{{SMP}}", &format!("{}", 16));
+
+    // 写入最终的链接器脚本
+    std::fs::write(out_dir().join("link.x"), ld_content)
+        .expect("link.x write failed");
+}
+```
+
+**处理步骤详解**：
+
+1. **设置链接器搜索路径**：
+   - `cargo:rustc-link-search`：告诉链接器在 OUT_DIR 中查找 link.x
+
+2. **配置链接器参数**：
+   - `-Tlink.x`：使用生成的链接器脚本
+   - `-no-pie`：禁用位置无关可执行文件（虽然模板包含 PIE 支持，但实际禁用）
+   - `-znostart-stop-gc`：保留启动和停止代码，防止被垃圾回收
+
+3. **读取和替换模板**：
+   - 读取 `link.ld` 模板文件
+   - 将 `{{SMP}}` 替换为实际的 CPU 核心数（默认 16）
+
+4. **输出最终脚本**：
+   - 生成 `link.x` 到 `OUT_DIR`
+   - 供链接器在编译时使用
+
+**平台配置**（[modules/axplat-aarch64-dyn/axconfig.toml](../modules/axplat-aarch64-dyn/axconfig.toml)）：
+
+```toml
+[plat]
+cpu-num = 1                                   # CPU 核心数
+kernel-base-vaddr = "0xffff_8000_0000_0000"    # 内核虚拟地址
+kernel-aspace-base = "0xffff_8000_0000_0000"   # 内核地址空间基址
+kernel-aspace-size = "0x0000_7fff_ffff_f000"   # 内核地址空间大小
+
+[devices]
+timer-irq = 30  # 定时器中断号（PPI，物理定时器）
+```
+
+**与 x86_64 平台的构建脚本差异**：
+
+| 特性 | x86_64 | ARM64 |
+|------|--------|-------|
+| **模板读取方式** | `include_str!("linker.lds.S")` | `std::fs::read_to_string("link.ld")` |
+| **占位符替换** | 三个占位符（`%ARCH%`, `%KERNEL_BASE%`, `%SMP%`） | 一个占位符（`{{SMP}}`） |
+| **SMP 默认值** | 1 | 16 |
+| **链接器参数** | 仅 `-Tlink.x` | `-Tlink.x`, `-no-pie`, `-znostart-stop-gc` |
+| **环境变量监听** | 监听 `AXVISOR_SMP` | 无（使用固定值） |
+
+###### 3.3.3.6.3 最终生成的链接器脚本
+
+经过构建脚本处理后，生成的 `link.x` 文件内容如下（以 SMP=16 为例）：
+
+```assembly
+OUTPUT_ARCH(aarch64)
+
+__SMP = 16;               /* 替换后的值 */
+STACK_SIZE = 0x40000;     /* 256KB */
+
+ENTRY(_start)
+
+INCLUDE "pie_boot.x"
+
+SECTIONS
+{
+    _skernel = .;
+
+    .text : ALIGN(4K) {
+        _stext = .;
+        *(.text.boot)
+        *(.text .text.*)
+        . = ALIGN(4K);
+        _etext = .;
+    }
+
+    /* ... 其他段配置 ... */
+
+    .percpu 0x0 : AT(_percpu_start) {
+        _percpu_load_start = .;
+        *(.percpu .percpu.*)
+        _percpu_load_end = .;
+        . = _percpu_load_start + ALIGN(64) * 16;  /* SMP=16 */
+    }
+    /* ... */
+}
+```
+
+**生成文件的位置**：
+
+```
+target/aarch64-unknown-none-softfloat/debug/build/axplat-aarch64-dyn-<hash>/out/link.x
+```
+
+###### 3.3.3.6.4 内存布局
+
+ARM64 平台的内存布局与 x86_64 平台类似，但有一些关键差异：
+
+| 段名称 | 起始地址 | 大小 | 说明 |
+|--------|----------|------|------|
+| `.text` | `0xffff_8000_0000_0000` | 可变 | 代码段，包含启动代码 |
+| `.rodata` | 紧接 `.text` | 可变 | 只读数据段 |
+| `.data` | 紧接 `.rodata` | 可变 | 数据段，包含启动页表和驱动注册表 |
+| `.percpu` | 紧接 `.data` | `64 × SMP` 字节 | Per-CPU 数据段 |
+| `.bss` | 紧接 `.percpu` | 可变 | 零初始化数据段，包含 CPU0 栈和启动栈 |
+
+**内存布局图**：
+
+```
+高位地址
+    │
+    │  ┌────────────────────────────────────┐
+    │  │         栈空间（向下增长）           │
+    │  ├────────────────────────────────────┤
+    │  │         .bss 段（零初始化）          │
+    │  │  - __cpu0_stack (256KB)            │
+    │  │  - boot_stack                      │
+    │  │  - .percpu 数据                    │
+    │  ├────────────────────────────────────┤
+    │  │         .data 段（已初始化）         │
+    │  │  - 启动页表                         │
+    │  │  - 驱动注册表                       │
+    │  ├────────────────────────────────────┤
+    │  │         .rodata 段（只读）           │
+    │  ├────────────────────────────────────┤
+    │  │         .text 段（代码）             │
+    │  │  - EL2 启动代码                     │
+    │  │  - Rust 代码                        │
+    │  └────────────────────────────────────┘
+    │
+0xffff_8000_0000_0000  (内核基地址)
+    │
+低位地址
+```
+
+**关键特点**：
+
+1. **64 位内核地址**：
+   - 使用 `0xffff_8000_0000_0000` 作为内核基地址
+   - 提供更大的地址空间（128 TB）
+   - 符合 ARM64 的 canonical address 规范
+
+2. **EL2 特权级**：
+   - 启动代码必须在 EL2 特权级执行
+   - 支持硬件虚拟化（Stage-2 页表）
+   - 与 x86_64 的 long mode 类似
+
+3. **固定栈空间**：
+   - CPU0 专用栈：256KB
+   - 启动栈：动态分配
+   - 与 x86_64 的动态栈不同
+
+4. **PIE 支持**：
+   - 通过 `INCLUDE "pie_boot.x"` 支持位置无关可执行
+   - 虽然实际编译时禁用了 PIE
+   - 为未来的地址空间布局随机化（ASLR）预留支持
+
+5. **初始化数组**：
+   - `.init_array` 段包含 C++ 风格的构造函数
+   - 在 `rust_main` 之前执行
+   - x86_64 平台也有类似机制
+
+###### 3.3.3.6.5 pie_boot.x
+
+modules/axplat-aarch64-dyn/link.ld 中通过 INCLUDE 指令引入 pie_boot.x 脚本文件从而实现 **PIE（Position Independent Executable，位置无关可执行）启动支持**。而 pie_boot.x 是由 somehal 这个crate 提供的。
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -2580,184 +2759,166 @@ SECTIONS
 - **段合并**：`pie_boot.x` 定义的段会与 `link.x` 中定义的段合并
 - **INSERT 指令**：`.boot_loader` 段通过 `INSERT BEFORE .data` 插入到数据段之前
 
-###### 3.3.3.6.3 构建脚本处理
+###### 3.3.3.6.6 loader.bin
 
-构建脚本 [modules/axplat-aarch64-dyn/build.rs](../modules/axplat-aarch64-dyn/build.rs) 负责处理模板并生成最终的链接器脚本：
+在编译 somehal 时，其中的 [modules/somehal/somehal/src/loader.rs](../modules/somehal/somehal/src/loader.rs) 中将会一个名为 `loader.bin` 的二进制文件嵌入到内核镜像中：
 
 ```rust
-fn main() {
-    // 设置链接器搜索路径
-    println!("cargo:rustc-link-search={}", out_dir().display());
+// 1. 在编译时读取 loader.bin 文件
+macro_rules! loader_bin_slice {
+    () => {
+        include_bytes!(concat!(env!("OUT_DIR"), "/loader.bin"))
+    };
+}
 
-    // 使用自定义链接器脚本
-    println!("cargo::rustc-link-arg=-Tlink.x");
-    println!("cargo:rustc-link-arg=-no-pie");           /* 禁用 PIE */
-    println!("cargo:rustc-link-arg=-znostart-stop-gc"); /* 保留启动和停止代码 */
+// 2. 计算文件大小
+const LOADER_BIN_LEN: usize = loader_bin_slice!().len();
 
-    // 读取链接器脚本模板
-    let ld_content = std::fs::read_to_string("link.ld").unwrap();
+// 3. 创建一个静态字节数组，包含 loader.bin 的完整内容
+const fn loader_bin() -> [u8; LOADER_BIN_LEN] {
+    let mut buf = [0u8; LOADER_BIN_LEN];
+    let bin = loader_bin_slice!();
+    buf.copy_from_slice(bin);
+    buf
+}
 
-    // 替换 SMP 占位符（默认为 16 核）
-    let ld_content = ld_content.replace("{{SMP}}", &format!("{}", 16));
+// 4. 将字节数组放到 .boot_loader 段
+#[unsafe(link_section = ".boot_loader")]
+pub static LOADER_BIN: [u8; LOADER_BIN_LEN] = loader_bin();
+```
 
-    // 写入最终的链接器脚本
-    std::fs::write(out_dir().join("link.x"), ld_content)
-        .expect("link.x write failed");
+1. **`include_bytes!` 宏**：
+   - 在编译时读取 `loader.bin` 文件的内容
+   - 将文件内容作为字节数组嵌入到程序中
+   - 路径通过 `env!("OUT_DIR")` 获取构建输出目录
+
+2. **静态数组定义**：
+   - 创建一个静态字节数组，包含 `loader.bin` 的完整内容
+   - 使用 `const fn` 在编译时计算数组大小和内容
+   - 数组大小在编译时确定，无运行时开销
+
+3. **段放置**：
+   - 通过 `#[unsafe(link_section = ".boot_loader")]` 属性
+   - 将数组放到 `.boot_loader` 段（由 `pie_boot.x` 定义）
+   - 确保代码在正确的内存位置
+
+4. **符号定义**：
+   - 定义 `LOADER_BIN` 符号，供启动代码引用
+   - 链接器通过这个符号找到 loader.bin 的位置
+   - 启动代码使用 `adr_l!` 宏计算符号地址并跳转
+
+`loader.bin` 的嵌入与 `pie_boot.x` 中的段定义紧密配合：
+
+```ld
+// pie_boot.x 中的段定义
+SECTIONS{ 
+    .boot_loader : ALIGN(PAGE_SIZE) {
+        __boot_loader_start = .;
+        KEEP(*(.boot_loader))
+        __boot_loader_end = .;
+    }
+} INSERT BEFORE .data
+```
+
+1. **段定义**：`pie_boot.x` 定义 `.boot_loader` 段
+2. **代码放置**：`link_section` 属性将 `LOADER_BIN` 放到该段
+3. **KEEP 指令**：防止段被链接器优化掉
+4. **位置控制**：`INSERT BEFORE .data` 确保段在数据段之前
+5. **页对齐**：`ALIGN(PAGE_SIZE)` 便于页表映射
+
+**内存布局**：
+
+```
+内核镜像内存布局
+┌─────────────────────────────────────┐
+│ .head.text 段                       │
+│  - _start (ARM64 镜像头部)          │
+│  - primary_entry                    │
+├─────────────────────────────────────┤
+│ .idmap.text 段                      │
+│  - preserve_boot_args               │
+│  - 其他恒等映射代码                 │
+├─────────────────────────────────────┤
+│ .boot_loader 段 ← LOADER_BIN 指向这里│
+│  - loader.bin 的机器码              │
+│    [0x00]: loader 第一条指令        │
+│    [0x04]: loader 第二条指令        │
+│    ...                              │
+│    [末尾]: loader 最后一条指令       │
+├─────────────────────────────────────┤
+│ .data 段                            │
+│  - 其他数据                         │
+└─────────────────────────────────────┘
+```
+
+`loader.bin` 二进制文件由 `pie_boot_loader_aarch64` crate 提供，包含早期初始化代码（设置页表、启用 MMU、切换到虚拟地址等）。`loader.bin` 的生成涉及 `somehal` crate 的构建脚本和 `pie_boot_loader_aarch64` crate 的编译：
+
+```
+1. somehal 的 build.rs 执行
+   ├─ 尝试从 GitHub/Gitee release 下载预编译的 loader.bin
+   └─ 如果下载失败，则本地编译 pie_boot_loader_aarch64
+       ├─ 使用 bindeps_simple 编译 pie_boot_loader-aarch64
+       ├─ 生成 ELF 文件
+       └─ 使用 rust-objcopy 转换为纯二进制文件
+
+2. loader.bin 生成到 somehal 的 OUT_DIR
+   └─ 路径：target/.../build/somehal-xxx/out/loader.bin
+
+3. somehal 的 loader.rs 在编译时嵌入 loader.bin
+   └─ 使用 include_bytes! 宏读取并嵌入到内核镜像
+```
+
+- **`pie_boot_loader_aarch64`** 是一个独立的 crate，不是 somehal 的一部分
+- **somehal 依赖** `pie_boot_loader_aarch64`，并在 build.rs 中处理其编译
+- **优先下载**：build.rs 首先尝试从远程 release 下载预编译的 loader.bin
+- **回退编译**：如果下载失败，则使用 `bindeps_simple` 工具本地编译
+- **最终产物**：生成纯二进制格式的 `loader.bin` 文件
+
+[modules/somehal/somehal/build.rs](../modules/somehal/somehal/build.rs) 中的构建脚本负责处理 `loader.bin` 的生成：
+
+```rust
+fn aarch64_set_loader() {
+    let force_rebuild = std::env::var("CARGO_FEATURE_FORCE_REBUILD_LOADER").is_ok();
+    if force_rebuild {
+        build_loader_locally();
+    } else {
+        let download_success = download_latest_release();
+        // 首先尝试从 release 下载，如果失败则回退到本地构建
+
+        if !download_success {
+            // 回退到原来的本地构建逻辑
+            build_loader_locally();
+        }
+    }
+}
+
+fn download_latest_release() -> bool {
+    // 从 GitHub/Gitee 下载预编译的 loader.bin
+    // ...
+}
+
+fn build_loader_locally() {
+    let builder = bindeps_simple::Builder::new("pie-boot-loader-aarch64")
+        .target("aarch64-unknown-none-softfloat")
+        .env("RUSTFLAGS", "-C relocation-model=pic -Clink-args=-pie")
+        .cargo_args(&["-Z", "build-std=core,alloc"]);
+
+    let output = builder.build().unwrap();
+
+    let loader_path = output.elf;
+    let loader_dst = out_dir().join("loader.bin");
+
+    // 使用 rust-objcopy 转换为纯二进制文件
+    let status = std::process::Command::new("rust-objcopy")
+        .args(["--strip-all", "-O", "binary"])
+        .arg(&loader_path)
+        .arg(loader_dst)
+        .status()
+        .expect("objcopy failed");
+
+    assert!(status.success());
 }
 ```
-
-**处理步骤详解**：
-
-1. **设置链接器搜索路径**：
-   - `cargo:rustc-link-search`：告诉链接器在 OUT_DIR 中查找 link.x
-
-2. **配置链接器参数**：
-   - `-Tlink.x`：使用生成的链接器脚本
-   - `-no-pie`：禁用位置无关可执行文件（虽然模板包含 PIE 支持，但实际禁用）
-   - `-znostart-stop-gc`：保留启动和停止代码，防止被垃圾回收
-
-3. **读取和替换模板**：
-   - 读取 `link.ld` 模板文件
-   - 将 `{{SMP}}` 替换为实际的 CPU 核心数（默认 16）
-
-4. **输出最终脚本**：
-   - 生成 `link.x` 到 `OUT_DIR`
-   - 供链接器在编译时使用
-
-**平台配置**（[modules/axplat-aarch64-dyn/axconfig.toml](../modules/axplat-aarch64-dyn/axconfig.toml)）：
-
-```toml
-[plat]
-cpu-num = 1                                   # CPU 核心数
-kernel-base-vaddr = "0xffff_8000_0000_0000"    # 内核虚拟地址
-kernel-aspace-base = "0xffff_8000_0000_0000"   # 内核地址空间基址
-kernel-aspace-size = "0x0000_7fff_ffff_f000"   # 内核地址空间大小
-
-[devices]
-timer-irq = 30  # 定时器中断号（PPI，物理定时器）
-```
-
-**与 x86_64 平台的构建脚本差异**：
-
-| 特性 | x86_64 | ARM64 |
-|------|--------|-------|
-| **模板读取方式** | `include_str!("linker.lds.S")` | `std::fs::read_to_string("link.ld")` |
-| **占位符替换** | 三个占位符（`%ARCH%`, `%KERNEL_BASE%`, `%SMP%`） | 一个占位符（`{{SMP}}`） |
-| **SMP 默认值** | 1 | 16 |
-| **链接器参数** | 仅 `-Tlink.x` | `-Tlink.x`, `-no-pie`, `-znostart-stop-gc` |
-| **环境变量监听** | 监听 `AXVISOR_SMP` | 无（使用固定值） |
-
-###### 3.3.3.6.4 最终生成的链接器脚本
-
-经过构建脚本处理后，生成的 `link.x` 文件内容如下（以 SMP=16 为例）：
-
-```assembly
-OUTPUT_ARCH(aarch64)
-
-__SMP = 16;               /* 替换后的值 */
-STACK_SIZE = 0x40000;     /* 256KB */
-
-ENTRY(_start)
-
-INCLUDE "pie_boot.x"
-
-SECTIONS
-{
-    _skernel = .;
-
-    .text : ALIGN(4K) {
-        _stext = .;
-        *(.text.boot)
-        *(.text .text.*)
-        . = ALIGN(4K);
-        _etext = .;
-    }
-
-    /* ... 其他段配置 ... */
-
-    .percpu 0x0 : AT(_percpu_start) {
-        _percpu_load_start = .;
-        *(.percpu .percpu.*)
-        _percpu_load_end = .;
-        . = _percpu_load_start + ALIGN(64) * 16;  /* SMP=16 */
-    }
-    /* ... */
-}
-```
-
-**生成文件的位置**：
-
-```
-target/aarch64-unknown-none-softfloat/debug/build/axplat-aarch64-dyn-<hash>/out/link.x
-```
-
-###### 3.3.3.6.5 内存布局
-
-ARM64 平台的内存布局与 x86_64 平台类似，但有一些关键差异：
-
-| 段名称 | 起始地址 | 大小 | 说明 |
-|--------|----------|------|------|
-| `.text` | `0xffff_8000_0000_0000` | 可变 | 代码段，包含启动代码 |
-| `.rodata` | 紧接 `.text` | 可变 | 只读数据段 |
-| `.data` | 紧接 `.rodata` | 可变 | 数据段，包含启动页表和驱动注册表 |
-| `.percpu` | 紧接 `.data` | `64 × SMP` 字节 | Per-CPU 数据段 |
-| `.bss` | 紧接 `.percpu` | 可变 | 零初始化数据段，包含 CPU0 栈和启动栈 |
-
-**内存布局图**：
-
-```
-高位地址
-    │
-    │  ┌────────────────────────────────────┐
-    │  │         栈空间（向下增长）           │
-    │  ├────────────────────────────────────┤
-    │  │         .bss 段（零初始化）          │
-    │  │  - __cpu0_stack (256KB)            │
-    │  │  - boot_stack                      │
-    │  │  - .percpu 数据                    │
-    │  ├────────────────────────────────────┤
-    │  │         .data 段（已初始化）         │
-    │  │  - 启动页表                         │
-    │  │  - 驱动注册表                       │
-    │  ├────────────────────────────────────┤
-    │  │         .rodata 段（只读）           │
-    │  ├────────────────────────────────────┤
-    │  │         .text 段（代码）             │
-    │  │  - EL2 启动代码                     │
-    │  │  - Rust 代码                        │
-    │  └────────────────────────────────────┘
-    │
-0xffff_8000_0000_0000  (内核基地址)
-    │
-低位地址
-```
-
-**关键特点**：
-
-1. **64 位内核地址**：
-   - 使用 `0xffff_8000_0000_0000` 作为内核基地址
-   - 提供更大的地址空间（128 TB）
-   - 符合 ARM64 的 canonical address 规范
-
-2. **EL2 特权级**：
-   - 启动代码必须在 EL2 特权级执行
-   - 支持硬件虚拟化（Stage-2 页表）
-   - 与 x86_64 的 long mode 类似
-
-3. **固定栈空间**：
-   - CPU0 专用栈：256KB
-   - 启动栈：动态分配
-   - 与 x86_64 的动态栈不同
-
-4. **PIE 支持**：
-   - 通过 `INCLUDE "pie_boot.x"` 支持位置无关可执行
-   - 虽然实际编译时禁用了 PIE
-   - 为未来的地址空间布局随机化（ASLR）预留支持
-
-5. **初始化数组**：
-   - `.init_array` 段包含 C++ 风格的构造函数
-   - 在 `rust_main` 之前执行
-   - x86_64 平台也有类似机制
 
 ##### 3.3.3.7 rustc 编译
 
