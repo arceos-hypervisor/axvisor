@@ -2238,17 +2238,7 @@ Ok(())
 
 ##### 3.3.3.6 链接器脚本处理
 
-ARM64 平台的链接器脚本由 [modules/axplat-aarch64-dyn](../modules/axplat-aarch64-dyn) crate 提供，与 x86_64 平台相比有显著差异。本节详细介绍 ARM64 平台的链接器脚本设计、构建脚本处理流程以及与 x86_64 平台的关键差异。
-
-**ARM64 平台链接器脚本的特点**：
-
-1. **位置**：由外部 crate `axplat-aarch64-dyn` 提供，而非本地平台目录
-2. **模板格式**：使用 `{{SMP}}` 占位符，而非 `%SMP%`
-3. **PIE 支持**：通过 `INCLUDE "pie_boot.x"` 支持位置无关可执行文件
-4. **栈空间**：固定 256KB 栈空间，而非动态分配
-5. **内核地址**：使用 `0xffff_8000_0000_0000` 作为基地址
-
-**ARM64 平台的链接器脚本处理流程**：
+ARM64 平台的链接器脚本由 [modules/axplat-aarch64-dyn](../modules/axplat-aarch64-dyn) crate 提供，与 x86_64 平台相比有显著差异。本节详细介绍 ARM64 平台的链接器脚本设计、构建脚本处理流程以及与 x86_64 平台的关键差异。ARM64 平台的链接器脚本处理流程：
 
 ```mermaid
 graph TD
@@ -2397,7 +2387,200 @@ SECTIONS
 | `.init_array` | 初始化函数数组 | C++ 风格构造函数 |
 | `__cpu0_stack` | CPU0 专用栈 | 256KB 固定大小 |
 
-###### 3.3.3.6.2 构建脚本处理
+###### 3.3.3.6.2 pie_boot.x
+
+ARM64 平台的链接器脚本处理与 x86_64 平台的一个关键区别是引入了 **PIE（Position Independent Executable，位置无关可执行）启动支持**。这是通过 `somehal` crate 生成的 `pie_boot.x` 链接器脚本片段实现的，为 ARM64 平台提供了从物理地址到虚拟地址的平滑过渡机制。
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    ARM64 链接器脚本生成流程                      │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. somehal crate（底层硬件抽象）                                │
+│     ├─ 构建脚本：modules/somehal/somehal/build.rs               │
+│     ├─ 模板文件：modules/somehal/somehal/link_base.ld           │
+│     ├─ 生成文件：pie_boot.x（PIE 启动段定义）                    │
+│     └─ 输出目录：target/.../build/somehal-xxx/out/              │
+│                                                                 │
+│  2. axplat-aarch64-dyn crate（平台层）                           │
+│     ├─ 构建脚本：modules/axplat-aarch64-dyn/build.rs            │
+│     ├─ 模板文件：modules/axplat-aarch64-dyn/link.ld             │
+│     ├─ 包含指令：INCLUDE "pie_boot.x"                           │
+│     ├─ 生成文件：link.x（完整链接脚本）                          │
+│     └─ 输出目录：target/.../build/axplat-aarch64-dyn-xxx/out/   │
+│                                                                 │
+│  3. 链接器使用                                                  │
+│     └─ rustc 使用 link.x 进行链接                               │
+│         └─ link.x 通过 INCLUDE 引入 pie_boot.x                  │
+│             └─ 最终链接器包含完整的段定义                        │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+`somehal` crate 的构建脚本 [modules/somehal/somehal/build.rs](../modules/somehal/somehal/build.rs) 负责生成 `pie_boot.x`：
+
+```rust
+fn main() {
+    // 监听模板文件变化
+    println!("cargo:rerun-if-changed=link_base.ld");
+    println!("cargo:rerun-if-changed=link.ld");
+    println!("cargo:rustc-link-search={}", out_dir().display());
+
+    // 获取配置常量
+    let kimage_vaddr = KIMAGE_VADDR;  // 内核虚拟地址
+    let page_size = PAGE_SIZE;        // 页面大小（4KB）
+
+    // 读取模板文件
+    let mut ld = include_str!("link_base.ld").to_string();
+
+    // 替换占位符
+    ld = ld.replace("{kimage_vaddr}", &format!("{:#x}", kimage_vaddr));
+    ld = ld.replace("{page_size}", &format!("{:#x}", page_size));
+
+    // 生成 pie_boot.x
+    let ld_name_out = "pie_boot.x";
+    let mut file = std::fs::File::create(out_dir().join(ld_name_out))
+        .expect("pie_boot.x create failed");
+    file.write_all(ld.as_bytes())
+        .expect("pie_boot.x write failed");
+}
+```
+
+[modules/somehal/somehal/link_base.ld](../modules/somehal/somehal/link_base.ld) 模板定义了 PIE 启动所需的段，构建脚本 [modules/somehal/somehal/build.rs](../modules/somehal/somehal/build.rs) 将其处理后生成 `pie_boot.x`：
+
+```ld
+. = {kimage_vaddr};
+PAGE_SIZE = {page_size};
+
+EXTERN(__pie_boot_default_secondary);
+EXTERN(__somehal_handle_irq_default);
+
+PROVIDE(__pie_boot_secondary = __pie_boot_default_secondary);
+PROVIDE(__somehal_handle_irq = __somehal_handle_irq_default);
+
+SECTIONS{
+    /* 内核头部段 */
+    .head.text : {
+        _text = .;
+        KEEP(*(.head.text))
+    }
+    
+    /* 恒等映射代码段 */
+    .idmap.text : ALIGN(64){
+        _idmap_text = .;
+        KEEP(*(.idmap.text))
+        . = ALIGN(PAGE_SIZE);
+        _idmap_text_end = .;
+    }
+}
+
+SECTIONS{ 
+    /* 启动加载器段 */
+    .boot_loader : ALIGN(PAGE_SIZE) {
+        __boot_loader_start = .;
+        KEEP(*(.boot_loader))
+        __boot_loader_end = .;
+    }
+} INSERT BEFORE .data
+
+ASSERT(PAGE_SIZE != 0x0, "PAGE_SIZE must be defined");
+```
+
+**占位符替换**：
+
+| 占位符 | 替换值 | 说明 |
+|--------|--------|------|
+| `{kimage_vaddr}` | `0xffff_8000_0000_0000` | 内核虚拟基地址 |
+| `{page_size}` | `0x1000` | 页面大小（4KB） |
+
+经过构建脚本处理后，生成的 `pie_boot.x` 文件内容如下：
+
+```ld
+. = 0xffff_8000_0000_0000;
+PAGE_SIZE = 0x1000;
+
+EXTERN(__pie_boot_default_secondary);
+EXTERN(__somehal_handle_irq_default);
+
+PROVIDE(__pie_boot_secondary = __pie_boot_default_secondary);
+PROVIDE(__somehal_handle_irq = __somehal_handle_irq_default);
+
+SECTIONS{
+    .head.text : {
+        _text = .;
+        KEEP(*(.head.text))
+    }
+    .idmap.text : ALIGN(64){
+        _idmap_text = .;
+        KEEP(*(.idmap.text))
+        . = ALIGN(PAGE_SIZE);
+        _idmap_text_end = .;
+    }
+}
+
+SECTIONS{ 
+    .boot_loader : ALIGN(PAGE_SIZE) {
+        __boot_loader_start = .;
+        KEEP(*(.boot_loader))
+        __boot_loader_end = .;
+    }
+} INSERT BEFORE .data
+
+ASSERT(PAGE_SIZE != 0x0, "PAGE_SIZE must be defined");
+```
+
+1. **`.head.text` 段**：
+   - **用途**：存放内核头部代码（`_start` 函数）
+   - **内容**：包含 ARM64 镜像协议要求的头部信息
+   - **位置**：必须位于内核镜像的最开始位置
+   - **KEEP 指令**：防止链接器优化掉这个段
+
+2. **`.idmap.text` 段**：
+   - **用途**：存放恒等映射（Identity Mapping）代码
+   - **内容**：用于 MMU 启用前后的过渡阶段
+   - **特点**：在物理地址和虚拟地址相同的情况下执行
+   - **对齐**：64 字节对齐，结束时按页对齐
+
+3. **`.boot_loader` 段**：
+   - **用途**：存放 PIE 启动加载器代码（`loader.bin`）
+   - **内容**：负责 MMU 初始化和虚拟地址跳转
+   - **插入位置**：通过 `INSERT BEFORE .data` 插入到数据段之前
+   - **对齐**：按页对齐，便于页表映射
+
+`pie_boot.x` 还定义了两个重要的符号，这些符号允许用户通过定义同名符号来覆盖默认行为，实现自定义的启动或中断处理逻辑。
+
+```ld
+PROVIDE(__pie_boot_secondary = __pie_boot_default_secondary);
+PROVIDE(__somehal_handle_irq = __somehal_handle_irq_default);
+```
+
+- **`__pie_boot_secondary`**：次级 CPU 启动入口的默认实现
+- **`__somehal_handle_irq`**：中断处理函数的默认实现
+
+最终，[modules/axplat-aarch64-dyn/link.ld](../modules/axplat-aarch64-dyn/link.ld) 通过 `INCLUDE` 指令引入 `pie_boot.x`：
+
+```ld
+OUTPUT_ARCH(aarch64)
+
+__SMP = {{SMP}};
+
+INCLUDE "pie_boot.x"  /* 引入 somehal 生成的 PIE 启动段定义 */
+
+STACK_SIZE = 0x40000;
+
+ENTRY(_start)
+SECTIONS
+{
+    /* ... 其他段定义 ... */
+}
+```
+
+- **引入时机**：在链接器脚本解析时，`INCLUDE "pie_boot.x"` 会被替换为 `pie_boot.x` 的内容
+- **符号可见性**：`pie_boot.x` 中定义的所有符号和段在 `link.x` 中都可见
+- **段合并**：`pie_boot.x` 定义的段会与 `link.x` 中定义的段合并
+- **INSERT 指令**：`.boot_loader` 段通过 `INSERT BEFORE .data` 插入到数据段之前
+
+###### 3.3.3.6.3 构建脚本处理
 
 构建脚本 [modules/axplat-aarch64-dyn/build.rs](../modules/axplat-aarch64-dyn/build.rs) 负责处理模板并生成最终的链接器脚本：
 
@@ -2464,7 +2647,7 @@ timer-irq = 30  # 定时器中断号（PPI，物理定时器）
 | **链接器参数** | 仅 `-Tlink.x` | `-Tlink.x`, `-no-pie`, `-znostart-stop-gc` |
 | **环境变量监听** | 监听 `AXVISOR_SMP` | 无（使用固定值） |
 
-###### 3.3.3.6.3 最终生成的链接器脚本
+###### 3.3.3.6.4 最终生成的链接器脚本
 
 经过构建脚本处理后，生成的 `link.x` 文件内容如下（以 SMP=16 为例）：
 
@@ -2508,7 +2691,7 @@ SECTIONS
 target/aarch64-unknown-none-softfloat/debug/build/axplat-aarch64-dyn-<hash>/out/link.x
 ```
 
-###### 3.3.3.6.4 内存布局
+###### 3.3.3.6.5 内存布局
 
 ARM64 平台的内存布局与 x86_64 平台类似，但有一些关键差异：
 
