@@ -1108,8 +1108,6 @@ ARM64 平台使用设备树（Device Tree）和 UEFI/GRUB/QEMU 引导加载器�
 | **axplat-aarch64-dyn** | `modules/axplat-aarch64-dyn` | ARM64 平台层实现，提供平台特定的初始化和驱动支持 | `boot.rs`（平台入口）、`init.rs`（初始化）、`mem.rs`（内存管理）、`irq/`（中断控制器）、`time.rs`（定时器） |
 
 - `somehal`
-
-    **位置**：`modules/somehal`
     
     **职责**：
     - 提供 ARM64 内核头部和启动代码（`_start`、`primary_entry`、`_start_secondary`）
@@ -1129,8 +1127,6 @@ ARM64 平台使用设备树（Device Tree）和 UEFI/GRUB/QEMU 引导加载器�
     - 不依赖 axplat 或 axruntime
 
 - `axplat-aarch64-dyn`
-
-    **位置**：`modules/axplat-aarch64-dyn`
     
     **职责**：
     - 实现平台层的启动代码（`boot.rs`：`main`、`secondary`、`switch_sp`）
@@ -1230,7 +1226,7 @@ graph TD
 
 ### 3.2 程序入口点
 
-ARM64 平台的链接器脚本由 [modules/axplat-aarch64-dyn](modules/axplat-aarch64-dyn) 这个 crate 提供，与 x86_64 平台相比有显著差异。
+ARM64 平台的链接器脚本由 [modules/axplat-aarch64-dyn](modules/axplat-aarch64-dyn) 这个 crate 提供。关于 ARM64 平台链接器脚本的模板设计、构建脚本处理流程、内存布局等详细信息，请参阅 [构建文档 - 链接器脚本处理](00_AXVISOR_BUILD.md#3336-链接器脚本处理) 章节。
 
 **核心要点**：
 
@@ -1245,27 +1241,15 @@ ARM64 平台的链接器脚本由 [modules/axplat-aarch64-dyn](modules/axplat-aa
 - **构建脚本**：[modules/axplat-aarch64-dyn/build.rs](modules/axplat-aarch64-dyn/build.rs)
 - **平台配置**：[modules/axplat-aarch64-dyn/axconfig.toml](modules/axplat-aarch64-dyn/axconfig.toml)
 
-**与 x86_64 平台的关键差异**：
+### 3.3 Primary CPU
 
-| 特性 | x86_64 | ARM64 |
-|------|--------|-------|
-| **占位符格式** | `%SMP%` | `{{SMP}}` |
-| **内核基地址** | `0xffff800000200000` | `0xffff_8000_0000_0000` |
-| **PIE 支持** | 无 | 有（通过 `pie_boot.x`） |
-| **CPU0 栈** | 无 | 固定 256KB |
-| **特权级** | Long Mode | EL2 |
+#### 3.3.1 somehal
 
-**详细处理流程**：
+somehal 中的 [modules/somehal/somehal/src/arch/aarch64/mod.rs](modules/somehal/somehal/src/arch/aarch64/mod.rs) 定义了负责处理 ARM64 平台的启动流程。该文件定义了内核头部、主 CPU 入口点和次级 CPU 入口点。
 
-关于 ARM64 平台链接器脚本的模板设计、构建脚本处理流程、内存布局等详细信息，请参阅 [构建文档 - 链接器脚本处理](00_AXVISOR_BUILD.md#3336-链接器脚本处理) 章节。
+##### 3.3.1.1 _start
 
-### 3.3 mod.rs 与 _start
-
-[modules/somehal/somehal/src/arch/aarch64/mod.rs](modules/somehal/somehal/src/arch/aarch64/mod.rs) 负责处理 ARM64 平台的启动流程。该文件定义了内核头部、主 CPU 入口点和次级 CPU 入口点。
-
-#### 3.3.1 _start - 内核头部
-
-`_start` 是 ARM64 内核镜像的入口点，包含 ARM64 镜像协议要求的头部信息：
+[modules/somehal/somehal/src/arch/aarch64/mod.rs](modules/somehal/somehal/src/arch/aarch64/mod.rs) 中定义的 `_start` 是 ARM64 内核镜像的入口点，包含 ARM64 镜像协议要求的头部信息：
 
 ```rust
 #[unsafe(naked)]
@@ -1296,6 +1280,48 @@ pub unsafe extern "C" fn _start() -> ! {
 }
 ```
 
+`_start()` 函数使用了三个关键的 Rust 属性，每个属性都有特定的作用：
+
+| 属性 | 作用 | 说明 |
+|------|------|------|
+| `#[unsafe(naked)]` | 裸函数属性 | 告诉编译器这是一个裸函数，不生成标准的函数序言和尾声（prologue/epilogue），完全由内联汇编控制 |
+| `#[unsafe(no_mangle)]` | 禁用名称修饰 | 告诉编译器不对函数名进行 Rust 名称修饰（name mangling），确保生成的符号名为 `_start`，而不是类似 `_ZN8somehal4arch7aarch645_start17h...` 的修饰名 |
+| `#[unsafe(link_section = ".head.text")]` | 指定代码段 | 告诉编译器将这个函数的代码放到 `.head.text` 段中，而不是默认的 `.text` 段 |
+
+`#[unsafe(link_section = ".head.text")]` 属性与 `pie_boot.x` 中的段定义直接关联：
+
+```ld
+// pie_boot.x 中的段定义
+SECTIONS{
+    .head.text : {
+        _text = .;
+        KEEP(*(.head.text))
+    }
+}
+```
+
+**工作流程**：
+
+```
+1. Rust 编译器编译 _start 函数
+   ├─ 读取 #[unsafe(link_section = ".head.text")] 属性
+   ├─ 将函数的机器码放到 .head.text 段
+   └─ 读取 #[unsafe(no_mangle)] 属性
+       └─ 生成符号名为 "_start"（不进行名称修饰）
+
+2. 链接器处理
+   ├─ 读取 pie_boot.x 中的 .head.text 段定义
+   ├─ 将所有标记为 .head.text 的代码收集到这个段
+   ├─ KEEP 指令确保这个段不会被优化掉
+   └─ 将 .head.text 段放在内核镜像的最开始位置
+
+3. 引导加载器加载
+   ├─ 识别 ARM64 镜像头部（位于 .head.text 段开头）
+   ├─ 读取魔数 "ARM\x64" 确认这是 ARM64 内核
+   ├─ 读取 image_size 确定镜像大小
+   └─ 跳转到 _start 符号（内核入口点）
+```
+
 **ARM64 镜像头部结构**：
 
 ```
@@ -1320,7 +1346,7 @@ pub unsafe extern "C" fn _start() -> ! {
 
 引导加载器（UEFI/GRUB/QEMU）会识别这个头部，并将内核镜像加载到合适的内存位置，然后跳转到 `code0/code1` 指定的地址（即 `primary_entry`）。
 
-#### 3.3.2 primary_entry - Primary CPU 入口
+##### 3.3.1.2 primary_entry
 
 `primary_entry` 是 **Primary CPU**（主 CPU）的真正入口点，负责保存启动参数并跳转到 loader：
 
@@ -1340,23 +1366,13 @@ fn primary_entry() -> ! {
     )
 }
 ```
-
-**步骤说明**：
-
 1. **调用 `preserve_boot_args`**：保存启动参数到 `BOOT_ARGS` 结构
 2. **获取 BOOT_ARGS 地址**：使用 `adr_l!` 宏计算 `BOOT_ARGS` 的地址
-3. **获取 loader 地址**：使用 `adr_l!` 宏计算 `LOADER_BIN` 的地址
-4. **跳转到 loader**：使用 `br x8` 跳转到 loader 二进制代码
+3. 通过 `adr_l!` 宏计算 `LOADER_BIN` 符号的地址（即 `.boot_loader` 段的起始位置），然后使用 `br` 指令跳转到该地址，开始执行 `loader.bin` 的机器码。
 
-**关键技术点**：
+##### 3.3.1.3 preserve_boot_args
 
-- **`adr_l!` 宏**：计算符号的地址（支持位置无关代码）
-- **`br` 指令**：无条件跳转到寄存器指定的地址
-- **loader 二进制**：包含早期初始化代码（设置页表、MMU 等）
-
-#### 3.3.3 preserve_boot_args - 保存启动参数
-
-`preserve_boot_args` 函数负责保存引导加载器传递的启动参数：
+首先，primary_entry 中调用 `preserve_boot_args` 函数来保存引导加载器传递的启动参数：
 
 ```rust
 #[start_code(naked)]
@@ -1425,6 +1441,15 @@ fn preserve_boot_args() {
     )
 }
 ```
+1. **x0-x3 寄存器**：引导加载器传递的参数（设备树地址等）
+2. **virt_entry**：虚拟入口地址（`switch_sp`）
+3. **内核镜像地址**：物理地址和虚拟地址
+4. **栈顶地址**：物理地址和虚拟地址
+5. **内核代码结束地址**：用于计算内核大小
+6. **目标 EL**：EL2（虚拟化）或 EL1
+7. **内核线性偏移**：虚拟地址与物理地址的差值
+8. **页面大小**：4KB
+9. **调试标志**：启用早期调试输出
 
 **EarlyBootArgs 结构**（由 `pie_boot_loader_aarch64` 提供）：
 
@@ -1444,52 +1469,30 @@ pub struct EarlyBootArgs {
 }
 ```
 
-**保存的启动参数**：
+##### 3.3.1.4 loader.bin
 
-1. **x0-x3 寄存器**：引导加载器传递的参数（设备树地址等）
-2. **virt_entry**：虚拟入口地址（`switch_sp`）
-3. **内核镜像地址**：物理地址和虚拟地址
-4. **栈顶地址**：物理地址和虚拟地址
-5. **内核代码结束地址**：用于计算内核大小
-6. **目标 EL**：EL2（虚拟化）或 EL1
-7. **内核线性偏移**：虚拟地址与物理地址的差值
-8. **页面大小**：4KB
-9. **调试标志**：启用早期调试输出
-
-#### 3.3.4 loader.bin - 早期初始化
-
-loader 二进制代码（[modules/somehal/somehal/src/loader.rs](modules/somehal/somehal/src/loader.rs)）包含早期初始化代码，负责设置页表和 MMU：
-
-```rust
-macro_rules! loader_bin_slice {
-    () => {
-        include_bytes!(concat!(env!("OUT_DIR"), "/loader.bin"))
-    };
-}
-
-const LOADER_BIN_LEN: usize = loader_bin_slice!().len();
-
-const fn loader_bin() -> [u8; LOADER_BIN_LEN] {
-    let mut buf = [0u8; LOADER_BIN_LEN];
-    let bin = loader_bin_slice!();
-    buf.copy_from_slice(bin);
-    buf
-}
-
-#[unsafe(link_section = ".boot_loader")]
-pub static LOADER_BIN: [u8; LOADER_BIN_LEN] = loader_bin();
-```
-
-**loader 功能**：
+然后，primary_entry 中直接跳转到 `loader.bin` 执行代码。`loader.bin` 是一个独立的二进制文件，它会被嵌入到最终的内核镜像的 `.boot_loader` 段中。`loader.bin` 中主要实现：
 
 1. **设置页表**：创建初始页表，映射内核镜像
 2. **启用 MMU**：启用内存管理单元
 3. **切换到虚拟地址**：跳转到虚拟地址空间
 4. **设置异常级别**：切换到 EL2 或 EL1
 
-loader 二进制代码由 `pie_boot_loader_aarch64` crate 提供，在编译时生成并嵌入到内核镜像中。
+> 关于 `loader.bin` 的生成、编译和嵌入到内核镜像的完整流程，请参阅 [00_AXVISOR_BUILD.md - 3.3.3.6.6 loader.bin 的编译和嵌入](00_AXVISOR_BUILD.md#33366-loader_bin-的编译和嵌入) 章节。
 
-#### 3.3.5 switch_sp - 切换栈指针
+`loader.bin` 执行完成后，会读取 `BOOT_ARGS.virt_entry` 字段并跳转到该地址。这个地址在 `preserve_boot_args` 中被设置为 `switch_sp` 函数的地址：
+
+```rust
+// preserve_boot_args 中的代码（3.3.3 节）
+LDR    x0,  ={virt_entry}   // 加载虚拟入口地址（switch_sp）
+str    x0,  [x8, {args_of_entry_vma}]",  // 保存到 BOOT_ARGS.virt_entry
+
+// ...
+
+virt_entry = sym switch_sp,  // virt_entry 就是 switch_sp
+```
+
+##### 3.3.1.5 switch_sp
 
 `switch_sp` 函数负责切换到新的栈指针，并跳转到虚拟入口：
 
@@ -1508,8 +1511,6 @@ unsafe extern "C" fn switch_sp(_args: usize) -> ! {
 }
 ```
 
-**步骤说明**：
-
 1. **获取栈顶地址**：使用 `adrp` 和 `add` 指令计算 `__cpu0_stack_top` 的地址
 2. **设置栈指针**：将栈顶地址加载到 `sp` 寄存器
 3. **调用虚拟入口**：跳转到 `virt_entry` 函数
@@ -1525,13 +1526,9 @@ static mut BOOT_STACK: [u8; BOOT_STACK_SIZE] = [0; BOOT_STACK_SIZE];
 
 栈空间位于 BSS 段，大小为 256KB，足够支持早期的函数调用和中断处理。
 
-### 3.4 entry.rs 与 virt_entry
+##### 3.3.1.6 virt_entry
 
-[modules/somehal/somehal/src/common/entry.rs](modules/somehal/somehal/src/common/entry.rs) 负责处理虚拟入口，完成从物理地址到虚拟地址的切换。
-
-#### 3.4.1 virt_entry - 虚拟入口
-
-`virt_entry` 是第一个在虚拟地址空间执行的函数：
+[modules/somehal/somehal/src/common/entry.rs](modules/somehal/somehal/src/common/entry.rs) 负责处理虚拟入口，完成从物理地址到虚拟地址的切换。`virt_entry` 是第一个在虚拟地址空间执行的函数：
 
 ```rust
 pub(crate) unsafe fn virt_entry(args: &BootInfo) {
@@ -1567,8 +1564,6 @@ pub(crate) unsafe fn virt_entry(args: &BootInfo) {
 }
 ```
 
-**步骤说明**：
-
 1. **清零 BSS 段**：将未初始化的全局变量清零
 2. **初始化 BootInfo**：保存启动信息到全局变量
 3. **初始化调试控制台**：从设备树解析 UART 配置
@@ -1579,14 +1574,11 @@ pub(crate) unsafe fn virt_entry(args: &BootInfo) {
 8. **初始化 per-CPU 栈**：为每个 CPU 分配栈空间
 9. **调用主函数**：跳转到 `__pie_boot_main`
 
-**关键技术点**：
+#### 3.3.2 axplat-aarch64-dyn
 
-- **虚拟地址空间**：此时已经启用 MMU，所有地址都是虚拟地址
-- **设备树解析**：从 DTB 中解析硬件配置信息
-- **异常向量表**：设置异常处理函数（中断、系统调用等）
-- **per-CPU 栈**：为每个 CPU 分配独立的栈空间
+[modules/axplat-aarch64-dyn/src/boot.rs](modules/axplat-aarch64-dyn/src/boot.rs) 是平台层的启动代码，负责切换栈指针并调用平台主函数。
 
-#### 3.4.2 __pie_boot_main - 主函数调用
+##### 3.3.2.1 __pie_boot_main
 
 `__pie_boot_main` 是由 `#[somehal::entry]` 宏生成的包装函数，调用用户定义的 `main` 函数：
 
@@ -1647,13 +1639,9 @@ pub fn entry(args: TokenStream, input: TokenStream, name: &str) -> TokenStream {
 }
 ```
 
-### 3.5 boot.rs 与 switch_sp
+##### 3.3.2.2 main
 
-[modules/axplat-aarch64-dyn/src/boot.rs](modules/axplat-aarch64-dyn/src/boot.rs) 是平台层的启动代码，负责切换栈指针并调用平台主函数。
-
-#### 3.5.1 main - 主 CPU 入口
-
-`main` 函数是平台层的主 CPU 入口点：
+定义于 [modules/axplat-aarch64-dyn/src/boot.rs](modules/axplat-aarch64-dyn/src/boot.rs) 中的 `main` 函数是平台层的主 CPU 入口点：
 
 ```rust
 #[somehal::entry]
@@ -1664,13 +1652,11 @@ fn main(args: &BootInfo) -> ! {
 }
 ```
 
-**参数说明**：
-
 - `args`: 启动信息结构，包含设备树地址、内存区域等
 
-#### 3.5.2 switch_sp - 切换栈指针
+##### 3.3.2.3 switch_sp
 
-`switch_sp` 函数负责切换到平台层的栈指针：
+定义于 [modules/axplat-aarch64-dyn/src/boot.rs](modules/axplat-aarch64-dyn/src/boot.rs) 中的 `switch_sp` 函数负责切换到平台层的栈指针：
 
 ```rust
 #[unsafe(naked)]
@@ -1693,8 +1679,6 @@ unsafe extern "C" fn switch_sp(_args: &BootInfo) -> ! {
 }
 ```
 
-**步骤说明**：
-
 1. **获取栈地址**：使用 `adrp` 和 `add` 指令计算 `BOOT_STACK` 的地址
 2. **计算栈顶**：加上栈大小，得到栈顶地址
 3. **设置栈指针**：将栈顶地址加载到 `sp` 寄存器
@@ -1711,7 +1695,7 @@ static mut BOOT_STACK: [u8; BOOT_STACK_SIZE] = [0; BOOT_STACK_SIZE];
 
 栈空间位于 BSS 段，大小为 256KB，与 somehal 的栈空间不同，这是平台层的栈。
 
-#### 3.5.3 sp_reset - 栈重置
+##### 3.3.2.4 sp_reset
 
 `sp_reset` 函数在栈切换完成后调用平台主函数：
 
@@ -1723,8 +1707,6 @@ fn sp_reset(args: &BootInfo) -> ! {
     );
 }
 ```
-
-**参数说明**：
 
 - `cpu_id`: CPU 逻辑 ID（主 CPU 为 0）
 - `fdt_ptr`: 设备树（Device Tree Blob）物理地址
@@ -1738,11 +1720,13 @@ sp_reset
             └─> main()  [kernel/src/main.rs]
 ```
 
-### 3.6 mod.rs 与 _start_secondary
+### 3.4 Secondary CPU
+
+#### 3.4.1 somehal
 
 [modules/somehal/somehal/src/arch/aarch64/mod.rs](modules/somehal/somehal/src/arch/aarch64/mod.rs) 中的 `_start_secondary` 函数负责处理次级 CPU 的启动。
 
-#### 3.6.1 _start_secondary - Secondary CPU 入口
+##### 3.4.1.1 _start_secondary
 
 `_start_secondary` 是 **Secondary CPU**（次级 CPU）的入口点：
 
@@ -1774,8 +1758,6 @@ pub fn _start_secondary(_stack_top: usize) -> ! {
 }
 ```
 
-**步骤说明**：
-
 1. **获取 CPU ID**：从 `mpidr_el1` 寄存器读取 CPU ID
 2. **设置栈指针**：使用传递的栈顶地址
 3. **切换到目标 EL**：调用 `switch_to_elx` 切换到 EL2 或 EL1
@@ -1784,17 +1766,7 @@ pub fn _start_secondary(_stack_top: usize) -> ! {
 6. **调整栈指针**：加上虚拟地址偏移，调整栈指针到虚拟地址空间
 7. **调用次级入口**：跳转到 `__pie_boot_secondary`
 
-**与 x86_64 的差异**：
-
-| 特性 | x86_64 | ARM64 |
-|------|--------|-------|
-| **启动方式** | INIT-SIPI-SIPI（通过 APIC） | PSCI（通过固件调用） |
-| **起始位置** | 固定物理页 0x6000 | 由 PSCI 指定 |
-| **起始模式** | 16 位实模式 | 当前 EL（通常是 EL3） |
-| **栈传递** | 通过固定内存位置（0x6ff0） | 通过寄存器（x0） |
-| **代码切换** | ap_start.S → multiboot.S | 单一启动路径 |
-
-#### 3.6.2 switch_to_elx - 切换异常级别
+##### 3.4.1.2 switch_to_elx
 
 `switch_to_elx` 函数负责切换到目标异常级别（EL2 或 EL1）：
 
@@ -1859,7 +1831,7 @@ pub fn switch_to_elx(bootargs: usize) {
 - **虚拟化**：EL2 用于虚拟化，EL1 用于操作系统
 - **eret 指令**：异常返回指令，用于切换异常级别
 
-#### 3.6.3 enable_fp - 启用浮点
+##### 3.4.1.3 enable_fp
 
 `enable_fp` 函数负责启用 SIMD/浮点指令：
 
@@ -1884,7 +1856,7 @@ fn enable_fp() {
   - `0b10`：在 EL0 陷入
   - `0b11`：不陷入（TrapNothing）
 
-#### 3.6.4 init_mmu - 初始化 MMU
+##### 3.4.1.4 init_mmu
 
 `init_mmu` 函数负责初始化内存管理单元：
 
@@ -1917,7 +1889,9 @@ fn init_mmu() -> usize {
 - **SCTLR_EL2**：EL2 的系统控制寄存器
 - **虚拟地址偏移**：虚拟地址与物理地址的差值
 
-#### 3.6.5 __pie_boot_secondary - 次级 CPU 主函数
+#### 3.4.2 axplat-aarch64-dyn
+
+##### 3.4.2.1 __pie_boot_secondary
 
 `__pie_boot_secondary` 是由 `#[somehal::secondary_entry]` 宏生成的包装函数，调用用户定义的 `secondary` 函数：
 
@@ -1959,34 +1933,11 @@ secondary
             └─> 进入就绪状态，等待调度
 ```
 
-### 3.7 Primary CPU 与 Secondary CPU 启动流程对比
-
-| 阶段 | Primary CPU（主 CPU） | Secondary CPU（次级 CPU） |
-|------|---------------------|------------------------|
-| **启动方式** | 引导加载器直接跳转 | PSCI 接口唤醒 |
-| **起始位置** | 内核镜像入口（`_start`） | 由 PSCI 指定 |
-| **起始 EL** | EL3 或 EL2 | EL3 或 EL2 |
-| **早期初始化** | 执行 loader.bin | 直接执行启动代码 |
-| **栈设置** | 在 `switch_sp` 中设置 | 通过寄存器传递 |
-| **页表初始化** | 由 loader.bin 完成 | 在 `init_mmu` 中完成 |
-| **Rust 入口** | `__pie_boot_main` | `__pie_boot_secondary` |
-| **平台入口** | `axplat::call_main` | `axplat::call_secondary_main` |
-| **运行时入口** | `rust_main` | `rust_main_secondary` |
-| **最终状态** | 进入应用 `main` | 进入就绪状态 |
-
-**与 x86_64 的术语对比**：
-
-| ARM64 术语 | x86_64 术语 | 说明 |
-|-----------|------------|------|
-| Primary CPU | BSP（Bootstrap Processor） | 第一个启动的 CPU |
-| Secondary CPU | AP（Application Processor） | 其他需要被唤醒的 CPU |
-| PSCI 接口 | INIT-SIPI-SIPI | 唤醒次级 CPU 的机制 |
-
-### 3.8 平台 Rust 入口
+### 3.5 平台 Rust 入口
 
 ARM64 平台的 Rust 入口由 `axplat-aarch64-dyn` crate 提供，实际实现如前面章节所示（[boot.rs](modules/axplat-aarch64-dyn/src/boot.rs)）。
 
-#### 3.8.1 Primary CPU 入口
+#### 3.5.1 Primary CPU 入口
 
 ```rust
 // modules/axplat-aarch64-dyn/src/boot.rs
@@ -2007,22 +1958,10 @@ fn sp_reset(args: &BootInfo) -> ! {
 }
 ```
 
-**参数说明**：
 - `cpu_id`: CPU 逻辑 ID（Primary CPU 为 0）
 - `fdt_ptr`: 设备树（Device Tree Blob）物理地址，包含硬件配置信息
 
-**调用链**：
-
-```
-main (somehal::entry)
-  └─> switch_sp
-       └─> sp_reset
-            └─> axplat::call_main(cpu_id, fdt_ptr)
-                 └─> rust_main(cpu_id, fdt_ptr)  [axruntime/src/lib.rs]
-                      └─> main()  [kernel/src/main.rs]
-```
-
-#### 3.8.2 Secondary CPU 入口
+#### 3.5.2 Secondary CPU 入口
 
 ```rust
 // modules/axplat-aarch64-dyn/src/boot.rs
@@ -2035,36 +1974,13 @@ fn secondary(cpu_id: usize) {
     axplat::call_secondary_main(cpu_idx)  // 调用次级主函数
 }
 ```
-
-**参数说明**：
 - `cpu_id`: 硬件 CPU ID（MPIDR），需要转换为逻辑 CPU 索引
 
-**调用链**：
-
-```
-secondary (somehal::secondary_entry)
-  └─> dcache_all(CacheOp::Invalidate)
-  └─> cpu_id_to_idx(cpu_id)
-  └─> axplat::call_secondary_main(cpu_idx)
-       └─> rust_main_secondary(cpu_idx)  [axruntime/src/lib.rs]
-            └─> 进入就绪状态，等待调度
-```
-
-**与 x86_64 的差异**：
-
-| 特性 | x86_64 | ARM64 |
-|------|--------|-------|
-| **Primary CPU 入口** | `rust_entry(magic, mbi)` | `main(args: &BootInfo)` |
-| **Secondary CPU 入口** | `rust_entry_secondary(_magic)` | `secondary(cpu_id: usize)` |
-| **参数传递** | Multiboot 魔数和信息结构体 | BootInfo 结构（包含 FDT） |
-| **CPU ID** | 从 APIC 读取 | 从 MPIDR 寄存器读取 |
-| **硬件描述** | Multiboot 信息结构体 | 设备树（DTB） |
-
-### 3.9 设备树解析
+### 3.6 设备树解析
 
 ARM64 平台使用设备树（Device Tree）描述硬件配置，与 x86_64 平台的 Multiboot 信息结构体有显著差异。
 
-#### 3.9.1 FDT 解析器
+#### 3.6.1 FDT 解析器
 
 **获取 FDT 解析器**（[modules/axplat-aarch64-dyn/src/lib.rs](modules/axplat-aarch64-dyn/src/lib.rs)）：
 
@@ -2158,7 +2074,7 @@ fn fdt() -> Fdt<'static> {
 };
 ```
 
-#### 3.9.2 CPU ID 转换
+#### 3.6.2 CPU ID 转换
 
 **CPU ID 列表初始化**（[modules/axplat-aarch64-dyn/src/smp.rs](modules/axplat-aarch64-dyn/src/smp.rs)）：
 
@@ -2291,7 +2207,7 @@ Bits   Field        Description
 | **CPU 拓扑** | 从 MADT 表读取 | 从设备树读取 |
 | **多处理器术语** | BSP + AP | Primary CPU + Secondary CPU |
 
-#### 3.9.3 内存区域解析
+#### 3.6.3 内存区域解析
 
 **从 BootInfo 获取内存区域**（[modules/axplat-aarch64-dyn/src/mem.rs](modules/axplat-aarch64-dyn/src/mem.rs)）：
 
@@ -2410,7 +2326,7 @@ reserved-memory {
 };
 ```
 
-#### 3.9.4 中断控制器解析
+#### 3.6.4 中断控制器解析
 
 **从设备树解析 GIC**（[modules/axplat-aarch64-dyn/src/irq/mod.rs](modules/axplat-aarch64-dyn/src/irq/mod.rs)）：
 
@@ -2502,7 +2418,7 @@ interrupt-controller@8000000 {
 | **中断数量** | 256 个 | 最多 1020 个（GICv3） |
 | **中断类型** | 固定中断、PIE、SMI、NMI | SGI、PPI、SPI |
 
-#### 3.9.5 定时器解析
+#### 3.6.5 定时器解析
 
 **从设备树解析定时器**（[modules/axplat-aarch64-dyn/src/time.rs](modules/axplat-aarch64-dyn/src/time.rs)）：
 
