@@ -104,6 +104,35 @@ impl axlog::LogIf for LogIfImpl {
     }
 }
 
+#[cfg(feature = "driver-dyn")]
+struct IoMapIfImpl;
+
+#[cfg(feature = "driver-dyn")]
+#[crate_interface::impl_interface]
+impl axdriver::dyn_drivers::klib::IoMapIf for IoMapIfImpl {
+    fn iomap(
+        paddr: axhal::mem::PhysAddr,
+        size: usize,
+    ) -> axerrno::AxResult<axhal::mem::VirtAddr> {
+        // Map device IO memory into kernel virtual address space using axmm.
+        let vaddr = axhal::mem::phys_to_virt(paddr);
+        #[cfg(feature = "paging")]
+        {
+            use axhal::paging::MappingFlags;
+            axmm::kernel_aspace()
+                .lock()
+                .map_linear(
+                    vaddr,
+                    paddr,
+                    size,
+                    MappingFlags::READ | MappingFlags::WRITE | MappingFlags::DEVICE,
+                )
+                .map_err(|_| axerrno::AxError::NoMemory)?;
+        }
+        Ok(vaddr)
+    }
+}
+
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 static INITED_CPUS: AtomicUsize = AtomicUsize::new(0);

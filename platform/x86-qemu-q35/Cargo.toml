@@ -2,7 +2,10 @@
 license = "Apache-2.0"
 edition = "2024"
 name = "axplat-x86-qemu-q35"
-version = "0.1.0"
+version = "0.1.0-preview.1"
+description = "ArceOS platform support for QEMU Q35 (x86_64)"
+repository = "https://github.com/arceos-hypervisor/axvisor"
+authors.workspace = true
 
 [features]
 default = [

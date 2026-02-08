@@ -24,12 +24,13 @@ use axfs_vfs::{
     VfsResult,
 };
 use rsext4::{
-    Ext4FileSystem as Rsext4FileSystem, Jbd2Dev, OpenFile,
-    ext4_backend::api::{fs_mount, lseek, open, read_at},
-    ext4_backend::dir::{get_inode_with_num, mkdir},
-    ext4_backend::entries::classic_dir::list_entries,
-    ext4_backend::file::{delete_dir, mkfile, mv, truncate, unlink, write_file},
-    ext4_backend::loopfile::resolve_inode_block_allextend,
+    Ext4FileSystem as Rsext4FileSystem, Jbd2Dev,
+    api::{OpenFile, fs_mount, lseek, open, read_at},
+    dir::{get_inode_with_num, mkdir},
+    entries::classic_dir::list_entries,
+    error::{BlockDevError, BlockDevResult},
+    file::{delete_dir, mkfile, mv, truncate, unlink, write_file},
+    loopfile::resolve_inode_block_allextend,
 };
 use spin::Mutex;
 
@@ -516,7 +517,7 @@ impl Drop for FileWrapper {
 }
 
 impl rsext4::BlockDevice for Disk {
-    fn write(&mut self, buffer: &[u8], block_id: u32, count: u32) -> rsext4::BlockDevResult<()> {
+    fn write(&mut self, buffer: &[u8], block_id: u32, count: u32) -> BlockDevResult<()> {
         // RVlwext4 uses 4096 byte blocks, but Disk uses 512 byte blocks
         self.set_position(block_id as u64 * BLOCK_SIZE as u64);
         let mut total_written = 0;
@@ -526,14 +527,14 @@ impl rsext4::BlockDevice for Disk {
             let remaining = &buffer[total_written..];
             let written = self
                 .write_one(remaining)
-                .map_err(|_| rsext4::BlockDevError::WriteError)?;
+                .map_err(|_| BlockDevError::WriteError)?;
             total_written += written;
         }
 
         Ok(())
     }
 
-    fn read(&mut self, buffer: &mut [u8], block_id: u32, count: u32) -> rsext4::BlockDevResult<()> {
+    fn read(&mut self, buffer: &mut [u8], block_id: u32, count: u32) -> BlockDevResult<()> {
         self.set_position(block_id as u64 * BLOCK_SIZE as u64);
         let mut total_read = 0;
         let to_read = count as usize * BLOCK_SIZE;
@@ -542,18 +543,18 @@ impl rsext4::BlockDevice for Disk {
             let remaining = &mut buffer[total_read..];
             let read = self
                 .read_one(remaining)
-                .map_err(|_| rsext4::BlockDevError::ReadError)?;
+                .map_err(|_| BlockDevError::ReadError)?;
             total_read += read;
         }
 
         Ok(())
     }
 
-    fn open(&mut self) -> rsext4::BlockDevResult<()> {
+    fn open(&mut self) -> BlockDevResult<()> {
         Ok(())
     }
 
-    fn close(&mut self) -> rsext4::BlockDevResult<()> {
+    fn close(&mut self) -> BlockDevResult<()> {
         Ok(())
     }
 
@@ -564,7 +565,7 @@ impl rsext4::BlockDevice for Disk {
 }
 
 impl rsext4::BlockDevice for Partition {
-    fn write(&mut self, buffer: &[u8], block_id: u32, count: u32) -> rsext4::BlockDevResult<()> {
+    fn write(&mut self, buffer: &[u8], block_id: u32, count: u32) -> BlockDevResult<()> {
         self.set_position(block_id as u64 * BLOCK_SIZE as u64);
         let mut total_written = 0;
         let to_write = count as usize * BLOCK_SIZE;
@@ -573,14 +574,14 @@ impl rsext4::BlockDevice for Partition {
             let remaining = &buffer[total_written..];
             let written = self
                 .write_one(remaining)
-                .map_err(|_| rsext4::BlockDevError::WriteError)?;
+                .map_err(|_| BlockDevError::WriteError)?;
             total_written += written;
         }
 
         Ok(())
     }
 
-    fn read(&mut self, buffer: &mut [u8], block_id: u32, count: u32) -> rsext4::BlockDevResult<()> {
+    fn read(&mut self, buffer: &mut [u8], block_id: u32, count: u32) -> BlockDevResult<()> {
         self.set_position(block_id as u64 * BLOCK_SIZE as u64);
         let mut total_read = 0;
         let to_read = count as usize * BLOCK_SIZE;
@@ -589,18 +590,18 @@ impl rsext4::BlockDevice for Partition {
             let remaining = &mut buffer[total_read..];
             let read = self
                 .read_one(remaining)
-                .map_err(|_| rsext4::BlockDevError::ReadError)?;
+                .map_err(|_| BlockDevError::ReadError)?;
             total_read += read;
         }
 
         Ok(())
     }
 
-    fn open(&mut self) -> rsext4::BlockDevResult<()> {
+    fn open(&mut self) -> BlockDevResult<()> {
         Ok(())
     }
 
-    fn close(&mut self) -> rsext4::BlockDevResult<()> {
+    fn close(&mut self) -> BlockDevResult<()> {
         Ok(())
     }
 

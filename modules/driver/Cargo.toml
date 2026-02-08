@@ -2,8 +2,10 @@
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
-name = "driver"
+name = "axvisor-driver"
 version.workspace = true
+description = "Device drivers module for AxVisor hypervisor"
+repository = "https://github.com/arceos-hypervisor/axvisor"
 
 [features]
 default = []

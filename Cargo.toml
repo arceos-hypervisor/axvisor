@@ -16,7 +16,7 @@ lto = true
 authors = ["Keyang Hu <keyang.hu@qq.com>", "周睿 <zrufo747@outlook.com>"]
 edition = "2024"
 license = "Apache-2.0"
-version = "0.1.0"
+version = "0.1.0-preview.1"
 
 [workspace.dependencies]
 bitflags = "2.2"
@@ -32,38 +32,37 @@ timer_list = "0.1"
 toml = "0.9"
 
 # System dependent modules provided by ArceOS.
-# FIXME: pin to a specific tag!
-axstd = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216", features = [
+axstd = {version = "0.2.2-preview.1", features = [
   "alloc-level-1",
   "paging",
   "irq",
   "multitask",
   "task-ext",
-  "smp", # "page-alloc-64g",
+  "smp",
 ]}
 
-axalloc = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axconfig = "0.2.2-preview.1"
-axdisplay = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axdriver = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axhal = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axipi = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
+axalloc = "0.2.2-preview.1"
+axconfig = "0.2.2-preview.2"
+axdisplay = "0.2.2-preview.1"
+axdriver = "0.2.2-preview.2"
+axhal = "0.2.2-preview.6"
+axipi = "0.2.2-preview.2"
 axlog = "0.2.2-preview.1"
-axmm = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axnet = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axtask = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
+axmm = "0.2.2-preview.1"
+axnet = "0.2.2-preview.1"
+axtask = "0.2.2-preview.3"
 
 axcpu = "0.3.0-preview.3"
 axplat = "0.3.0-preview.2"
 
 # System dependent modules provided by ArceOS-Hypervisor.
-axaddrspace = "0.1.1"
+axaddrspace = "0.1.4-preview.1"
 axhvc = "0.2.0"
 axklib = "0.2.0"
-axruntime = {path = "modules/axruntime"}
-axfs = {path = "modules/axfs"}
-axvcpu = "0.1"
-axvm = {git = "https://github.com/arceos-hypervisor/axvm.git", branch = "next"}
+axruntime = {path = "modules/axruntime", version = "0.2.2-preview.3"}
+axfs = {path = "modules/axfs", version = "0.2.2-preview.2"}
+axvcpu = "0.2.1-preview.1"
+axvm = "0.2.1-preview.1"
 
 # System independent crates provided by ArceOS, these crates could be imported by remote url. 
 axerrno = "0.2"
@@ -79,20 +78,36 @@ rdrive = "0.18"
 
 vm-fdt = {version = "0.3.0", default-features = false, features = ["alloc"]}
 
-axdevice = {git = "https://github.com/arceos-hypervisor/axdevice.git"}
-axdevice_base = "0.1"
-axvisor_api = "0.1"
-driver = {path = "modules/driver"}
+axdevice = "0.2.1-preview.1"
+axdevice_base = "0.1.1-preview.1"
+axvisor_api = "0.1.1-preview.1"
+driver = {package = "axvisor-driver", path = "modules/driver", version = "0.1.0-preview.1"}
 
 # platform
-axplat-x86-qemu-q35 = {path = "platform/x86-qemu-q35"}
-axvmconfig = {git = "https://github.com/arceos-hypervisor/axvmconfig.git", branch = "next"}
+axplat-x86-qemu-q35 = {path = "platform/x86-qemu-q35", version = "0.1.0-preview.1"}
+axvmconfig = "0.2.1-preview.1"
 
 [patch.crates-io]
-axvcpu = {git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "next"}
-axvmconfig = {git = "https://github.com/arceos-hypervisor/axvmconfig.git", branch = "next"}
-
-[patch."https://github.com/arceos-org/arceos"]
 axconfig = {path = "modules/axconfig"}
 axruntime = {path = "modules/axruntime"}
 axfs = {path = "modules/axfs"}
+axvisor-driver = {path = "modules/driver"}
+axplat-x86-qemu-q35 = {path = "platform/x86-qemu-q35"}
+# TODO: remove this patch after axplat-aarch64-dyn is published to crates.io
+axplat-aarch64-dyn = {path = "../axplat-aarch64-dyn"}
+axhal = {path = "../arceos/modules/axhal"}
+axdriver = {path = "../arceos/modules/axdriver"}
+axaddrspace = {path = "../axaddrspace"}
+# Hypervisor component patches (next branch)
+axvcpu = {path = "../axvcpu"}
+axvm = {path = "../axvm"}
+axvmconfig = {path = "../axvmconfig"}
+axdevice = {path = "../axdevice"}
+x86_vcpu = {path = "../x86_vcpu"}
+arm_vcpu = {path = "../arm_vcpu"}
+axdevice_base = {path = "../axdevice_base"}
+axvisor_api = {path = "../axvisor_api"}
+axvisor_api_proc = {path = "../axvisor_api/axvisor_api_proc"}
+# x86_vlapic needs to be patched for pre-release deps
+arm_vgic = {path = "../arm_vgic"}
+x86_vlapic = {path = "../x86_vlapic"}
