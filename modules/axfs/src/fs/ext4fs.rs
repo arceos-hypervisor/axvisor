@@ -24,14 +24,14 @@ use axfs_vfs::{
     VfsResult,
 };
 use rsext4::{
+    api::{fs_mount, lseek, open, read_at, OpenFile},
+    dir::{get_inode_with_num, mkdir},
+    entries::classic_dir::list_entries,
+    error::{BlockDevError, BlockDevResult},
+    file::{delete_dir, mkfile, mv, truncate, unlink, write_file},
+    loopfile::resolve_inode_block_allextend,
     Ext4FileSystem as Rsext4FileSystem, Jbd2Dev,
 };
-use rsext4::api::{fs_mount, lseek, open, OpenFile, read_at};
-use rsext4::error::{BlockDevError, BlockDevResult};
-use rsext4::dir::{get_inode_with_num, mkdir};
-use rsext4::entries::classic_dir::list_entries;
-use rsext4::file::{delete_dir, mkfile, mv, truncate, unlink, write_file};
-use rsext4::loopfile::resolve_inode_block_allextend;
 use spin::Mutex;
 
 use crate::dev::{Disk, Partition};
@@ -201,7 +201,9 @@ impl VfsNodeOps for FileWrapper {
 
         trace!(
             "get_attr of {:?}, size: {}, blocks: {}",
-            self.path, size, blocks
+            self.path,
+            size,
+            blocks
         );
 
         Ok(VfsNodeAttr::new(perm, vtype, size, blocks))
