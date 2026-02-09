@@ -19,8 +19,8 @@ phys_cpu_sets = [1]
 # The entry point of the kernel image.
 entry_point = 0x8000
 # The location of image: "memory" | "fs".
-# Load from file system.
-image_location = "fs"
+# Load kernel image into memory; path will be patched by CI script.
+image_location = "memory"
 # The file path of the kernel image.
 kernel_path = "/tmp/axvisor/qemu_x86_64_nimbos/qemu-x86_64"
 # The load address of the kernel image.
