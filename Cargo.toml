@@ -85,11 +85,10 @@ driver = {path = "modules/driver"}
 
 # platform
 axplat-x86-qemu-q35 = {path = "platform/x86-qemu-q35"}
-axvmconfig = {git = "https://github.com/arceos-hypervisor/axvmconfig.git", branch = "next"}
+axvmconfig = "0.2.1"
 
 [patch.crates-io]
 axvcpu = {git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "next"}
-axvmconfig = {git = "https://github.com/arceos-hypervisor/axvmconfig.git", branch = "next"}
 
 [patch."https://github.com/arceos-org/arceos"]
 axconfig = {path = "modules/axconfig"}
