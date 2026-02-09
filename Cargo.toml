@@ -33,7 +33,7 @@ hashbrown = "0.14"
 
 # System dependent modules provided by ArceOS.
 # FIXME: pin to a specific tag!
-axstd = {version = "=0.2.2-hv.2", features = [
+axstd = {version = "=0.2.2-hv.3", features = [
   "alloc-level-1",
   "paging",
   "irq",
@@ -42,7 +42,7 @@ axstd = {version = "=0.2.2-hv.2", features = [
   "smp",
 ]}
 
-axconfig = "0.2.2-hv.2"
+axconfig = "0.2.2-hv.3"
 
 # System dependent modules provided by ArceOS-Hypervisor.
 axaddrspace = "0.1.4"
