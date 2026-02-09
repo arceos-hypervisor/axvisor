@@ -30,6 +30,7 @@ log = "0.4"
 spin = "0.9"
 timer_list = "0.1"
 toml = "0.9"
+hashbrown = "0.14"
 
 # System dependent modules provided by ArceOS.
 # FIXME: pin to a specific tag!
@@ -58,8 +59,8 @@ axplat = {git = "https://github.com/arceos-org/axplat_crates.git", tag = "dev-v0
 
 # System dependent modules provided by ArceOS-Hypervisor.
 axaddrspace = "0.1.1"
-axhvc = {git = "https://github.com/arceos-hypervisor/axhvc.git"}
-axklib = {git = "https://github.com/arceos-hypervisor/axklib.git"}
+axhvc = "0.2"
+axklib = "0.2"
 axruntime = {path = "modules/axruntime"}
 axfs = {path = "modules/axfs"}
 axvcpu = "0.1"
@@ -77,9 +78,7 @@ percpu = {version = "0.2", features = ["arm-el2"]}
 rdif-intc = "0.12"
 rdrive = "0.18"
 
-vm-fdt = {git = "https://github.com/bullhh/vm-fdt.git", default-features = false, features = ["alloc"]}
-
-axdevice = {git = "https://github.com/arceos-hypervisor/axdevice.git"}
+axdevice = "0.2"
 axdevice_base = "0.1"
 axvisor_api = "0.1"
 driver = {path = "modules/driver"}

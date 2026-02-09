@@ -18,7 +18,7 @@ use core::cell::OnceCell;
 
 use axfs_vfs::{VfsDirEntry, VfsError, VfsNodePerm, VfsResult};
 use axfs_vfs::{VfsNodeAttr, VfsNodeOps, VfsNodeRef, VfsNodeType, VfsOps};
-use fatfs::{Dir, File, LossyOemCpConverter, NullTimeProvider, Read, Seek, SeekFrom, Write};
+use axfatfs::{Dir, File, LossyOemCpConverter, NullTimeProvider, Read, Seek, SeekFrom, Write};
 use spin::Mutex;
 
 use crate::dev::{Disk, Partition};
@@ -26,11 +26,11 @@ use crate::dev::{Disk, Partition};
 const BLOCK_SIZE: usize = 512;
 
 pub struct FatFileSystem {
-    inner: fatfs::FileSystem<PartitionWrapper, NullTimeProvider, LossyOemCpConverter>,
+    inner: axfatfs::FileSystem<PartitionWrapper, NullTimeProvider, LossyOemCpConverter>,
     root_dir: OnceCell<VfsNodeRef>,
 }
 
-/// A wrapper for Partition to implement the required traits for fatfs
+/// A wrapper for Partition to implement the required traits for axfatfs
 pub struct PartitionWrapper {
     partition: Partition,
 }
@@ -41,11 +41,11 @@ impl PartitionWrapper {
     }
 }
 
-impl fatfs::IoBase for PartitionWrapper {
+impl axfatfs::IoBase for PartitionWrapper {
     type Error = ();
 }
 
-impl fatfs::Read for PartitionWrapper {
+impl axfatfs::Read for PartitionWrapper {
     fn read(&mut self, mut buf: &mut [u8]) -> Result<usize, Self::Error> {
         let mut read_len = 0;
         while !buf.is_empty() {
@@ -63,7 +63,7 @@ impl fatfs::Read for PartitionWrapper {
     }
 }
 
-impl fatfs::Write for PartitionWrapper {
+impl axfatfs::Write for PartitionWrapper {
     fn write(&mut self, mut buf: &[u8]) -> Result<usize, Self::Error> {
         let mut write_len = 0;
         while !buf.is_empty() {
@@ -84,13 +84,13 @@ impl fatfs::Write for PartitionWrapper {
     }
 }
 
-impl fatfs::Seek for PartitionWrapper {
-    fn seek(&mut self, pos: fatfs::SeekFrom) -> Result<u64, Self::Error> {
+impl axfatfs::Seek for PartitionWrapper {
+    fn seek(&mut self, pos: axfatfs::SeekFrom) -> Result<u64, Self::Error> {
         let size = self.partition.size();
         let new_pos = match pos {
-            fatfs::SeekFrom::Start(pos) => Some(pos),
-            fatfs::SeekFrom::Current(off) => self.partition.position().checked_add_signed(off),
-            fatfs::SeekFrom::End(off) => size.checked_add_signed(off),
+            axfatfs::SeekFrom::Start(pos) => Some(pos),
+            axfatfs::SeekFrom::Current(off) => self.partition.position().checked_add_signed(off),
+            axfatfs::SeekFrom::End(off) => size.checked_add_signed(off),
         }
         .ok_or(())?;
         if new_pos > size {
@@ -117,9 +117,9 @@ impl FatFileSystem {
     #[cfg(feature = "use-ramdisk")]
     #[allow(dead_code)]
     pub fn new(mut disk: Disk) -> Self {
-        let opts = fatfs::FormatVolumeOptions::new();
-        fatfs::format_volume(&mut disk, opts).expect("failed to format volume");
-        let inner = fatfs::FileSystem::new(disk, fatfs::FsOptions::new())
+        let opts = axfatfs::FormatVolumeOptions::new();
+        axfatfs::format_volume(&mut disk, opts).expect("failed to format volume");
+        let inner = axfatfs::FileSystem::new(disk, axfatfs::FsOptions::new())
             .expect("failed to initialize FAT filesystem");
 
         Self {
@@ -133,7 +133,7 @@ impl FatFileSystem {
     pub fn new(disk: Disk) -> Self {
         let disk_size = disk.size();
         let wrapper = PartitionWrapper::new(crate::dev::Partition::new(disk, 0, disk_size / 512));
-        let inner = fatfs::FileSystem::new(wrapper, fatfs::FsOptions::new())
+        let inner = axfatfs::FileSystem::new(wrapper, axfatfs::FsOptions::new())
             .expect("failed to initialize FAT filesystem");
         Self {
             inner,
@@ -144,7 +144,7 @@ impl FatFileSystem {
     /// Create a new FAT filesystem from a partition
     pub fn from_partition(partition: Partition) -> Self {
         let wrapper = PartitionWrapper::new(partition);
-        let inner = fatfs::FileSystem::new(wrapper, fatfs::FsOptions::new())
+        let inner = axfatfs::FileSystem::new(wrapper, axfatfs::FsOptions::new())
             .expect("failed to initialize FAT filesystem on partition");
         Self {
             inner,
@@ -256,7 +256,7 @@ impl VfsNodeOps for DirWrapper<'static> {
     }
 
     fn lookup(self: Arc<Self>, path: &str) -> VfsResult<VfsNodeRef> {
-        debug!("lookup at fatfs: {}", path);
+        debug!("lookup at axfatfs: {}", path);
         let path = path.trim_matches('/');
         if path.is_empty() || path == "." {
             return Ok(self.clone());
@@ -265,7 +265,7 @@ impl VfsNodeOps for DirWrapper<'static> {
             return self.lookup(rest);
         }
 
-        // TODO: use `fatfs::Dir::find_entry`, but it's not public.
+        // TODO: use `axfatfs::Dir::find_entry`, but it's not public.
         if let Ok(file) = self.0.open_file(path) {
             Ok(FatFileSystem::new_file(file))
         } else if let Ok(dir) = self.0.open_dir(path) {
@@ -276,7 +276,7 @@ impl VfsNodeOps for DirWrapper<'static> {
     }
 
     fn create(&self, path: &str, ty: VfsNodeType) -> VfsResult {
-        debug!("create {:?} at fatfs: {}", ty, path);
+        debug!("create {:?} at axfatfs: {}", ty, path);
         let path = path.trim_matches('/');
         if path.is_empty() || path == "." {
             return Ok(());
@@ -299,7 +299,7 @@ impl VfsNodeOps for DirWrapper<'static> {
     }
 
     fn remove(&self, path: &str) -> VfsResult {
-        debug!("remove at fatfs: {}", path);
+        debug!("remove at axfatfs: {}", path);
         let path = path.trim_matches('/');
         assert!(!path.is_empty()); // already check at `root.rs`
         if let Some(rest) = path.strip_prefix("./") {
@@ -332,7 +332,7 @@ impl VfsNodeOps for DirWrapper<'static> {
     fn rename(&self, src_path: &str, dst_path: &str) -> VfsResult {
         // `src_path` and `dst_path` should in the same mounted fs
         debug!(
-            "rename at fatfs, src_path: {}, dst_path: {}",
+            "rename at axfatfs, src_path: {}, dst_path: {}",
             src_path, dst_path
         );
 
@@ -355,7 +355,7 @@ impl VfsOps for FatFileSystem {
     }
 }
 
-impl fatfs::IoBase for Disk {
+impl axfatfs::IoBase for Disk {
     type Error = ();
 }
 
@@ -414,8 +414,8 @@ impl Seek for Disk {
     }
 }
 
-const fn as_vfs_err(err: fatfs::Error<()>) -> VfsError {
-    use fatfs::Error::*;
+const fn as_vfs_err(err: axfatfs::Error<()>) -> VfsError {
+    use axfatfs::Error::*;
     match err {
         AlreadyExists => VfsError::AlreadyExists,
         CorruptedFileSystem => VfsError::InvalidData,

@@ -433,6 +433,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "axdevice"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d407c46aa35828779e14d6362f15e7dd92f9d9e5cae0e6600c3fb2ec6c3fcba"
+dependencies = [
+ "arm_vgic",
+ "axaddrspace",
+ "axdevice_base",
+ "axerrno 0.1.2",
+ "axvmconfig",
+ "cfg-if",
+ "log",
+ "memory_addr",
+ "range-alloc-arceos",
+ "spin 0.9.8",
+]
+
+[[package]]
 name = "axdevice_base"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -473,7 +491,7 @@ dependencies = [
  "axdriver_virtio",
  "axerrno 0.1.2",
  "axhal",
- "axklib",
+ "axklib 0.2.0 (git+https://github.com/arceos-hypervisor/axklib.git)",
  "axmm",
  "cfg-if",
  "crate_interface",
@@ -573,6 +591,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "axfatfs"
+version = "0.1.0-pre.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4bf1c27753a96a0f835cca49e6fb354912107d018c905d13c7eff39be757eb5a"
+dependencies = [
+ "bitflags 2.10.0",
+ "log",
+]
+
+[[package]]
 name = "axfeat"
 version = "0.2.0"
 source = "git+https://github.com/arceos-org/arceos.git?tag=dev-251216#16096568f5ae6ad2d687eff2927a4cb69cef8133"
@@ -596,11 +624,11 @@ dependencies = [
  "axdriver",
  "axdriver_block 0.1.2 (git+https://github.com/arceos-org/axdriver_crates.git?tag=v0.1.2)",
  "axerrno 0.1.2",
+ "axfatfs",
  "axfs_ramfs",
  "axfs_vfs",
  "axio",
  "cap_access",
- "fatfs",
  "lazyinit",
  "log",
  "rsext4",
@@ -656,11 +684,11 @@ dependencies = [
 
 [[package]]
 name = "axhvc"
-version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/axhvc.git#8b07150208803180bffc6187e6373b7ead013054"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6262e1b84fe6c912c07cc7d9dfa45d8f4511870d79a2886ce6217278bfb8c0dc"
 dependencies = [
  "axerrno 0.2.2",
- "numeric-enum-macro",
 ]
 
 [[package]]
@@ -683,6 +711,17 @@ dependencies = [
  "lazyinit",
  "log",
  "percpu",
+]
+
+[[package]]
+name = "axklib"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "beb4b4d3c013138ee687343370f891941524a3d03a36ca8e80c0bd7e17f5e756"
+dependencies = [
+ "axerrno 0.1.2",
+ "memory_addr",
+ "trait-ffi",
 ]
 
 [[package]]
@@ -1073,7 +1112,7 @@ dependencies = [
  "arm-gic-driver",
  "axaddrspace",
  "axconfig",
- "axdevice",
+ "axdevice 0.2.0",
  "axdevice_base",
  "axerrno 0.2.2",
  "axhvc",
@@ -1090,6 +1129,7 @@ dependencies = [
  "driver",
  "extern-trait",
  "fdt-parser",
+ "hashbrown 0.14.5",
  "kernel_guard",
  "kspin",
  "lazy_static",
@@ -1107,7 +1147,6 @@ dependencies = [
  "syn 2.0.111",
  "timer_list",
  "toml 0.9.10+spec-1.1.0",
- "vm-fdt 0.3.0 (git+https://github.com/bullhh/vm-fdt.git)",
 ]
 
 [[package]]
@@ -1142,7 +1181,7 @@ dependencies = [
  "arm_vcpu",
  "arm_vgic",
  "axaddrspace",
- "axdevice",
+ "axdevice 0.1.0",
  "axdevice_base",
  "axerrno 0.2.2",
  "axvcpu",
@@ -2099,7 +2138,7 @@ dependencies = [
 name = "driver"
 version = "0.1.0"
 dependencies = [
- "axklib",
+ "axklib 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log",
  "phytium-mci",
  "rdif-block",
@@ -2324,15 +2363,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 
 [[package]]
-name = "fatfs"
-version = "0.4.0"
-source = "git+https://github.com/Josen-B/rust-fatfs.git?rev=41122ef#41122eff7d244cb030c9cfb9b5e14fc50b70dd24"
-dependencies = [
- "bitflags 2.10.0",
- "log",
-]
-
-[[package]]
 name = "fdt-parser"
 version = "0.4.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2372,7 +2402,7 @@ dependencies = [
  "serde",
  "sha1",
  "thiserror 2.0.17",
- "vm-fdt 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "vm-fdt",
 ]
 
 [[package]]
@@ -4254,6 +4284,12 @@ version = "0.1.4"
 source = "git+https://github.com/arceos-hypervisor/range-alloc.git#fc826e54dab9072be5358a1b0e7fc34503d6630d"
 
 [[package]]
+name = "range-alloc-arceos"
+version = "0.1.4-pre.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b63358c741a7a22b7b99bc27dcdf5b79339b132bd4380920fed7f7219ece58dd"
+
+[[package]]
 name = "ratatui"
 version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4783,8 +4819,9 @@ dependencies = [
 
 [[package]]
 name = "rsext4"
-version = "0.1.0"
-source = "git+https://github.com/Dirinkbottle/rsext4.git?tag=dev-251222#376e253cc6b8767bc14ca5054fbc1ae49f7a8c8d"
+version = "0.1.0-pre.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32c9e89b7c4314992d8b2f6147e8637cc7a578a8d0df083e516bde4b23a0b25d"
 dependencies = [
  "bitflags 2.10.0",
  "lazy_static",
@@ -6235,14 +6272,6 @@ name = "vm-fdt"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7e21282841a059bb62627ce8441c491f09603622cd5a21c43bfedc85a2952f23"
-
-[[package]]
-name = "vm-fdt"
-version = "0.3.0"
-source = "git+https://github.com/bullhh/vm-fdt.git#f8caf77fadf4e925e91df5bd211c8a96dc1f6e07"
-dependencies = [
- "hashbrown 0.14.5",
-]
 
 [[package]]
 name = "volatile"
