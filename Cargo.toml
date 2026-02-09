@@ -16,7 +16,7 @@ lto = true
 authors = ["Keyang Hu <keyang.hu@qq.com>", "周睿 <zrufo747@outlook.com>"]
 edition = "2024"
 license = "Apache-2.0"
-version = "0.1.0"
+version = "0.3.0"
 
 [workspace.dependencies]
 bitflags = "2.2"

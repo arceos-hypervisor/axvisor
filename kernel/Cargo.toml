@@ -3,6 +3,7 @@ authors.workspace = true
 edition.workspace = true
 license.workspace = true
 name = "axvisor"
+version.workspace = true
 
 [features]
 ept-level-4 = ["axaddrspace/4-level-ept"]

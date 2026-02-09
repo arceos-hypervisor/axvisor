@@ -3,7 +3,7 @@ name = "axfs"
 description = "Axvisor filesystem module"
 edition.workspace = true
 license.workspace = true
-version.workspace = true
+version = "0.1.0"
 
 [features]
 use-ramdisk = []

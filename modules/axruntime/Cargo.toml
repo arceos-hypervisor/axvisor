@@ -6,7 +6,7 @@ edition.workspace = true
 license.workspace = true
 name = "axruntime"
 repository = "https://github.com/arceos-org/arceos/tree/main/modules/axruntime"
-version.workspace = true
+version = "0.1.0"
 
 [features]
 default = []
