@@ -2,7 +2,6 @@
 members = [
   "crates/*",
   "modules/*",
-  "platform/*",
   "xtask",
   "kernel",
 ]
@@ -34,35 +33,22 @@ hashbrown = "0.14"
 
 # System dependent modules provided by ArceOS.
 # FIXME: pin to a specific tag!
-axstd = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216", features = [
+axstd = {version = "=0.2.2-hv.2", features = [
   "alloc-level-1",
   "paging",
   "irq",
   "multitask",
   "task-ext",
-  "smp", # "page-alloc-64g",
+  "smp",
 ]}
 
-axalloc = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axconfig = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axdisplay = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axdriver = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axhal = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axipi = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axlog = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axmm = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axnet = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-axtask = {git = "https://github.com/arceos-org/arceos.git", tag = "dev-251216"}
-
-axcpu = {git = "https://github.com/arceos-org/axcpu.git", tag = "dev-v03"}
-axplat = {git = "https://github.com/arceos-org/axplat_crates.git", tag = "dev-v03"}
+axconfig = "0.2.2-hv.2"
 
 # System dependent modules provided by ArceOS-Hypervisor.
-axaddrspace = "0.1.1"
+axaddrspace = "0.1.4"
 axhvc = "0.2"
 axklib = "0.2"
-axruntime = {path = "modules/axruntime"}
-axfs = {path = "modules/axfs"}
+
 axvcpu = "0.1"
 axvm = {git = "https://github.com/arceos-hypervisor/axvm.git", branch = "next"}
 
@@ -84,13 +70,8 @@ axvisor_api = "0.1"
 driver = {path = "modules/driver"}
 
 # platform
-axplat-x86-qemu-q35 = {path = "platform/x86-qemu-q35"}
 axvmconfig = "0.2.1"
 
 [patch.crates-io]
 axvcpu = {git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "next"}
 
-[patch."https://github.com/arceos-org/arceos"]
-axconfig = {path = "modules/axconfig"}
-axruntime = {path = "modules/axruntime"}
-axfs = {path = "modules/axfs"}

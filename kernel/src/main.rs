@@ -23,7 +23,6 @@ extern crate alloc;
 
 extern crate axstd as std;
 
-extern crate axruntime;
 extern crate driver;
 
 mod hal;
