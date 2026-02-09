@@ -3924,9 +3924,9 @@ dependencies = [
 
 [[package]]
 name = "page_table_entry"
-version = "0.5.8"
+version = "0.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3af51afffbce2ea801b0830b29fcea77068e821521f13c5e3e4734585abcc061"
+checksum = "dda9891ec368fda90e4b2cc36592b4881073e25a339fe7e3eddd811f0cf6bf18"
 dependencies = [
  "aarch64-cpu",
  "bitflags 2.10.0",
@@ -3936,11 +3936,10 @@ dependencies = [
 
 [[package]]
 name = "page_table_multiarch"
-version = "0.5.8"
+version = "0.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a012c0bb9b8b0c4887d0b90f37cf8164537b69bb5560ecdcf4ada0c3b64e3976"
+checksum = "9fa11a21844255e14aa6688ef0eafb058d7be19338633024fb59417f1bfb07f8"
 dependencies = [
- "arrayvec",
  "log",
  "memory_addr",
  "page_table_entry",
