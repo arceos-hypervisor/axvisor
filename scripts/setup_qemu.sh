@@ -61,12 +61,15 @@ case "$GUEST" in
 esac
 
 IFS='|' read -r IMAGE_NAME VMCONFIG BUILD_CONFIG QEMU_CONFIG KERNEL_FILE SUCCESS_MSG <<< "$CFG"
-IMAGE_DIR="/tmp/axvisor/${IMAGE_NAME}"
+# NOTE:
+#  - `cargo xtask image download` 默认把镜像解压到 `/tmp/.axvisor-images/<IMAGE_NAME>`
+#  - 这里直接使用该目录作为镜像来源，避免路径不一致
+IMAGE_DIR="/tmp/.axvisor-images/${IMAGE_NAME}"
 VMCONFIG_PATH="${REPO_ROOT}/configs/vms/${VMCONFIG}"
 ROOTFS_TARGET="${REPO_ROOT}/tmp/rootfs.img"
 KERNEL_IMAGE="${IMAGE_DIR}/${KERNEL_FILE}"
 ROOTFS_IMAGE="${IMAGE_DIR}/rootfs.img"
-ABS_KERNEL_PATH="/tmp/axvisor/${IMAGE_NAME}/${KERNEL_FILE}"
+ABS_KERNEL_PATH="${IMAGE_DIR}/${KERNEL_FILE}"
 
 echo "[setup_qemu] Guest: ${GUEST} | Repo: ${REPO_ROOT}"
 
@@ -101,48 +104,7 @@ echo "[setup_qemu] Step 3: prepare rootfs..."
 mkdir -p "${REPO_ROOT}/tmp"
 cp "${ROOTFS_IMAGE}" "${ROOTFS_TARGET}"
 
-# NimbOS uses image_location=fs, kernel must be inside rootfs
-if [[ "$GUEST" == "nimbos" ]]; then
-  echo "  -> Injecting kernel into rootfs (image_location=fs)..."
-  MOUNT_POINT="${REPO_ROOT}/tmp/nimbos_mount"
-  mkdir -p "${MOUNT_POINT}"
-  INJECTED=0
-
-  if sudo mount -o loop,offset=0 "${ROOTFS_TARGET}" "${MOUNT_POINT}" 2>/dev/null; then
-    sudo mkdir -p "${MOUNT_POINT}/tmp/axvisor/${IMAGE_NAME}"
-    sudo cp "${KERNEL_IMAGE}" "${MOUNT_POINT}/tmp/axvisor/${IMAGE_NAME}/${KERNEL_FILE}"
-    sudo umount "${MOUNT_POINT}"
-    INJECTED=1
-    echo "  -> Injected kernel (whole-disk mount)"
-  fi
-
-  if [ "$INJECTED" -eq 0 ] && sudo mount -o loop,offset=$((2048*512)) "${ROOTFS_TARGET}" "${MOUNT_POINT}" 2>/dev/null; then
-    sudo mkdir -p "${MOUNT_POINT}/tmp/axvisor/${IMAGE_NAME}"
-    sudo cp "${KERNEL_IMAGE}" "${MOUNT_POINT}/tmp/axvisor/${IMAGE_NAME}/${KERNEL_FILE}"
-    sudo umount "${MOUNT_POINT}"
-    INJECTED=1
-    echo "  -> Injected kernel (partition offset)"
-  fi
-
-  if [ "$INJECTED" -eq 0 ] && command -v guestmount &>/dev/null; then
-    if guestmount -a "${ROOTFS_TARGET}" -m /dev/sda1 "${MOUNT_POINT}" 2>/dev/null; then
-      mkdir -p "${MOUNT_POINT}/tmp/axvisor/${IMAGE_NAME}"
-      cp "${KERNEL_IMAGE}" "${MOUNT_POINT}/tmp/axvisor/${IMAGE_NAME}/${KERNEL_FILE}"
-      guestunmount "${MOUNT_POINT}"
-      INJECTED=1
-      echo "  -> Injected kernel via guestmount"
-    fi
-  fi
-
-  rmdir "${MOUNT_POINT}" 2>/dev/null || true
-  if [ "$INJECTED" -eq 0 ]; then
-    echo "ERROR: Could not inject kernel into rootfs. Need sudo mount or guestmount." >&2
-    echo "  Install: sudo apt install libguestfs-tools" >&2
-    exit 1
-  fi
-else
-  echo "  -> Copied ${ROOTFS_IMAGE} -> ${ROOTFS_TARGET}"
-fi
+echo "  -> Copied ${ROOTFS_IMAGE} -> ${ROOTFS_TARGET}"
 
 cat <<EOF
 
