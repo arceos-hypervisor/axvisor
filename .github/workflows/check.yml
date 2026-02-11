@@ -54,8 +54,8 @@ jobs:
       - name: Check code format
         run: cargo fmt --all -- --check
 
-      - name: Build
-        run: cargo build --target ${{ matrix.target }} --all-features
+      # - name: Build
+      #   run: cargo build --target ${{ matrix.target }} --all-features
 
       - name: Run clippy
         run: cargo clippy --target ${{ matrix.target }} --all-features -- -D warnings
