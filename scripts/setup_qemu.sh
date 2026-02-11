@@ -91,6 +91,21 @@ if [ ! -f "${ROOTFS_IMAGE}" ]; then
   exit 1
 fi
 
+# NimbOS x86_64 requires axvm-bios for bootstrapping
+if [[ "$GUEST" == "nimbos" ]]; then
+  BIOS_IMAGE="${IMAGE_DIR}/axvm-bios.bin"
+  if [ ! -f "${BIOS_IMAGE}" ]; then
+    echo "[setup_qemu] Downloading axvm-bios.bin for NimbOS..."
+    curl -sSL -o "${BIOS_IMAGE}" \
+      "https://github.com/arceos-hypervisor/axvm-bios-x86/releases/download/v0.1/axvm-bios.bin"
+    echo "  -> Downloaded axvm-bios.bin to ${BIOS_IMAGE}"
+  fi
+  if [ ! -f "${BIOS_IMAGE}" ]; then
+    echo "ERROR: failed to download axvm-bios.bin" >&2
+    exit 1
+  fi
+fi
+
 echo "[setup_qemu] Step 2: patch VM config kernel_path..."
 if [ ! -f "${VMCONFIG_PATH}" ]; then
   echo "ERROR: VM config file not found at ${VMCONFIG_PATH}" >&2
@@ -99,6 +114,12 @@ fi
 
 sed -i 's|^kernel_path *=.*|kernel_path = "'"${ABS_KERNEL_PATH}"'"|' "${VMCONFIG_PATH}"
 echo "  -> Updated kernel_path in ${VMCONFIG_PATH} to ${ABS_KERNEL_PATH}"
+
+if [[ "$GUEST" == "nimbos" ]]; then
+  ABS_BIOS_PATH="${IMAGE_DIR}/axvm-bios.bin"
+  sed -i 's|^bios_path *=.*|bios_path = "'"${ABS_BIOS_PATH}"'"|' "${VMCONFIG_PATH}"
+  echo "  -> Updated bios_path in ${VMCONFIG_PATH} to ${ABS_BIOS_PATH}"
+fi
 
 echo "[setup_qemu] Step 3: prepare rootfs..."
 mkdir -p "${REPO_ROOT}/tmp"

@@ -70,6 +70,12 @@ jobs:
             "memory")
               sed -i 's|^kernel_path[[:space:]]*=.*|kernel_path = "'"${IMAGE_DIR}"'/'"$img"'/'"$img_name"'"|' "$config"
               echo "Memory storage mode - updating kernel_path"
+              # NimbOS x86_64 requires axvm-bios for bootstrapping
+              if [[ "$img" == "qemu_x86_64_nimbos" ]]; then
+                curl -sSL -o "${IMAGE_DIR}/${img}/axvm-bios.bin" \
+                  "https://github.com/arceos-hypervisor/axvm-bios-x86/releases/download/v0.1/axvm-bios.bin"
+                echo "Downloaded axvm-bios.bin for NimbOS"
+              fi
               ;;
             *)
               echo "Unknown image_location: $image_location"
