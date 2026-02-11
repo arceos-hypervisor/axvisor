@@ -21,6 +21,7 @@ mod create;
 mod device;
 mod parser;
 mod print;
+mod vm_fdt;
 
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
