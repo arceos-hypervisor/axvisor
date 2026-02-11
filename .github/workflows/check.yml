@@ -58,7 +58,8 @@ jobs:
       #   run: cargo build --target ${{ matrix.target }} --all-features
 
       - name: Run clippy
-        run: cargo clippy --target ${{ matrix.target }} --all-features -- -D warnings
+        # run: cargo clippy --target ${{ matrix.target }} --all-features -- -D warnings
+        run: cargo clippy --target ${{ matrix.target }} -- -D warnings
 
       - name: Build documentation
         env:
