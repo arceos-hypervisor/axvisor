@@ -1,16 +1,15 @@
 [workspace]
 members = [
   "modules/*",
-  "xtask",
   "kernel",
 ]
+exclude = ["xtask"]
 resolver = "3"
 
 [profile.release]
 lto = true
 
 [workspace.package]
-
 authors = ["Keyang Hu <keyang.hu@qq.com>", "周睿 <zrufo747@outlook.com>"]
 edition = "2024"
 license = "Apache-2.0"
