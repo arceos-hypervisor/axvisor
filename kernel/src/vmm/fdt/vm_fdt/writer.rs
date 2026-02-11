@@ -1,12 +1,12 @@
 use alloc::collections::BTreeMap;
 use alloc::ffi::CString;
-use hashbrown::HashSet;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::cmp::{Ord, Ordering};
 use core::convert::TryInto;
 use core::fmt;
 use core::mem::size_of_val;
+use hashbrown::HashSet;
 
 use super::{
     FDT_BEGIN_NODE, FDT_END, FDT_END_NODE, FDT_MAGIC, FDT_PROP, NODE_NAME_MAX_LEN,

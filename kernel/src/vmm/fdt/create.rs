@@ -18,11 +18,11 @@ use alloc::{
 };
 use core::ptr::NonNull;
 
+use super::vm_fdt::{FdtWriter, FdtWriterNode};
 use axaddrspace::GuestPhysAddr;
 use axvm::{VMMemoryRegion, config::AxVMCrateConfig};
 use fdt_parser::{Fdt, Node};
 use memory_addr::MemoryAddr;
-use super::vm_fdt::{FdtWriter, FdtWriterNode};
 
 use crate::vmm::{VMRef, images::load_vm_image_from_memory};
 
