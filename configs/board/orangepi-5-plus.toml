@@ -5,7 +5,7 @@ features = [
   "axstd/bus-mmio",
   "driver/sdmmc",
   "driver/rk3588-clk",
-  "axuntime/plat-hv-aarch64",
+  "axruntime/plat-hv-aarch64",
   "fs",
 ]
 log = "Info"

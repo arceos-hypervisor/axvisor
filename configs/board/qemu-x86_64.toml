@@ -3,7 +3,7 @@ features = [
     "axstd/myplat",
     "ept-level-4",
     "fs",
-    "axuntime/plat-hv-x86_64",
+    "axruntime/plat-hv-x86_64",
 ]
 log = "Info"
 target = "x86_64-unknown-none"

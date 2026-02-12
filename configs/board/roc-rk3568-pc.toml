@@ -6,7 +6,7 @@ features = [
     "fs",
     "driver/sdmmc",
     "driver/rk3568-clk",
-    "axuntime/plat-hv-aarch64",
+    "axruntime/plat-hv-aarch64",
 ]
 log = "Info"
 target = "aarch64-unknown-none-softfloat"
