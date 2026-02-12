@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # Axvisor Driver Module
+//!
+//! This crate provides hardware driver support for the Axvisor hypervisor.
+
 #![no_std]
 
 extern crate axklib;
