@@ -26,7 +26,7 @@ pub struct VCpuTask {
 }
 
 impl VCpuTask {
-    /// Create a new [`HvTask`].
+    /// Create a new [`VCpuTask`].
     pub fn new(vm: &VMRef, vcpu: VCpuRef) -> Self {
         Self {
             vm: Arc::downgrade(vm),

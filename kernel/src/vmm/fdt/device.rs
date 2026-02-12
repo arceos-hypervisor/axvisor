@@ -303,9 +303,9 @@ fn build_phandle_map(fdt: &Fdt) -> BTreeMap<u32, (String, BTreeMap<String, u32>)
 
 /// Parse properties containing phandle references intelligently based on #*-cells properties
 /// Supports multiple formats:
-/// - Single phandle: <phandle>
-/// - phandle+specifier: <phandle specifier1 specifier2 ...>
-/// - Multiple phandle references: <phandle1 spec1 spec2 phandle2 spec1 spec2 ...>
+/// - Single phandle: \<phandle\>
+/// - phandle+specifier: \<phandle specifier1 specifier2 ...\>
+/// - Multiple phandle references: \<phandle1 spec1 spec2 phandle2 spec1 spec2 ...\>
 fn parse_phandle_property_with_cells(
     prop_data: &[u8],
     prop_name: &str,

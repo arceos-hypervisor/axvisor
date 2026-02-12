@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # Axvisor Kernel
+//!
+//! The main kernel binary for the Axvisor hypervisor.
+
 #![no_std]
 #![no_main]
 
