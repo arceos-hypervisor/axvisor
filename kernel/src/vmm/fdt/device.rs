@@ -319,7 +319,7 @@ fn parse_phandle_property_with_cells(
         prop_data.len()
     );
 
-    if prop_data.is_empty() || prop_data.len() % 4 != 0 {
+    if prop_data.is_empty() || !prop_data.len().is_multiple_of(4) {
         warn!(
             "Property '{}' data length ({} bytes) is invalid",
             prop_name,

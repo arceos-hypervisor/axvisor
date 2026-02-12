@@ -469,13 +469,11 @@ fn vm_suspend(cmd: &ParsedCommand) {
 fn suspend_vm_by_id(vm_id: usize) {
     println!("Suspending VM[{}]...", vm_id);
 
-    let result = with_vm(vm_id, |vm| {
+    let result: Option<Result<(), &str>> = with_vm(vm_id, |vm| {
         let status = vm.vm_status();
 
         // Check if VM can be suspended
-        if let Err(err_msg) = can_suspend_vm(status) {
-            return Err(err_msg);
-        }
+        can_suspend_vm(status)?;
 
         // Set VM status to Suspended
         vm.set_vm_status(VMStatus::Suspended);
@@ -570,13 +568,11 @@ fn vm_resume(cmd: &ParsedCommand) {
 fn resume_vm_by_id(vm_id: usize) {
     println!("Resuming VM[{}]...", vm_id);
 
-    let result = with_vm(vm_id, |vm| {
+    let result: Option<Result<(), &str>> = with_vm(vm_id, |vm| {
         let status = vm.vm_status();
 
         // Check if VM can be resumed
-        if let Err(err_msg) = can_resume_vm(status) {
-            return Err(err_msg);
-        }
+        can_resume_vm(status)?;
 
         // Set VM status back to Running
         vm.set_vm_status(VMStatus::Running);

@@ -94,6 +94,7 @@ pub struct FdtWriter {
     boot_cpuid_phys: u32,
     // The set is used to track the uniqueness of phandle values as required by the spec
     // https://devicetree-specification.readthedocs.io/en/stable/devicetree-basics.html#phandle
+    #[allow(dead_code)]
     phandles: HashSet<u32>,
 }
 
@@ -114,6 +115,7 @@ impl FdtReserveEntry {
     ///
     /// * address: Physical address of the beginning of the reserved region.
     /// * size: Size of the reserved region in bytes.
+    #[allow(dead_code)]
     pub fn new(address: u64, size: u64) -> Result<Self> {
         if address.checked_add(size).is_none() || size == 0 {
             return Err(Error::InvalidMemoryReservation);
@@ -183,10 +185,10 @@ fn node_name_valid(name: &str) -> bool {
         return false;
     }
 
-    if let Some(unit_address) = unit_address {
-        if unit_address.contains(|c: char| !node_name_valid_char(c)) {
-            return false;
-        }
+    if let Some(unit_address) = unit_address
+        && unit_address.contains(|c: char| !node_name_valid_char(c))
+    {
+        return false;
     }
 
     true
@@ -196,6 +198,7 @@ fn node_name_valid_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || matches!(c, ',' | '.' | '_' | '+' | '-')
 }
 
+#[allow(dead_code)]
 fn node_name_valid_first_char(c: char) -> bool {
     c.is_ascii_alphabetic()
 }
@@ -297,13 +300,14 @@ impl FdtWriter {
     ///
     /// # let dtb = create_fdt().unwrap();
     /// ```
+    #[allow(dead_code)]
     pub fn set_boot_cpuid_phys(&mut self, boot_cpuid_phys: u32) {
         self.boot_cpuid_phys = boot_cpuid_phys;
     }
 
     // Append `num_bytes` padding bytes (0x00).
     fn pad(&mut self, num_bytes: usize) {
-        self.data.extend(core::iter::repeat(0).take(num_bytes));
+        self.data.extend(core::iter::repeat_n(0, num_bytes));
     }
 
     // Append padding bytes (0x00) until the length of data is a multiple of `alignment`.
@@ -428,6 +432,7 @@ impl FdtWriter {
     }
 
     /// Write an empty property.
+    #[allow(dead_code)]
     pub fn property_null(&mut self, name: &str) -> Result<()> {
         self.property(name, &[])
     }
@@ -439,6 +444,7 @@ impl FdtWriter {
     }
 
     /// Write a stringlist property.
+    #[allow(dead_code)]
     pub fn property_string_list(&mut self, name: &str, values: Vec<String>) -> Result<()> {
         let mut bytes = Vec::new();
         for s in values {
@@ -449,11 +455,13 @@ impl FdtWriter {
     }
 
     /// Write a 32-bit unsigned integer property.
+    #[allow(dead_code)]
     pub fn property_u32(&mut self, name: &str, val: u32) -> Result<()> {
         self.property(name, &val.to_be_bytes())
     }
 
     /// Write a 64-bit unsigned integer property.
+    #[allow(dead_code)]
     pub fn property_u64(&mut self, name: &str, val: u64) -> Result<()> {
         self.property(name, &val.to_be_bytes())
     }
@@ -468,6 +476,7 @@ impl FdtWriter {
     }
 
     /// Write a property containing an array of 64-bit unsigned integers.
+    #[allow(dead_code)]
     pub fn property_array_u64(&mut self, name: &str, cells: &[u64]) -> Result<()> {
         let mut arr = Vec::with_capacity(size_of_val(cells));
         for &c in cells {
@@ -479,6 +488,7 @@ impl FdtWriter {
     /// Write a [`phandle`](https://devicetree-specification.readthedocs.io/en/stable/devicetree-basics.html?#phandle)
     /// property. The value is checked for uniqueness within the FDT. In the case of a duplicate
     /// [`Error::DuplicatePhandle`] is returned.
+    #[allow(dead_code)]
     pub fn property_phandle(&mut self, val: u32) -> Result<()> {
         if !self.phandles.insert(val) {
             return Err(Error::DuplicatePhandle);

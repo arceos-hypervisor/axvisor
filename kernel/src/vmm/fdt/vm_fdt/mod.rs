@@ -1,6 +1,6 @@
 mod writer;
 
-pub use writer::{FdtReserveEntry, FdtWriter, FdtWriterNode};
+pub use writer::{FdtWriter, FdtWriterNode};
 
 /// Magic number used in the FDT header.
 pub const FDT_MAGIC: u32 = 0xd00dfeed;

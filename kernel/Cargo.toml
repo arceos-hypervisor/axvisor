@@ -33,7 +33,7 @@ axstd = {workspace = true, features = [
 # System dependent modules provided by ArceOS-Hypervisor.
 axaddrspace.workspace = true
 axhvc.workspace = true
-axruntime = {workspace = true, features = ["alloc", "irq", "paging", "smp", "multitask"]}
+axruntime = {workspace = true, features = ["alloc", "irq", "paging", "smp", "multitask", "plat-hv-aarch64"]}
 axvcpu.workspace = true
 axvm.workspace = true
 
