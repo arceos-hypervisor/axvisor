@@ -5,7 +5,8 @@ features = [
     "axstd/bus-mmio",
     "fs",
     "driver/sdmmc",
-    "driver/phytium-blk"
+    "driver/phytium-blk",
+    "axuntime/plat-hv-aarch64",
 ]
 log = "Info"
 target = "aarch64-unknown-none-softfloat"

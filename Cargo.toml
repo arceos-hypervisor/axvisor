@@ -31,7 +31,7 @@ hashbrown = "0.14"
 
 # System dependent modules provided by ArceOS.
 # FIXME: pin to a specific tag!
-axstd = { version = "=0.2.2-hv.4", features = [
+axstd = { version = "=0.2.2-hv.5", features = [
   "alloc-level-1",
   "paging",
   "irq",
@@ -40,16 +40,8 @@ axstd = { version = "=0.2.2-hv.4", features = [
   "smp", # "page-alloc-64g",
 ]}
 
-axalloc = { version = "=0.2.2-hv.4" }
-axconfig = { version = "=0.2.2-hv.4" }
-axdisplay = { version = "=0.2.2-hv.4" }
-axdriver = { version = "=0.2.2-hv.4" }
-axhal = { version = "=0.2.2-hv.4" }
-axipi = { version = "=0.2.2-hv.4" }
-axlog = { version = "=0.2.2-preview.1" }
-axmm = { version = "=0.2.2-hv.4" }
-axnet = { version = "=0.2.2-hv.4" }
-axtask = { version = "=0.2.2-hv.4" }
+axconfig = { version = "=0.2.2-hv.5" }
+axruntime = { version = "=0.2.2-hv.5" }
 
 axcpu = "0.3.0-preview.3"
 axplat = { version = "0.3.1-pre.1", features = ["smp"] }
@@ -58,8 +50,6 @@ axplat = { version = "0.3.1-pre.1", features = ["smp"] }
 axaddrspace = "0.1.4"
 axhvc = "0.2"
 axklib = "0.2"
-axruntime = { version = "=0.2.2-hv.4" }
-axfs = { version = "=0.2.2-hv.4" }
 axvcpu = "0.2"
 axvm = "0.2"
 
