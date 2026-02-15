@@ -2,16 +2,19 @@
 # Copyright 2025 The Axvisor Team
 #
 # Wrapper for CI: runs `cargo xtask qemu` for NimbOS and automatically sends
-# "usertests\n" to the guest when "Rust user shell" appears, so the test can
-# complete without interactive input. Ostool only matches success_regex on
-# stdout and does not send stdin; this script bridges that gap.
+# "usertests\n" to the guest when the shell prompt appears, so the test can
+# complete without interactive input.
+#
+# Uses a PTY so the child sees a real TTY; with subprocess.PIPE the child
+# may treat stdin as non-interactive and not forward input to QEMU.
 
+import os
+import select
 import sys
 import subprocess
-import threading
-import os
 
-SEND_AFTER = b"Rust user shell"
+# Trigger strings (try in order; first match sends usertests)
+SEND_AFTER = (b"Rust user shell", b">>")
 SEND_LINE = b"usertests\n"
 
 
@@ -26,39 +29,58 @@ def main():
         print("No command after --", file=sys.stderr)
         sys.exit(2)
 
-    proc = subprocess.Popen(
-        cmd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
-    sent = threading.Lock()
-    sent_done = [False]  # list to allow closure to mutate
+    import pty
 
-    def read_stdout():
-        buffer = b""
+    master, slave = pty.openpty()
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdin=slave,
+            stdout=slave,
+            stderr=slave,
+            close_fds=True,
+        )
+    finally:
+        os.close(slave)
+
+    sent = False
+    buffer = b""
+    try:
         while True:
-            chunk = proc.stdout.read(256)
-            if not chunk:
+            r, _, _ = select.select([master], [], [], 0.1)
+            if r:
+                try:
+                    chunk = os.read(master, 4096)
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                sys.stdout.buffer.write(chunk)
+                sys.stdout.buffer.flush()
+                buffer = (buffer + chunk)[-1024:]
+                if not sent and any(trigger in buffer for trigger in SEND_AFTER):
+                    try:
+                        os.write(master, SEND_LINE)
+                        sent = True
+                    except OSError:
+                        pass
+            if proc.poll() is not None:
+                while True:
+                    r, _, _ = select.select([master], [], [], 0.05)
+                    if not r:
+                        break
+                    try:
+                        chunk = os.read(master, 4096)
+                    except OSError:
+                        break
+                    if not chunk:
+                        break
+                    sys.stdout.buffer.write(chunk)
+                    sys.stdout.buffer.flush()
                 break
-            sys.stdout.buffer.write(chunk)
-            sys.stdout.buffer.flush()
-            buffer = (buffer + chunk)[-max(512, len(SEND_AFTER) * 2) :]
-            if not sent_done[0] and SEND_AFTER in buffer:
-                with sent:
-                    if not sent_done[0]:
-                        try:
-                            proc.stdin.write(SEND_LINE)
-                            proc.stdin.flush()
-                        except (BrokenPipeError, OSError):
-                            pass
-                        sent_done[0] = True
+    finally:
+        os.close(master)
 
-    t = threading.Thread(target=read_stdout)
-    t.daemon = True
-    t.start()
-    proc.wait()
-    t.join(timeout=1)
     sys.exit(proc.returncode if proc.returncode is not None else 1)
 
 
