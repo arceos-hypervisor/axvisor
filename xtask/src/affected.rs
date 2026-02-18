@@ -194,8 +194,8 @@ fn build_workspace_graph() -> Result<(CrateMap, ReverseDeps)> {
                 .to_string();
             // Ensure the directory path ends with '/' for prefix matching.
             let dir = if dir.is_empty() { String::new() } else { format!("{dir}/") };
-            crate_map.insert(pkg.name.clone(), dir);
-            id_to_name.insert(pkg.id.clone(), pkg.name.clone());
+            crate_map.insert(pkg.name.to_string(), dir);
+            id_to_name.insert(pkg.id.clone(), pkg.name.to_string());
         }
     }
 
@@ -206,9 +206,9 @@ fn build_workspace_graph() -> Result<(CrateMap, ReverseDeps)> {
             for dep in &node.deps {
                 if let Some(dep_name) = id_to_name.get(&dep.pkg) {
                     reverse_deps
-                        .entry(dep_name.clone())
+                        .entry(dep_name.to_string())
                         .or_default()
-                        .insert(node_name.clone());
+                        .insert(node_name.to_string());
                 }
             }
         }
