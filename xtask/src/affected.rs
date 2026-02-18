@@ -118,7 +118,7 @@ fn analyze(base_ref: &str) -> Result<TestScope> {
     eprintln!("[affected] all affected crates:     {:?}", affected_crates);
 
     // Phase 3: map to test targets.
-    let mut scope = determine_targets(&changed_files, &affected_crates);
+    let mut scope = determine_targets(&changed_files, &changed_crates, &affected_crates);
     scope.changed_crates = sorted_vec(&changed_crates);
     scope.affected_crates = sorted_vec(&affected_crates);
 
@@ -262,7 +262,11 @@ fn find_all_affected(changed: &HashSet<String>, reverse_deps: &ReverseDeps) -> H
 // Phase 3: map affected crates + changed files → test targets
 // ---------------------------------------------------------------------------
 
-fn determine_targets(changed_files: &[String], affected_crates: &HashSet<String>) -> TestScope {
+fn determine_targets(
+    changed_files: &[String],
+    changed_crates: &HashSet<String>,
+    affected_crates: &HashSet<String>,
+) -> TestScope {
     let mut scope = TestScope::default();
 
     // ── Rule 1: root build config changes → run everything ──
@@ -273,15 +277,18 @@ fn determine_targets(changed_files: &[String], affected_crates: &HashSet<String>
     }
 
     // ── Rule 2: build-tool (xtask) changes → run everything ──
-    if affected_crates.contains("xtask") {
+    if changed_crates.contains("xtask") {
         return TestScope::all();
     }
 
-    // ── Rule 3: core module changes → run everything ──
-    //   axruntime and axconfig are foundational; a change propagates to all targets.
+    // ── Rule 3: core module *directly* changed → run everything ──
+    //   axruntime and axconfig are foundational. Only trigger all tests when their
+    //   source code is directly modified, not when they are transitively affected
+    //   by a platform-specific crate (e.g. axplat-x86-qemu-q35 is a target-cfg dep
+    //   of axruntime, but a change there should only require x86 testing).
     if ["axruntime", "axconfig"]
         .iter()
-        .any(|c| affected_crates.contains(*c))
+        .any(|c| changed_crates.contains(*c))
     {
         return TestScope::all();
     }
