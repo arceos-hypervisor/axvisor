@@ -22,6 +22,7 @@ use clap::{Args, Parser, Subcommand};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+mod affected;
 mod cargo;
 mod clippy;
 mod ctx;
@@ -62,6 +63,8 @@ enum Commands {
     Image(image::ImageArgs),
     /// Manage local devspace dependencies
     Devspace(DevspaceArgs),
+    /// Analyze which test targets are affected by recent changes
+    Affected(AffectedArgs),
 }
 
 #[derive(Parser)]
@@ -149,6 +152,13 @@ enum DevspaceCommand {
     Stop,
 }
 
+#[derive(Parser)]
+struct AffectedArgs {
+    /// Git ref to diff against (e.g. origin/main, HEAD~1, a commit SHA)
+    #[arg(long, default_value = "origin/main")]
+    base: String,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -193,6 +203,9 @@ async fn main() -> Result<()> {
             DevspaceCommand::Start => devspace::start()?,
             DevspaceCommand::Stop => devspace::stop()?,
         },
+        Commands::Affected(args) => {
+            affected::run(&args.base)?;
+        }
     }
 
     Ok(())
