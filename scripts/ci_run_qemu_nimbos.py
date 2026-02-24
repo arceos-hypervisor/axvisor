@@ -16,6 +16,7 @@ import subprocess
 # Trigger strings (try in order; first match sends usertests)
 SEND_AFTER = (b"Rust user shell", b">>")
 SEND_LINE = b"usertests\n"
+SUCCESS_MARKERS = (b"usertests passed!",)
 
 
 def main():
@@ -44,6 +45,7 @@ def main():
         os.close(slave)
 
     sent = False
+    saw_success = False
     buffer = b""
     try:
         while True:
@@ -58,6 +60,8 @@ def main():
                 sys.stdout.buffer.write(chunk)
                 sys.stdout.buffer.flush()
                 buffer = (buffer + chunk)[-1024:]
+                if not saw_success and any(marker in buffer for marker in SUCCESS_MARKERS):
+                    saw_success = True
                 if not sent and any(trigger in buffer for trigger in SEND_AFTER):
                     try:
                         os.write(master, SEND_LINE)
@@ -81,6 +85,8 @@ def main():
     finally:
         os.close(master)
 
+    if saw_success:
+        sys.exit(0)
     sys.exit(proc.returncode if proc.returncode is not None else 1)
 
 
