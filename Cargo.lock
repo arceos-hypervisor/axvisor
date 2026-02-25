@@ -2293,7 +2293,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3201,8 +3201,7 @@ dependencies = [
 [[package]]
 name = "kasm-aarch64"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "791dc7a2b079d81b8e3615521fccbd75c0c9f068b53f7d891a2e300222c7cada"
+source = "git+https://github.com/bullhh/somehal.git?branch=overlap#2c89e5e4d8b5d14093725ca79d0015487adc5f45"
 dependencies = [
  "darling 0.20.11",
  "proc-macro2",
@@ -3213,8 +3212,7 @@ dependencies = [
 [[package]]
 name = "kdef-pgtable"
 version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7166660a78a4488f5f3269206242d3b76cd6b42d870f004898487ce16dba3f69"
+source = "git+https://github.com/bullhh/somehal.git?branch=overlap#2c89e5e4d8b5d14093725ca79d0015487adc5f45"
 dependencies = [
  "bitflags 2.10.0",
  "prettyplease",
@@ -3804,9 +3802,8 @@ dependencies = [
 
 [[package]]
 name = "page-table-generic"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a302d085e35d9edfa3ec531475ed95eae8a92e7e47ce7a15bd4e9c5e74f7526"
+version = "0.6.4"
+source = "git+https://github.com/bullhh/somehal.git?branch=overlap#2c89e5e4d8b5d14093725ca79d0015487adc5f45"
 dependencies = [
  "bitflags 2.10.0",
  "log",
@@ -3943,17 +3940,15 @@ dependencies = [
 [[package]]
 name = "pie-boot-if"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d979b0d1208dd8a57c5adb7d3c4e07bf15cbea3840123e864f6bfcb655c5e05"
+source = "git+https://github.com/bullhh/somehal.git?branch=overlap#2c89e5e4d8b5d14093725ca79d0015487adc5f45"
 dependencies = [
  "heapless 0.8.0",
 ]
 
 [[package]]
 name = "pie-boot-loader-aarch64"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de8836eb8759cd65e70c73dc0f519345d8a734284e8e4cfc5889a6e445af9f09"
+version = "0.3.4"
+source = "git+https://github.com/bullhh/somehal.git?branch=overlap#2c89e5e4d8b5d14093725ca79d0015487adc5f45"
 dependencies = [
  "aarch64-cpu",
  "aarch64-cpu-ext",
@@ -3976,8 +3971,7 @@ dependencies = [
 [[package]]
 name = "pie-boot-macros"
 version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "513f5ca7603771d7524bfb7e6ba8dded83d2e8ac02d46f15815e0c1144bca566"
+source = "git+https://github.com/bullhh/somehal.git?branch=overlap#2c89e5e4d8b5d14093725ca79d0015487adc5f45"
 dependencies = [
  "darling 0.20.11",
  "proc-macro2",
@@ -4165,7 +4159,7 @@ dependencies = [
  "once_cell",
  "socket2 0.6.1",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4851,7 +4845,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.11.0",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4919,7 +4913,7 @@ dependencies = [
  "security-framework 3.5.1",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5394,9 +5388,8 @@ dependencies = [
 
 [[package]]
 name = "somehal"
-version = "0.4.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13b5f763b9ab0ce9efd2d8eba9e5b457f93f6426ede68435fe9567cf7681f29d"
+version = "0.4.9"
+source = "git+https://github.com/bullhh/somehal.git?branch=overlap#2c89e5e4d8b5d14093725ca79d0015487adc5f45"
 dependencies = [
  "aarch64-cpu",
  "aarch64-cpu-ext",
@@ -5645,7 +5638,7 @@ dependencies = [
  "getrandom 0.3.4",
  "once_cell",
  "rustix 1.1.2",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6402,7 +6395,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

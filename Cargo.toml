@@ -91,6 +91,7 @@ axvmconfig = {git = "https://github.com/arceos-hypervisor/axvmconfig.git", branc
 [patch.crates-io]
 axvcpu = {git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "next"}
 axvmconfig = {git = "https://github.com/arceos-hypervisor/axvmconfig.git", branch = "next"}
+somehal = {git = "https://github.com/bullhh/somehal.git", branch = "overlap"}
 
 [patch."https://github.com/arceos-org/arceos"]
 axconfig = {path = "modules/axconfig"}
