@@ -53,6 +53,50 @@ enum TargetId {
     BoardRk3568,
 }
 
+/// High-level architecture categories of test targets.
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum Arch {
+    AArch64,
+    X86_64,
+}
+
+/// High-level kind of test target.
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum TargetKind {
+    Qemu,
+    Board,
+}
+
+/// Declarative description of each concrete test target.
+struct TargetMeta {
+    id: TargetId,
+    arch: Arch,
+    kind: TargetKind,
+}
+
+const TARGETS: &[TargetMeta] = &[
+    TargetMeta {
+        id: TargetId::QemuAarch64,
+        arch: Arch::AArch64,
+        kind: TargetKind::Qemu,
+    },
+    TargetMeta {
+        id: TargetId::QemuX86_64,
+        arch: Arch::X86_64,
+        kind: TargetKind::Qemu,
+    },
+    TargetMeta {
+        id: TargetId::BoardPhytiumpi,
+        arch: Arch::AArch64,
+        kind: TargetKind::Board,
+    },
+    TargetMeta {
+        id: TargetId::BoardRk3568,
+        arch: Arch::AArch64,
+        kind: TargetKind::Board,
+    },
+];
+
 impl TestScope {
     fn all() -> Self {
         Self {
@@ -89,19 +133,25 @@ impl TestScope {
         self.enable(TargetId::BoardRk3568);
     }
 
+    fn enable_where<F>(&mut self, mut pred: F)
+    where
+        F: FnMut(&TargetMeta) -> bool,
+    {
+        for meta in TARGETS.iter().filter(|m| pred(m)) {
+            self.enable(meta.id);
+        }
+    }
+
     fn enable_all_qemu(&mut self) {
-        self.enable_qemu_aarch64();
-        self.enable_qemu_x86_64();
+        self.enable_where(|m| matches!(m.kind, TargetKind::Qemu));
     }
 
     fn enable_all_boards(&mut self) {
-        self.enable_board_phytiumpi();
-        self.enable_board_rk3568();
+        self.enable_where(|m| matches!(m.kind, TargetKind::Board));
     }
 
     fn enable_all_aarch64(&mut self) {
-        self.enable_qemu_aarch64();
-        self.enable_all_boards();
+        self.enable_where(|m| m.arch == Arch::AArch64);
     }
 
     fn any_enabled(&self) -> bool {
