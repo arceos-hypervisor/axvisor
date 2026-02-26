@@ -44,6 +44,15 @@ pub struct TestScope {
     pub affected_crates: Vec<String>,
 }
 
+/// Internal identifiers for concrete test targets.
+#[derive(Copy, Clone)]
+enum TargetId {
+    QemuAarch64,
+    QemuX86_64,
+    BoardPhytiumpi,
+    BoardRk3568,
+}
+
 impl TestScope {
     fn all() -> Self {
         Self {
@@ -55,10 +64,44 @@ impl TestScope {
         }
     }
 
+    fn enable(&mut self, id: TargetId) {
+        match id {
+            TargetId::QemuAarch64 => self.qemu_aarch64 = true,
+            TargetId::QemuX86_64 => self.qemu_x86_64 = true,
+            TargetId::BoardPhytiumpi => self.board_phytiumpi = true,
+            TargetId::BoardRk3568 => self.board_rk3568 = true,
+        }
+    }
+
+    fn enable_qemu_aarch64(&mut self) {
+        self.enable(TargetId::QemuAarch64);
+    }
+
+    fn enable_qemu_x86_64(&mut self) {
+        self.enable(TargetId::QemuX86_64);
+    }
+
+    fn enable_board_phytiumpi(&mut self) {
+        self.enable(TargetId::BoardPhytiumpi);
+    }
+
+    fn enable_board_rk3568(&mut self) {
+        self.enable(TargetId::BoardRk3568);
+    }
+
+    fn enable_all_qemu(&mut self) {
+        self.enable_qemu_aarch64();
+        self.enable_qemu_x86_64();
+    }
+
+    fn enable_all_boards(&mut self) {
+        self.enable_board_phytiumpi();
+        self.enable_board_rk3568();
+    }
+
     fn enable_all_aarch64(&mut self) {
-        self.qemu_aarch64 = true;
-        self.board_phytiumpi = true;
-        self.board_rk3568 = true;
+        self.enable_qemu_aarch64();
+        self.enable_all_boards();
     }
 
     fn any_enabled(&self) -> bool {
@@ -306,20 +349,19 @@ fn determine_targets(
             scope.enable_all_aarch64();
         }
         if file.starts_with("kernel/src/hal/arch/x86_64/") {
-            scope.qemu_x86_64 = true;
+            scope.enable_qemu_x86_64();
         }
     }
 
     // ── Rule 6: platform crate ──
     if affected_crates.contains("axplat-x86-qemu-q35") {
-        scope.qemu_x86_64 = true;
+        scope.enable_qemu_x86_64();
     }
 
     // ── Rule 7: filesystem module → targets with `fs` feature ──
     if affected_crates.contains("axfs") {
-        scope.qemu_aarch64 = true; // linux guest uses rootfs
-        scope.board_phytiumpi = true;
-        scope.board_rk3568 = true;
+        scope.enable_qemu_aarch64(); // linux guest uses rootfs
+        scope.enable_all_boards();
     }
 
     // ── Rule 8: driver module → board-specific analysis ──
@@ -336,14 +378,13 @@ fn determine_targets(
         });
 
         if common_driver {
-            scope.board_phytiumpi = true;
-            scope.board_rk3568 = true;
+            scope.enable_all_boards();
         }
         if phytium {
-            scope.board_phytiumpi = true;
+            scope.enable_board_phytiumpi();
         }
         if rockchip {
-            scope.board_rk3568 = true;
+            scope.enable_board_rk3568();
         }
     }
 
@@ -351,12 +392,10 @@ fn determine_targets(
     for file in changed_files {
         if file.starts_with(".github/workflows/") {
             if file.contains("qemu") {
-                scope.qemu_aarch64 = true;
-                scope.qemu_x86_64 = true;
+                scope.enable_all_qemu();
             }
             if file.contains("board") || file.contains("uboot") {
-                scope.board_phytiumpi = true;
-                scope.board_rk3568 = true;
+                scope.enable_all_boards();
             }
         }
     }
@@ -365,30 +404,30 @@ fn determine_targets(
     for file in changed_files {
         if file.starts_with("configs/board/") {
             if file.contains("qemu-aarch64") {
-                scope.qemu_aarch64 = true;
+                scope.enable_qemu_aarch64();
             }
             if file.contains("qemu-x86_64") {
-                scope.qemu_x86_64 = true;
+                scope.enable_qemu_x86_64();
             }
             if file.contains("phytiumpi") {
-                scope.board_phytiumpi = true;
+                scope.enable_board_phytiumpi();
             }
             if file.contains("roc-rk3568") {
-                scope.board_rk3568 = true;
+                scope.enable_board_rk3568();
             }
         }
         if file.starts_with("configs/vms/") {
             if file.contains("aarch64") {
-                scope.qemu_aarch64 = true;
+                scope.enable_qemu_aarch64();
                 if file.contains("e2000") {
-                    scope.board_phytiumpi = true;
+                    scope.enable_board_phytiumpi();
                 }
                 if file.contains("rk3568") {
-                    scope.board_rk3568 = true;
+                    scope.enable_board_rk3568();
                 }
             }
             if file.contains("x86_64") {
-                scope.qemu_x86_64 = true;
+                scope.enable_qemu_x86_64();
             }
         }
     }
