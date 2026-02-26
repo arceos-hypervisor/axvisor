@@ -95,13 +95,8 @@ fi
 if [[ "$GUEST" == "nimbos" ]]; then
   BIOS_IMAGE="${IMAGE_DIR}/axvm-bios.bin"
   if [ ! -f "${BIOS_IMAGE}" ]; then
-    echo "[setup_qemu] Downloading axvm-bios.bin for NimbOS..."
-    curl -sSL -o "${BIOS_IMAGE}" \
-      "https://github.com/arceos-hypervisor/axvm-bios-x86/releases/download/v0.1/axvm-bios.bin"
-    echo "  -> Downloaded axvm-bios.bin to ${BIOS_IMAGE}"
-  fi
-  if [ ! -f "${BIOS_IMAGE}" ]; then
-    echo "ERROR: failed to download axvm-bios.bin" >&2
+    echo "ERROR: axvm-bios.bin not found at ${BIOS_IMAGE}" >&2
+    echo "  -> Please re-download the NimbOS image via 'cargo xtask image download qemu_x86_64_nimbos'." >&2
     exit 1
   fi
 fi
