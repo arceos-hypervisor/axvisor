@@ -138,6 +138,6 @@ Success indicator: '${SUCCESS_MSG}'
 EOF
 
 if [[ "$GUEST" == "nimbos" ]]; then
-  echo "*** NimbOS requires VT-x/VMX and KVM. It will FAIL on WSL2."
+  echo "*** NimbOS requires VT-x/VMX and KVM."
   echo ""
 fi
