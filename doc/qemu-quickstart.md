@@ -134,6 +134,17 @@ Your user is not in the `kvm` group. See the "KVM Setup" section above.
 
 QEMU is not installed. Run the `apt install` command from Step 1.
 
+### `Auto syncing from registry ... timed out`
+
+This usually indicates unstable access to GitHub Raw endpoints. `scripts/setup_qemu.sh` includes one built-in recovery attempt: when the first image download fails, it bootstraps a local registry and retries once automatically. The script also has a default fallback registry (currently pointing to `v0.0.22.toml`).
+
+If your network is unstable for specific registry URLs, you can override the fallback registry:
+
+```bash
+export AXVISOR_REGISTRY_FALLBACK_URL="https://raw.githubusercontent.com/arceos-hypervisor/axvisor-guest/refs/heads/main/registry/v0.0.22.toml"
+./scripts/setup_qemu.sh arceos
+```
+
 ### First build is very slow
 
 This is expected. AxVisor has many dependencies, and the first compilation needs to download and build all crates. Subsequent incremental builds will be much faster.

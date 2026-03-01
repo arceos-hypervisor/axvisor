@@ -134,6 +134,17 @@ VM 配置中的 `kernel_path` 指向了不存在的文件。运行 `./scripts/se
 
 未安装 QEMU。执行第 1 步的 `apt install` 命令。
 
+### `Auto syncing from registry ... timed out`
+
+这通常是访问 GitHub Raw 不稳定导致的。`scripts/setup_qemu.sh` 已内置一次自动恢复逻辑：首次下载失败后，会尝试自动引导本地 registry 并重试镜像下载。脚本内也提供了默认 fallback registry（当前指向 `v0.0.22.toml`）。
+
+如果你所在网络环境对部分 URL 不稳定，可显式覆盖 fallback registry：
+
+```bash
+export AXVISOR_REGISTRY_FALLBACK_URL="https://raw.githubusercontent.com/arceos-hypervisor/axvisor-guest/refs/heads/main/registry/v0.0.22.toml"
+./scripts/setup_qemu.sh arceos
+```
+
 ### 首次构建非常慢
 
 正常现象。AxVisor 依赖较多，首次编译需要下载并编译所有 crate。后续增量编译会快很多。

@@ -11,6 +11,57 @@ set -euo pipefail
 # Supported guests: arceos, linux, nimbos
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IMAGE_STORAGE_ROOT="/tmp/.axvisor-images"
+DEFAULT_REGISTRY_URL="https://raw.githubusercontent.com/arceos-hypervisor/axvisor-guest/refs/heads/main/registry/default.toml"
+# Keep this version aligned with the guest release used in this branch.
+BUILTIN_FALLBACK_REGISTRY_URL="https://raw.githubusercontent.com/arceos-hypervisor/axvisor-guest/refs/heads/main/registry/v0.0.22.toml"
+IMAGE_DOWNLOAD_MAX_ATTEMPTS=2
+
+bootstrap_image_registry() {
+  local storage_dir="${IMAGE_STORAGE_ROOT}"
+  local default_registry_url="${DEFAULT_REGISTRY_URL}"
+  # Built-in fallback keeps setup resilient when default/include URLs are flaky.
+  local fallback_registry_url="${AXVISOR_REGISTRY_FALLBACK_URL:-${BUILTIN_FALLBACK_REGISTRY_URL}}"
+  local default_registry_file
+  local include_url
+  local source_kind
+  local source_url
+
+  mkdir -p "${storage_dir}"
+  if [ -f "${storage_dir}/images.toml" ]; then
+    return 0
+  fi
+
+  default_registry_file="$(mktemp)"
+  if ! curl -4 --retry 5 --retry-delay 2 -fL "${default_registry_url}" -o "${default_registry_file}"; then
+    rm -f "${default_registry_file}"
+    echo "  -> Warning: failed to fetch default registry: ${default_registry_url}" >&2
+    source_kind="fallback registry"
+    source_url="${fallback_registry_url}"
+  else
+    include_url="$(sed -n 's/^[[:space:]]*url[[:space:]]*=[[:space:]]*"\([^"]*\)".*$/\1/p' "${default_registry_file}" | sed -n '1p')"
+    rm -f "${default_registry_file}"
+    if [ -n "${include_url}" ]; then
+      source_kind="included registry from default.toml"
+      source_url="${include_url}"
+    else
+      source_kind="default registry"
+      source_url="${default_registry_url}"
+    fi
+  fi
+
+  echo "  -> Bootstrapping local image registry from ${source_kind}: ${source_url}"
+  if ! curl -4 --retry 5 --retry-delay 2 -fL "${source_url}" -o "${storage_dir}/images.toml"; then
+    if [ "${source_url}" != "${fallback_registry_url}" ]; then
+      echo "  -> Warning: failed to fetch ${source_kind}, retrying fallback registry: ${fallback_registry_url}" >&2
+      curl -4 --retry 5 --retry-delay 2 -fL "${fallback_registry_url}" -o "${storage_dir}/images.toml"
+    else
+      echo "  -> Error: failed to bootstrap local image registry from fallback registry." >&2
+      return 1
+    fi
+  fi
+  date +%s > "${storage_dir}/.last_sync" || true
+}
 
 usage() {
   echo "Usage: $0 [--guest] <arceos|linux|nimbos>"
@@ -64,7 +115,7 @@ IFS='|' read -r IMAGE_NAME VMCONFIG BUILD_CONFIG QEMU_CONFIG KERNEL_FILE SUCCESS
 # NOTE:
 #  - `cargo xtask image download` 默认把镜像解压到 `/tmp/.axvisor-images/<IMAGE_NAME>`
 #  - 这里直接使用该目录作为镜像来源，避免路径不一致
-IMAGE_DIR="/tmp/.axvisor-images/${IMAGE_NAME}"
+IMAGE_DIR="${IMAGE_STORAGE_ROOT}/${IMAGE_NAME}"
 VMCONFIG_PATH="${REPO_ROOT}/configs/vms/${VMCONFIG}"
 ROOTFS_TARGET="${REPO_ROOT}/tmp/rootfs.img"
 KERNEL_IMAGE="${IMAGE_DIR}/${KERNEL_FILE}"
@@ -76,7 +127,13 @@ echo "[setup_qemu] Guest: ${GUEST} | Repo: ${REPO_ROOT}"
 echo "[setup_qemu] Step 1: ensure guest image is downloaded..."
 if [ ! -d "${IMAGE_DIR}" ]; then
   echo "  -> Image directory ${IMAGE_DIR} not found, downloading via cargo xtask image..."
-  (cd "${REPO_ROOT}" && cargo xtask image download "${IMAGE_NAME}")
+  echo "  -> Download attempt 1/${IMAGE_DOWNLOAD_MAX_ATTEMPTS}"
+  if ! (cd "${REPO_ROOT}" && cargo xtask image download "${IMAGE_NAME}"); then
+    echo "  -> Attempt 1/${IMAGE_DOWNLOAD_MAX_ATTEMPTS} failed. Trying to bootstrap registry..."
+    bootstrap_image_registry
+    echo "  -> Download attempt 2/${IMAGE_DOWNLOAD_MAX_ATTEMPTS}"
+    (cd "${REPO_ROOT}" && cargo xtask image download "${IMAGE_NAME}")
+  fi
 else
   echo "  -> Found existing image directory: ${IMAGE_DIR}"
 fi
