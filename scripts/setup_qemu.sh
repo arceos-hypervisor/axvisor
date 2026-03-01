@@ -116,7 +116,9 @@ IFS='|' read -r IMAGE_NAME VMCONFIG BUILD_CONFIG QEMU_CONFIG KERNEL_FILE SUCCESS
 #  - `cargo xtask image download` 默认把镜像解压到 `/tmp/.axvisor-images/<IMAGE_NAME>`
 #  - 这里直接使用该目录作为镜像来源，避免路径不一致
 IMAGE_DIR="${IMAGE_STORAGE_ROOT}/${IMAGE_NAME}"
-VMCONFIG_PATH="${REPO_ROOT}/configs/vms/${VMCONFIG}"
+VMCONFIG_TEMPLATE_PATH="${REPO_ROOT}/configs/vms/${VMCONFIG}"
+VMCONFIG_TMP_DIR="${REPO_ROOT}/tmp/vmconfigs"
+GENERATED_VMCONFIG_PATH="${VMCONFIG_TMP_DIR}/${VMCONFIG%.toml}.generated.toml"
 ROOTFS_TARGET="${REPO_ROOT}/tmp/rootfs.img"
 KERNEL_IMAGE="${IMAGE_DIR}/${KERNEL_FILE}"
 ROOTFS_IMAGE="${IMAGE_DIR}/rootfs.img"
@@ -159,18 +161,21 @@ if [[ "$GUEST" == "nimbos" ]]; then
 fi
 
 echo "[setup_qemu] Step 2: patch VM config kernel_path..."
-if [ ! -f "${VMCONFIG_PATH}" ]; then
-  echo "ERROR: VM config file not found at ${VMCONFIG_PATH}" >&2
+if [ ! -f "${VMCONFIG_TEMPLATE_PATH}" ]; then
+  echo "ERROR: VM config file not found at ${VMCONFIG_TEMPLATE_PATH}" >&2
   exit 1
 fi
 
-sed -i 's|^kernel_path *=.*|kernel_path = "'"${ABS_KERNEL_PATH}"'"|' "${VMCONFIG_PATH}"
-echo "  -> Updated kernel_path in ${VMCONFIG_PATH} to ${ABS_KERNEL_PATH}"
+mkdir -p "${VMCONFIG_TMP_DIR}"
+cp "${VMCONFIG_TEMPLATE_PATH}" "${GENERATED_VMCONFIG_PATH}"
+sed -i 's|^kernel_path *=.*|kernel_path = "'"${ABS_KERNEL_PATH}"'"|' "${GENERATED_VMCONFIG_PATH}"
+echo "  -> Generated VM config: ${GENERATED_VMCONFIG_PATH}"
+echo "  -> Updated kernel_path to ${ABS_KERNEL_PATH}"
 
 if [[ "$GUEST" == "nimbos" ]]; then
   ABS_BIOS_PATH="${IMAGE_DIR}/axvm-bios.bin"
-  sed -i 's|^bios_path *=.*|bios_path = "'"${ABS_BIOS_PATH}"'"|' "${VMCONFIG_PATH}"
-  echo "  -> Updated bios_path in ${VMCONFIG_PATH} to ${ABS_BIOS_PATH}"
+  sed -i 's|^bios_path *=.*|bios_path = "'"${ABS_BIOS_PATH}"'"|' "${GENERATED_VMCONFIG_PATH}"
+  echo "  -> Updated bios_path to ${ABS_BIOS_PATH}"
 fi
 
 echo "[setup_qemu] Step 3: prepare rootfs..."
@@ -188,7 +193,7 @@ You can now run the QEMU test with:
   cargo xtask qemu \\
     --build-config configs/board/${BUILD_CONFIG} \\
     --qemu-config .github/workflows/${QEMU_CONFIG} \\
-    --vmconfigs configs/vms/${VMCONFIG}
+    --vmconfigs ${GENERATED_VMCONFIG_PATH}
 
 Success indicator: '${SUCCESS_MSG}'
 

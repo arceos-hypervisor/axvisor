@@ -77,7 +77,7 @@ id  # 输出应包含 "kvm"
 cargo xtask qemu \
   --build-config configs/board/qemu-aarch64.toml \
   --qemu-config .github/workflows/qemu-aarch64.toml \
-  --vmconfigs configs/vms/arceos-aarch64-qemu-smp1.toml
+  --vmconfigs tmp/vmconfigs/arceos-aarch64-qemu-smp1.generated.toml
 ```
 
 启动成功标志：输出中出现 `Hello, world!`
@@ -90,7 +90,7 @@ cargo xtask qemu \
 cargo xtask qemu \
   --build-config configs/board/qemu-aarch64.toml \
   --qemu-config .github/workflows/qemu-aarch64.toml \
-  --vmconfigs configs/vms/linux-aarch64-qemu-smp1.toml
+  --vmconfigs tmp/vmconfigs/linux-aarch64-qemu-smp1.generated.toml
 ```
 
 启动成功标志：输出中出现 `test pass!`
@@ -103,7 +103,7 @@ cargo xtask qemu \
 cargo xtask qemu \
   --build-config configs/board/qemu-x86_64.toml \
   --qemu-config .github/workflows/qemu-x86_64-kvm.toml \
-  --vmconfigs configs/vms/nimbos-x86_64-qemu-smp1.toml
+  --vmconfigs tmp/vmconfigs/nimbos-x86_64-qemu-smp1.generated.toml
 ```
 
 启动成功后会进入 Rust user shell（`>>` 提示符），输入 `usertests` 运行测试套件，全部通过后输出 `usertests passed!`
@@ -115,7 +115,7 @@ cargo xtask qemu \
 该脚本自动完成以下三步，省去手动操作：
 
 1. **下载镜像**：调用 `cargo xtask image download` 将 Guest 镜像下载到 `/tmp/.axvisor-images/`
-2. **修改配置**：用 `sed` 将 VM 配置文件（`configs/vms/*.toml`）中的 `kernel_path` 等路径指向实际的镜像位置
+2. **生成临时配置**：复制模板 VM 配置到 `tmp/vmconfigs/*.generated.toml`，并用 `sed` 更新 `kernel_path`（以及 NimbOS 的 `bios_path`）到实际镜像路径，不修改仓库内 `configs/vms/*.toml`
 3. **准备 rootfs**：将 `rootfs.img` 复制到项目的 `tmp/` 目录下供 QEMU 使用
 
 如果不想使用脚本，也可以手动执行上述步骤。

@@ -77,7 +77,7 @@ This branch provides a one-click setup script `scripts/setup_qemu.sh` that autom
 cargo xtask qemu \
   --build-config configs/board/qemu-aarch64.toml \
   --qemu-config .github/workflows/qemu-aarch64.toml \
-  --vmconfigs configs/vms/arceos-aarch64-qemu-smp1.toml
+  --vmconfigs tmp/vmconfigs/arceos-aarch64-qemu-smp1.generated.toml
 ```
 
 Success indicator: `Hello, world!` appears in the output.
@@ -90,7 +90,7 @@ Success indicator: `Hello, world!` appears in the output.
 cargo xtask qemu \
   --build-config configs/board/qemu-aarch64.toml \
   --qemu-config .github/workflows/qemu-aarch64.toml \
-  --vmconfigs configs/vms/linux-aarch64-qemu-smp1.toml
+  --vmconfigs tmp/vmconfigs/linux-aarch64-qemu-smp1.generated.toml
 ```
 
 Success indicator: `test pass!` appears in the output.
@@ -103,7 +103,7 @@ Success indicator: `test pass!` appears in the output.
 cargo xtask qemu \
   --build-config configs/board/qemu-x86_64.toml \
   --qemu-config .github/workflows/qemu-x86_64-kvm.toml \
-  --vmconfigs configs/vms/nimbos-x86_64-qemu-smp1.toml
+  --vmconfigs tmp/vmconfigs/nimbos-x86_64-qemu-smp1.generated.toml
 ```
 
 After booting, you will enter the Rust user shell (`>>` prompt). Type `usertests` to run the test suite. All tests passing will print `usertests passed!`
@@ -115,7 +115,7 @@ After booting, you will enter the Rust user shell (`>>` prompt). Type `usertests
 The script automates three steps, eliminating manual work:
 
 1. **Download images**: calls `cargo xtask image download` to fetch guest images to `/tmp/.axvisor-images/`
-2. **Patch configs**: uses `sed` to update `kernel_path` and other paths in VM config files (`configs/vms/*.toml`) to point to the actual image locations
+2. **Generate temp configs**: copies VM config templates to `tmp/vmconfigs/*.generated.toml`, then uses `sed` to update `kernel_path` (and `bios_path` for NimbOS) to actual image paths without modifying tracked files in `configs/vms/*.toml`
 3. **Prepare rootfs**: copies `rootfs.img` to the project's `tmp/` directory for QEMU to use
 
 You can also perform these steps manually if you prefer not to use the script.
