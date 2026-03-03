@@ -939,7 +939,7 @@ dependencies = [
 
 [[package]]
 name = "axvisor"
-version = "0.1.0"
+version = "0.1.0-preview.2"
 dependencies = [
  "aarch64-cpu-ext",
  "anyhow",
