@@ -16,5 +16,5 @@ rustflags = [
 ]
 
 [alias]
-xtask = "run --manifest-path ./xtask/Cargo.toml --"
+xtask = "run --manifest-path ./axvisor-build/Cargo.toml --"
 

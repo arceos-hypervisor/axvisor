@@ -237,6 +237,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "axvisor-build"
+version = "0.1.0-preview.2"
+dependencies = [
+ "anyhow",
+ "axvmconfig",
+ "cargo_metadata",
+ "chrono",
+ "clap",
+ "colored",
+ "flate2",
+ "jkconfig",
+ "ostool",
+ "regex",
+ "reqwest 0.13.2",
+ "schemars",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tar",
+ "tokio",
+ "toml",
+]
+
+[[package]]
 name = "axvmconfig"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4139,30 +4163,6 @@ name = "xi-unicode"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a67300977d3dc3f8034dae89778f502b6ba20b269527b3223ba59c0cf393bb8a"
-
-[[package]]
-name = "xtask"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axvmconfig",
- "cargo_metadata",
- "chrono",
- "clap",
- "colored",
- "flate2",
- "jkconfig",
- "ostool",
- "regex",
- "reqwest 0.13.2",
- "schemars",
- "serde",
- "serde_json",
- "sha2",
- "tar",
- "tokio",
- "toml",
-]
 
 [[package]]
 name = "yoke"

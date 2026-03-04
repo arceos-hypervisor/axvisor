@@ -14,23 +14,11 @@
 
 //! # Axvisor Driver Module
 //!
-//! This crate provides hardware driver support for the Axvisor hypervisor.
-
-#![no_std]
-
-extern crate axklib;
+//! This module provides hardware driver support for the Axvisor hypervisor.
 
 use core::ptr::NonNull;
 
 use rdrive::probe::OnProbeError;
-
-#[allow(unused_imports)]
-#[macro_use]
-extern crate alloc;
-
-#[allow(unused_imports)]
-#[macro_use]
-extern crate log;
 
 mod blk;
 mod soc;

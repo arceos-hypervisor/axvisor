@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-extern crate alloc;
-
 use axklib::{mem::iomap, time::busy_wait};
 
 use core::{

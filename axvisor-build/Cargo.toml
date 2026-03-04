@@ -1,8 +1,12 @@
 [package]
-license = "Apache-2.0"
+name = "axvisor-build"
+version = "0.1.0-preview.3"
 edition = "2024"
-name = "xtask"
-version = "0.1.0"
+license = "Apache-2.0"
+description = "Build tool for Axvisor hypervisor"
+repository = "https://github.com/arceos-hypervisor/axvisor"
+homepage = "https://github.com/arceos-hypervisor/axvisor"
+documentation = "https://docs.rs/axvisor"
 
 [target.'cfg(any(windows, unix))'.dependencies]
 

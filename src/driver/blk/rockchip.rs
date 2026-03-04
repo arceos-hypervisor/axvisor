@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-extern crate alloc;
-
 use alloc::{format, vec::Vec};
 use core::time::Duration;
 
@@ -25,7 +23,7 @@ use rdrive::{
 use sdmmc::emmc::{self, EMmcHost};
 use spin::Once;
 
-use crate::iomap;
+use crate::driver::iomap;
 
 module_driver!(
     name: "Rockchip sdhci",

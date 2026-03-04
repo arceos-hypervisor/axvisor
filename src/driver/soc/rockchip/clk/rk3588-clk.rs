@@ -17,7 +17,7 @@ use rdrive::{
 };
 use rk3588_clk::Rk3588Cru;
 
-use crate::iomap;
+use crate::driver::iomap;
 
 module_driver!(
     name: "Rockchip CRU",
