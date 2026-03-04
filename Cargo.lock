@@ -1043,7 +1043,7 @@ dependencies = [
 
 [[package]]
 name = "axvisor"
-version = "0.1.0-preview.3"
+version = "0.1.0-preview.4"
 dependencies = [
  "aarch64-cpu-ext",
  "anyhow",
