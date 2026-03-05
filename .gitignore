@@ -64,3 +64,5 @@ MANIFEST
 # AI tools
 .spec-workflow/
 .claude/
+
+.idea/
