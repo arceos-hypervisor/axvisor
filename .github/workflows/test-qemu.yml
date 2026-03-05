@@ -3,27 +3,89 @@ name: Test for QEMU
 on: [push, pull_request, workflow_dispatch]
 
 jobs:
+  detect:
+    name: "Detect affected targets"
+    runs-on: ubuntu-latest
+    outputs:
+      skip_all: ${{ steps.analyze.outputs.skip_all }}
+      qemu_aarch64: ${{ steps.analyze.outputs.qemu_aarch64 }}
+      qemu_x86_64: ${{ steps.analyze.outputs.qemu_x86_64 }}
+      qemu_matrix: ${{ steps.matrix.outputs.qemu_matrix }}
+    steps:
+      - name: Harden git network settings
+        run: |
+          git config --global http.version HTTP/1.1
+          git config --global http.lowSpeedLimit 1000
+          git config --global http.lowSpeedTime 60
+          git config --global http.postBuffer 104857600
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        timeout-minutes: 10
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libudev-dev
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: affected-${{ runner.os }}-${{ hashFiles('xtask/Cargo.toml') }}
+
+      - name: Determine base ref
+        id: baseref
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "ref=origin/${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            if [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+              echo "ref=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
+            else
+              echo "ref=HEAD~1" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "ref=origin/main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Analyze affected targets
+        id: analyze
+        run: cargo xtask affected --base "${{ steps.baseref.outputs.ref }}"
+
+      - name: Build QEMU test matrix
+        id: matrix
+        run: |
+          MATRIX="[]"
+          if [ "${{ steps.analyze.outputs.qemu_aarch64 }}" = "true" ]; then
+            MATRIX=$(echo "$MATRIX" | jq -c '. + [
+              {"arch":"aarch64","vmconfigs":"configs/vms/arceos-aarch64-qemu-smp1.toml","vmconfigs_name":"ArceOS","vmimage_name":"qemu_aarch64_arceos"},
+              {"arch":"aarch64","vmconfigs":"configs/vms/linux-aarch64-qemu-smp1.toml","vmconfigs_name":"Linux","vmimage_name":"qemu_aarch64_linux"}
+            ]')
+          fi
+          if [ "${{ steps.analyze.outputs.qemu_x86_64 }}" = "true" ]; then
+            MATRIX=$(echo "$MATRIX" | jq -c '. + [
+              {"arch":"x86_64","vmconfigs":"configs/vms/nimbos-x86_64-qemu-smp1.toml","vmconfigs_name":"NimbOS","vmimage_name":"qemu_x86_64_nimbos"}
+            ]')
+          fi
+          echo "qemu_matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "Generated QEMU matrix: $MATRIX"
+
   test-qemu:
+    needs: detect
+    if: needs.detect.outputs.skip_all != 'true' && needs.detect.outputs.qemu_matrix != '[]'
     name: "Test qemu: ${{ matrix.arch }} - ${{ matrix.vmconfigs_name }}"
     strategy:
       matrix:
-        include:
-          - arch: aarch64
-            vmconfigs: configs/vms/arceos-aarch64-qemu-smp1.toml
-            vmconfigs_name: ArceOS
-            vmimage_name: qemu_aarch64_arceos
-          - arch: aarch64
-            vmconfigs: configs/vms/linux-aarch64-qemu-smp1.toml
-            vmconfigs_name: Linux
-            vmimage_name: qemu_aarch64_linux
-          # - arch: riscv64
-          #   vmconfigs: configs/vms/arceos-riscv64-qemu-smp1.toml
-          #   vmconfigs_name: ArceOS
-          #   vmimage_name: qemu_arceos_riscv64
-          - arch: x86_64
-            vmconfigs: configs/vms/nimbos-x86_64-qemu-smp1.toml
-            vmconfigs_name: NimbOS
-            vmimage_name: qemu_x86_64_nimbos
+        include: ${{ fromJson(needs.detect.outputs.qemu_matrix) }}
       fail-fast: false
     runs-on:
       - self-hosted
@@ -37,8 +99,16 @@ jobs:
           [ -d .git/modules ] && rm -rf .git/modules || true
           [ -d .git ] && git clean -ffdx || true
 
+      - name: Harden git network settings
+        run: |
+          git config --global http.version HTTP/1.1
+          git config --global http.lowSpeedLimit 1000
+          git config --global http.lowSpeedTime 60
+          git config --global http.postBuffer 104857600
+
       - name: Checkout
         uses: actions/checkout@v4
+        timeout-minutes: 10
         with:
           clean: true
           submodules: recursive

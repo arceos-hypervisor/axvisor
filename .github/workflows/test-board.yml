@@ -3,23 +3,90 @@ name: Test for BOARD
 on: [push, pull_request, workflow_dispatch]
 
 jobs:
+  detect:
+    name: "Detect affected targets"
+    runs-on: ubuntu-latest
+    outputs:
+      skip_all: ${{ steps.analyze.outputs.skip_all }}
+      board_phytiumpi: ${{ steps.analyze.outputs.board_phytiumpi }}
+      board_rk3568: ${{ steps.analyze.outputs.board_rk3568 }}
+      board_matrix: ${{ steps.matrix.outputs.board_matrix }}
+    steps:
+      - name: Harden git network settings
+        run: |
+          git config --global http.version HTTP/1.1
+          git config --global http.lowSpeedLimit 1000
+          git config --global http.lowSpeedTime 60
+          git config --global http.postBuffer 104857600
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        timeout-minutes: 10
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libudev-dev
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: affected-${{ runner.os }}-${{ hashFiles('xtask/Cargo.toml') }}
+
+      - name: Determine base ref
+        id: baseref
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "ref=origin/${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            if [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+              echo "ref=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
+            else
+              echo "ref=HEAD~1" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "ref=origin/main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Analyze affected targets
+        id: analyze
+        run: cargo xtask affected --base "${{ steps.baseref.outputs.ref }}"
+
+      - name: Build board test matrix
+        id: matrix
+        run: |
+          MATRIX="[]"
+          if [ "${{ steps.analyze.outputs.board_phytiumpi }}" = "true" ]; then
+            MATRIX=$(echo "$MATRIX" | jq -c '. + [
+              {"board":"phytiumpi","vmconfigs":"configs/vms/arceos-aarch64-e2000-smp1.toml","vmconfigs_name":"ArceOS"},
+              {"board":"phytiumpi","vmconfigs":"configs/vms/linux-aarch64-e2000-smp1.toml","vmconfigs_name":"Linux"}
+            ]')
+          fi
+          if [ "${{ steps.analyze.outputs.board_rk3568 }}" = "true" ]; then
+            MATRIX=$(echo "$MATRIX" | jq -c '. + [
+              {"board":"roc-rk3568-pc","vmconfigs":"configs/vms/arceos-aarch64-rk3568-smp1.toml","vmconfigs_name":"ArceOS"},
+              {"board":"roc-rk3568-pc","vmconfigs":"configs/vms/linux-aarch64-rk3568-smp1.toml","vmconfigs_name":"Linux"}
+            ]')
+          fi
+          echo "board_matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "Generated board matrix: $MATRIX"
+
   test-board:
+    needs: detect
+    if: needs.detect.outputs.skip_all != 'true' && needs.detect.outputs.board_matrix != '[]'
     name: "Test board: ${{ matrix.board }} - ${{ matrix.vmconfigs_name }}"
     strategy:
       matrix:
-        include:
-          - board: phytiumpi
-            vmconfigs: configs/vms/arceos-aarch64-e2000-smp1.toml
-            vmconfigs_name: ArceOS
-          - board: phytiumpi
-            vmconfigs: configs/vms/linux-aarch64-e2000-smp1.toml
-            vmconfigs_name: Linux
-          - board: roc-rk3568-pc
-            vmconfigs: configs/vms/arceos-aarch64-rk3568-smp1.toml
-            vmconfigs_name: ArceOS
-          - board: roc-rk3568-pc
-            vmconfigs: configs/vms/linux-aarch64-rk3568-smp1.toml
-            vmconfigs_name: Linux
+        include: ${{ fromJson(needs.detect.outputs.board_matrix) }}
       fail-fast: false
     runs-on:
       - self-hosted
@@ -33,8 +100,16 @@ jobs:
           [ -d .git/modules ] && rm -rf .git/modules || true
           [ -d .git ] && git clean -ffdx || true
 
+      - name: Harden git network settings
+        run: |
+          git config --global http.version HTTP/1.1
+          git config --global http.lowSpeedLimit 1000
+          git config --global http.lowSpeedTime 60
+          git config --global http.postBuffer 104857600
+
       - name: Checkout
         uses: actions/checkout@v4
+        timeout-minutes: 10
         with:
           clean: true
           submodules: recursive
