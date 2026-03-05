@@ -12,8 +12,16 @@ jobs:
       board_rk3568: ${{ steps.analyze.outputs.board_rk3568 }}
       board_matrix: ${{ steps.matrix.outputs.board_matrix }}
     steps:
+      - name: Harden git network settings
+        run: |
+          git config --global http.version HTTP/1.1
+          git config --global http.lowSpeedLimit 1000
+          git config --global http.lowSpeedTime 60
+          git config --global http.postBuffer 104857600
+
       - name: Checkout
         uses: actions/checkout@v4
+        timeout-minutes: 10
         with:
           fetch-depth: 0
 
@@ -92,8 +100,16 @@ jobs:
           [ -d .git/modules ] && rm -rf .git/modules || true
           [ -d .git ] && git clean -ffdx || true
 
+      - name: Harden git network settings
+        run: |
+          git config --global http.version HTTP/1.1
+          git config --global http.lowSpeedLimit 1000
+          git config --global http.lowSpeedTime 60
+          git config --global http.postBuffer 104857600
+
       - name: Checkout
         uses: actions/checkout@v4
+        timeout-minutes: 10
         with:
           clean: true
           submodules: recursive
