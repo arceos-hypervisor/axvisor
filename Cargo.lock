@@ -1043,7 +1043,7 @@ dependencies = [
 
 [[package]]
 name = "axvisor"
-version = "0.1.0-preview.3"
+version = "0.1.0-preview.4"
 dependencies = [
  "aarch64-cpu-ext",
  "anyhow",
@@ -1060,20 +1060,28 @@ dependencies = [
  "axvcpu",
  "axvisor_api",
  "axvm",
+ "axvmconfig",
  "bitflags 2.11.0",
  "byte-unit",
+ "cargo_metadata 0.23.1",
  "cfg-if",
+ "chrono",
+ "clap",
+ "colored",
  "cpumask",
  "crate_interface",
  "extern-trait",
  "fdt-parser",
+ "flate2",
  "hashbrown 0.14.5",
+ "jkconfig",
  "kernel_guard",
  "kspin",
  "lazy_static",
  "lazyinit",
  "log",
  "memory_addr",
+ "ostool",
  "page_table_entry",
  "page_table_multiarch",
  "percpu",
@@ -1084,36 +1092,20 @@ dependencies = [
  "rdif-clk",
  "rdif-intc",
  "rdrive",
+ "regex",
+ "reqwest 0.13.2",
  "rk3568_clk",
  "rk3588-clk",
  "rockchip-pm",
- "sdmmc",
- "spin 0.9.8",
- "syn 2.0.117",
- "timer_list",
- "toml 0.9.12+spec-1.1.0",
-]
-
-[[package]]
-name = "axvisor-build"
-version = "0.1.0-preview.3"
-dependencies = [
- "anyhow",
- "axvmconfig",
- "cargo_metadata 0.23.1",
- "chrono",
- "clap",
- "colored",
- "flate2",
- "jkconfig",
- "ostool",
- "regex",
- "reqwest 0.13.2",
  "schemars",
+ "sdmmc",
  "serde",
  "serde_json",
  "sha2",
+ "spin 0.9.8",
+ "syn 2.0.117",
  "tar",
+ "timer_list",
  "tokio",
  "toml 0.9.12+spec-1.1.0",
 ]

@@ -1,13 +1,9 @@
-[workspace]
-members = [".", "axvisor-build"]
-resolver = "3"
-
 [package]
 name = "axvisor"
 authors = ["Keyang Hu <keyang.hu@qq.com>", "周睿 <zrufo747@outlook.com>"]
 edition = "2024"
 license = "Apache-2.0"
-version = "0.1.0-preview.3"
+version = "0.1.0-preview.4"
 description = "A lightweight type-1 hypervisor based on ArceOS"
 repository = "https://github.com/arceos-hypervisor/axvisor"
 homepage = "https://github.com/arceos-hypervisor/axvisor"
@@ -15,11 +11,30 @@ documentation = "https://docs.rs/axvisor"
 readme = "README.md"
 keywords = ["hypervisor", "virtualization", "arceos", "type-1"]
 categories = ["os", "no-std", "embedded"]
+include = [
+    ".cargo/config.toml",
+    ".github/*/**",
+    "doc/**",
+    "src/**",
+    "build.rs",
+    "configs/**",
+    "scripts/**",
+    "xtask/src/**",
+    "rust-toolchain.toml",
+    "README.md",
+    "LICENSE*",
+]
 
 [profile.release]
 lto = true
 
+[[bin]]
+name = "xtask"
+path = "xtask/src/main.rs"
+required-features = ["xtask"]
+
 [features]
+default = []
 ept-level-4 = ["axaddrspace/4-level-ept"]
 fs = ["axstd/fs", "axruntime/fs"]
 dyn-plat = ["axstd/myplat", "axstd/driver-dyn", "axruntime/driver-dyn"]
@@ -29,6 +44,26 @@ rk3588-clk = ["dep:rk3588-clk"]
 sdmmc = ["dep:sdmmc"]
 rockchip-pm = ["dep:rockchip-pm"]
 phytium-blk = ["dep:phytium-mci"]
+xtask = [
+    "dep:anyhow",
+    "dep:axvmconfig",
+    "dep:cargo_metadata",
+    "dep:chrono",
+    "dep:clap",
+    "dep:colored",
+    "dep:flate2",
+    "dep:jkconfig",
+    "dep:ostool",
+    "dep:regex",
+    "dep:reqwest",
+    "dep:schemars",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:sha2",
+    "dep:tar",
+    "dep:tokio",
+    "dep:toml",
+]
 
 [dependencies]
 bitflags = "2.2"
@@ -90,6 +125,28 @@ phytium-mci = { version = "0.1", default-features = false, features = ["pio"], o
 [target.'cfg(target_arch = "aarch64")'.dependencies]
 aarch64-cpu-ext = "0.1"
 arm-gic-driver = {version = "=0.15.9", features = ["rdif"]}
+
+# xtask dependencies (only used when xtask feature is enabled)
+[target.'cfg(any(windows, unix))'.dependencies]
+anyhow = { version = "1.0", optional = true }
+cargo_metadata = { version = "0.23", optional = true }
+chrono = { version = "0.4", features = ["serde"], optional = true }
+clap = {version = "4.4", features = ["derive"], optional = true }
+colored = { version = "3", optional = true }
+flate2 = { version = "1.0", optional = true }
+jkconfig = { version = "0.1", optional = true }
+ostool = { version = "0.8.4", optional = true }
+regex = { version = "1.12", optional = true }
+reqwest = { version = "0.13", optional = true }
+schemars = {version = "1", features = ["derive"], optional = true }
+serde = {version = "1.0", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+sha2 = { version = "0.10", optional = true }
+tar = { version = "0.4", optional = true }
+tokio = {version = "1", features = ["full"], optional = true }
+toml = { version = "0.9", optional = true }
+
+axvmconfig = { version = "0.2", features = ["std"], optional = true }
 
 [build-dependencies]
 axconfig = "=0.2.2-hv.5"
