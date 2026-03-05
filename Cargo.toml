@@ -11,6 +11,7 @@ documentation = "https://docs.rs/axvisor"
 readme = "README.md"
 keywords = ["hypervisor", "virtualization", "arceos", "type-1"]
 categories = ["os", "no-std", "embedded"]
+autobins = false
 include = [
     ".cargo/config.toml",
     ".github/*/**",
