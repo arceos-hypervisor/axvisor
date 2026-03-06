@@ -27,10 +27,10 @@ extern crate alloc;
 
 extern crate axstd as std;
 
-extern crate axruntime;
+#[cfg(target_arch = "x86_64")]
+extern crate axplat_x86_qemu_q35;
 
 mod driver;
-
 mod hal;
 mod logo;
 mod shell;
@@ -50,5 +50,5 @@ fn main() {
 
     info!("[OK] Default guest initialized");
 
-    shell::console_init();
+    // shell::console_init();
 }

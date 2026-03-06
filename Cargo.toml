@@ -3,7 +3,7 @@ name = "axvisor"
 authors = ["Keyang Hu <keyang.hu@qq.com>", "周睿 <zrufo747@outlook.com>"]
 edition = "2024"
 license = "Apache-2.0"
-version = "0.1.0-preview.4"
+version = "0.3.0-preview.1"
 description = "A lightweight type-1 hypervisor based on ArceOS"
 repository = "https://github.com/arceos-hypervisor/axvisor"
 homepage = "https://github.com/arceos-hypervisor/axvisor"
@@ -11,6 +11,7 @@ documentation = "https://docs.rs/axvisor"
 readme = "README.md"
 keywords = ["hypervisor", "virtualization", "arceos", "type-1"]
 categories = ["os", "no-std", "embedded"]
+autobins = false
 include = [
     ".cargo/config.toml",
     ".github/*/**",
@@ -36,8 +37,8 @@ required-features = ["xtask"]
 [features]
 default = []
 ept-level-4 = ["axaddrspace/4-level-ept"]
-fs = ["axstd/fs", "axruntime/fs"]
-dyn-plat = ["axstd/myplat", "axstd/driver-dyn", "axruntime/driver-dyn"]
+fs = ["axstd/fs"]
+dyn-plat = ["axstd/plat-dyn"]
 # Driver features (from former driver crate)
 rk3568-clk = ["dep:rk3568_clk"]
 rk3588-clk = ["dep:rk3588-clk"]
@@ -65,7 +66,7 @@ xtask = [
     "dep:toml",
 ]
 
-[dependencies]
+[target.'cfg(not(any(windows, unix)))'.dependencies]
 bitflags = "2.2"
 cfg-if = "1.0"
 cpumask = "0.1.0"
@@ -79,43 +80,44 @@ timer_list = "0.1.0"
 hashbrown = "0.14"
 
 # System dependent modules provided by ArceOS.
-axstd = { version = "=0.2.2-hv.5", features = [
+axstd = { version = "=0.3.0-preview.2", features = [
   "alloc-level-1",
   "paging",
   "irq",
   "multitask",
   "task-ext",
   "smp",
+  "hv",
 ]}
 
-# System dependent modules provided by ArceOS-Hypervisor.
-axaddrspace = "=0.1.4"
-axhvc = "=0.2.0"
-axruntime = { version = "=0.2.2-hv.5", features = ["alloc", "irq", "paging", "smp", "multitask", "plat-hv-aarch64"] }
-axvcpu = "=0.2.1"
-axvm = "=0.2.1"
+# System dependent modules provided by ArceOS-Hypervisor (bare-metal only)
+axaddrspace = "0.1.5"
+axhvc = "0.2.0"
+# axruntime = { version = "=0.3.0-preview.1", features = ["alloc", "irq", "paging", "smp", "multitask"] }
+axvcpu = "0.2.2"
+axvm = "0.2.1"
+axdevice = "0.2.1"
+axdevice_base = "0.2.1"
+axvisor_api = "0.1.0"
 
-# System independent crates provided by ArceOS, these crates could be imported by remote url.
-axerrno = "=0.2.2"
+# System independent crates provided by ArceOS
+axerrno = "0.2.2"
+axklib = "0.3.0"
+# axcpu = { version = "0.3.0-preview.8", features = ["arm-el2"] }
 byte-unit = {version = "5", default-features = false, features = ["byte"]}
-crate_interface = "=0.1.4"
-extern-trait = "=0.2.0"
+crate_interface = "0.1.4"
+extern-trait = "0.4"
 fdt-parser = "0.4"
-memory_addr = "=0.4.1"
-page_table_entry = {version = "=0.5.7", features = ["arm-el2"]}
-page_table_multiarch = "=0.5.7"
-percpu = {version = "=0.2.0", features = ["arm-el2"]}
-rdif-intc = "=0.12.1"
-rdrive = "=0.18.11"
+memory_addr = "0.4.1"
+page_table_entry = { version = "0.6", features = ["arm-el2"] }
+page_table_multiarch = "0.6"
+percpu = { version = "0.2.3-preview.1", features = ["arm-el2"] }
 
-axdevice = "=0.2.1"
-axdevice_base = "=0.2.1"
-axvisor_api = "=0.1.0"
+rdif-intc = "0.14"
+rdrive = "0.19"
+pcie = "0.5.0"
 
-# Driver dependencies (from former driver crate)
-axklib = "=0.2.0"
-rdif-block = "=0.6.2"
-rdif-clk = "0.4"
+# Optional driver dependencies
 rk3568_clk = { version = "0.1", optional = true }
 sdmmc = { version = "0.1", default-features = false, features = ["pio"], optional = true }
 rk3588-clk = { version = "0.1", optional = true }
@@ -124,7 +126,15 @@ phytium-mci = { version = "0.1", default-features = false, features = ["pio"], o
 
 [target.'cfg(target_arch = "aarch64")'.dependencies]
 aarch64-cpu-ext = "0.1"
-arm-gic-driver = {version = "=0.15.9", features = ["rdif"]}
+arm-gic-driver = {version = "0.17", features = ["rdif"]}
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+axplat-x86-qemu-q35 = { version = "0.2.0", default-features = false, features = [
+    "reboot-on-system-off",
+    "irq",
+    "smp",
+] }
+axconfig = { version = "=0.3.0-preview.2", features = ["plat-dyn"] }
 
 # xtask dependencies (only used when xtask feature is enabled)
 [target.'cfg(any(windows, unix))'.dependencies]
@@ -149,10 +159,9 @@ toml = { version = "0.9", optional = true }
 axvmconfig = { version = "0.2", features = ["std"], optional = true }
 
 [build-dependencies]
-axconfig = "=0.2.2-hv.5"
+axconfig = "=0.3.0-preview.2"
 prettyplease = "0.2"
 quote = "1.0"
 syn = "2.0"
 toml = "0.9"
 anyhow = "1.0"
-

@@ -131,7 +131,7 @@ pub(crate) fn enable_virtualization() {
 
     hardware_check();
 
-    let cpu_count = axruntime::cpu_count();
+    let cpu_count = std::os::arceos::modules::axhal::cpu_num();
 
     for cpu_id in 0..cpu_count {
         thread::spawn(move || {
@@ -146,6 +146,8 @@ pub(crate) fn enable_virtualization() {
 
             vmm::init_timer_percpu();
 
+            // SAFETY: We are initializing the percpu state for the first time
+            #[allow(static_mut_refs)]
             let percpu = unsafe { AXVM_PER_CPU.current_ref_mut_raw() };
             percpu
                 .init(this_cpu_id())
@@ -284,6 +286,6 @@ mod vmm_api_impl {
 mod host_api_impl {
     extern fn get_host_cpu_num() -> usize {
         // std::os::arceos::modules::axconfig::plat::CPU_NUM
-        axruntime::cpu_count()
+        std::os::arceos::modules::axhal::cpu_num()
     }
 }

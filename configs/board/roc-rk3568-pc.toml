@@ -6,7 +6,6 @@ features = [
     "fs",
     "sdmmc",
     "rk3568-clk",
-    "axruntime/plat-hv-aarch64",
 ]
 log = "Info"
 target = "aarch64-unknown-none-softfloat"

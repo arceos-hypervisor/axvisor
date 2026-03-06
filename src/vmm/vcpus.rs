@@ -414,7 +414,7 @@ fn alloc_vcpu_task(vm: &VMRef, vcpu: VCpuRef) -> AxTaskRef {
 
     // Use Weak reference in TaskExt to avoid keeping VM alive
     let inner = VCpuTask::new(vm, vcpu);
-    *vcpu_task.task_ext_mut() = Some(unsafe { AxTaskExt::from_impl(inner) });
+    *vcpu_task.task_ext_mut() = Some(AxTaskExt::from_impl(inner));
 
     info!(
         "VCpu task {} created {:?}",

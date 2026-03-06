@@ -42,7 +42,7 @@ impl VCpuTask {
 }
 
 #[extern_trait::extern_trait]
-unsafe impl TaskExt for VCpuTask {}
+impl TaskExt for VCpuTask {}
 
 pub trait AsVCpuTask {
     fn as_vcpu_task(&self) -> &VCpuTask;
@@ -50,10 +50,8 @@ pub trait AsVCpuTask {
 
 impl AsVCpuTask for TaskInner {
     fn as_vcpu_task(&self) -> &VCpuTask {
-        unsafe {
-            self.task_ext()
-                .expect("Not a VCpuTask")
-                .downcast_ref::<VCpuTask>()
-        }
+        self.task_ext()
+            .expect("Not a VCpuTask")
+            .downcast_ref::<VCpuTask>()
     }
 }

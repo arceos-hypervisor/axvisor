@@ -6,7 +6,6 @@ features = [
     "fs",
     "sdmmc",
     "phytium-blk",
-    "axruntime/plat-hv-aarch64",
 ]
 log = "Info"
 target = "aarch64-unknown-none-softfloat"

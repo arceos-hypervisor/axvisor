@@ -3,7 +3,6 @@ features = [
     "ept-level-4",
     "axstd/bus-mmio",
     "dyn-plat",
-    "axruntime/plat-hv-aarch64",
 ]
 log = "Info"
 target = "aarch64-unknown-none-softfloat"
