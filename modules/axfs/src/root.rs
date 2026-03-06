@@ -440,6 +440,7 @@ pub fn mount_virtual_fs(mut root_dir: RootDirectory) {
         panic!("Failed to mount virtual filesystems: {:?}", e);
     }
 
+
     // Initialize global state
     let root_dir = Arc::new(root_dir);
     ROOT_DIR.init_once(root_dir.clone());

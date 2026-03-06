@@ -4784,7 +4784,7 @@ dependencies = [
 [[package]]
 name = "rsext4"
 version = "0.1.0"
-source = "git+https://github.com/Dirinkbottle/rsext4.git?branch=main#51110c1413aaa2ac183e2af80ce07cdee560545d"
+source = "git+https://github.com/Dirinkbottle/rsext4.git?branch=main#0198aa5142eeceaeac7182792ccc75930d951516"
 dependencies = [
  "bitflags 2.10.0",
  "lazy_static",

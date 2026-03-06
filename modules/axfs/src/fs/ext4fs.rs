@@ -144,6 +144,22 @@ impl FileWrapper {
         }
     }
 
+    /// Flush all dirty caches to disk (bitmap, inode table, data blocks, superblock, group descriptors).
+    /// Should be called after metadata-modifying operations (create, remove, rename) to ensure consistency.
+    fn sync_to_disk(&self) {
+        let mut fs = self.fs.lock();
+        match &self.inner {
+            Ext4Inner::Disk(inner) => {
+                let mut inner = inner.lock();
+                fs.sync_filesystem(&mut *inner).ok();
+            }
+            Ext4Inner::Partition(inner) => {
+                let mut inner = inner.lock();
+                fs.sync_filesystem(&mut *inner).ok();
+            }
+        }
+    }
+
     fn path_deal_with(&self, path: &str) -> String {
         if path.starts_with('/') {
             debug!("path_deal_with: {}", path);
@@ -213,31 +229,34 @@ impl VfsNodeOps for FileWrapper {
             return Ok(());
         }
 
-        let mut fs = self.fs.lock();
-        match self.inner {
-            Ext4Inner::Disk(ref inner) => {
-                let mut inner = inner.lock();
-                match ty {
-                    VfsNodeType::Dir => {
-                        mkdir(&mut *inner, &mut *fs, &fpath);
-                    }
-                    _ => {
-                        mkfile(&mut *inner, &mut *fs, &fpath, None, None);
+        {
+            let mut fs = self.fs.lock();
+            match self.inner {
+                Ext4Inner::Disk(ref inner) => {
+                    let mut inner = inner.lock();
+                    match ty {
+                        VfsNodeType::Dir => {
+                            mkdir(&mut *inner, &mut *fs, &fpath);
+                        }
+                        _ => {
+                            mkfile(&mut *inner, &mut *fs, &fpath, None, None);
+                        }
                     }
                 }
-            }
-            Ext4Inner::Partition(ref inner) => {
-                let mut inner = inner.lock();
-                match ty {
-                    VfsNodeType::Dir => {
-                        mkdir(&mut *inner, &mut *fs, &fpath);
-                    }
-                    _ => {
-                        mkfile(&mut *inner, &mut *fs, &fpath, None, None);
+                Ext4Inner::Partition(ref inner) => {
+                    let mut inner = inner.lock();
+                    match ty {
+                        VfsNodeType::Dir => {
+                            mkdir(&mut *inner, &mut *fs, &fpath);
+                        }
+                        _ => {
+                            mkfile(&mut *inner, &mut *fs, &fpath, None, None);
+                        }
                     }
                 }
             }
         }
+        self.sync_to_disk();
         Ok(())
     }
 
@@ -246,40 +265,43 @@ impl VfsNodeOps for FileWrapper {
         let fpath = self.path_deal_with(path);
         assert!(!fpath.is_empty()); // already check at `root.rs`
 
-        let mut fs = self.fs.lock();
-        let (_inode_num, inode) = match self.inner {
-            Ext4Inner::Disk(ref inner) => {
-                let mut inner = inner.lock();
-                get_inode_with_num(&mut *fs, &mut *inner, &fpath)
-                    .map_err(|_| VfsError::Io)?
-                    .ok_or(VfsError::NotFound)?
-            }
-            Ext4Inner::Partition(ref inner) => {
-                let mut inner = inner.lock();
-                get_inode_with_num(&mut *fs, &mut *inner, &fpath)
-                    .map_err(|_| VfsError::Io)?
-                    .ok_or(VfsError::NotFound)?
-            }
-        };
-
-        match self.inner {
-            Ext4Inner::Disk(ref inner) => {
-                let mut inner = inner.lock();
-                if inode.is_dir() {
-                    delete_dir(&mut *fs, &mut *inner, &fpath);
-                } else {
-                    unlink(&mut *fs, &mut *inner, &fpath);
+        {
+            let mut fs = self.fs.lock();
+            let (_inode_num, inode) = match self.inner {
+                Ext4Inner::Disk(ref inner) => {
+                    let mut inner = inner.lock();
+                    get_inode_with_num(&mut *fs, &mut *inner, &fpath)
+                        .map_err(|_| VfsError::Io)?
+                        .ok_or(VfsError::NotFound)?
                 }
-            }
-            Ext4Inner::Partition(ref inner) => {
-                let mut inner = inner.lock();
-                if inode.is_dir() {
-                    delete_dir(&mut *fs, &mut *inner, &fpath);
-                } else {
-                    unlink(&mut *fs, &mut *inner, &fpath);
+                Ext4Inner::Partition(ref inner) => {
+                    let mut inner = inner.lock();
+                    get_inode_with_num(&mut *fs, &mut *inner, &fpath)
+                        .map_err(|_| VfsError::Io)?
+                        .ok_or(VfsError::NotFound)?
+                }
+            };
+
+            match self.inner {
+                Ext4Inner::Disk(ref inner) => {
+                    let mut inner = inner.lock();
+                    if inode.is_dir() {
+                        delete_dir(&mut *fs, &mut *inner, &fpath);
+                    } else {
+                        unlink(&mut *fs, &mut *inner, &fpath);
+                    }
+                }
+                Ext4Inner::Partition(ref inner) => {
+                    let mut inner = inner.lock();
+                    if inode.is_dir() {
+                        delete_dir(&mut *fs, &mut *inner, &fpath);
+                    } else {
+                        unlink(&mut *fs, &mut *inner, &fpath);
+                    }
                 }
             }
         }
+        self.sync_to_disk();
         Ok(())
     }
 
@@ -465,6 +487,7 @@ impl VfsNodeOps for FileWrapper {
                     .map_err(|_| VfsError::Io)?;
             }
         };
+        self.sync_to_disk();
         Ok(buf.len())
     }
 
@@ -480,6 +503,7 @@ impl VfsNodeOps for FileWrapper {
                 let _ = truncate(&mut *inner, &mut *fs, &self.path, size);
             }
         }
+        self.sync_to_disk();
         Ok(())
     }
 
@@ -500,6 +524,7 @@ impl VfsNodeOps for FileWrapper {
                 let _ = mv(&mut *fs, &mut *inner, &src_fpath, &dst_fpath);
             }
         }
+        self.sync_to_disk();
         Ok(())
     }
 
