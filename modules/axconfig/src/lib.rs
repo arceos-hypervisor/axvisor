@@ -54,14 +54,23 @@ pub mod devices {
     #[doc = " Timer interrupt num (PPI, physical timer)."]
     pub const TIMER_IRQ: usize = 0xf0;
     #[doc = " VirtIO MMIO regions with format (`base_paddr`, `size`)."]
-    pub const VIRTIO_MMIO_REGIONS: &[(usize, usize)] = &[];
+    pub const VIRTIO_MMIO_RANGES: &[(usize, usize)] = &[
+        (0x1000_1000, 0x1000),
+        (0x1000_2000, 0x1000),
+        (0x1000_3000, 0x1000),
+        (0x1000_4000, 0x1000),
+        (0x1000_5000, 0x1000),
+        (0x1000_6000, 0x1000),
+        (0x1000_7000, 0x1000),
+        (0x1000_8000, 0x1000),
+    ];
 }
 #[doc = ""]
 #[doc = " Platform configs"]
 #[doc = ""]
 pub mod plat {
     #[doc = " Number of CPUs."]
-    pub const CPU_NUM: usize = 16;
+    pub const CPU_NUM: usize = 1;
     #[doc = " Platform family (deprecated)."]
     pub const FAMILY: &str = "";
     #[doc = " Kernel address space base."]
