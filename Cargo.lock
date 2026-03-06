@@ -1115,6 +1115,8 @@ dependencies = [
  "phytium-mci",
  "prettyplease",
  "quote",
+ "rdif-block",
+ "rdif-clk",
  "rdif-intc",
  "rdrive",
  "regex",
@@ -4101,6 +4103,15 @@ dependencies = [
  "dma-api 0.7.1",
  "rdif-base 0.8.0",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "rdif-clk"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b043140cf3c809e5904b5205f7b7205283867da44a44a29820916df08abc362"
+dependencies = [
+ "rdif-base 0.8.0",
 ]
 
 [[package]]

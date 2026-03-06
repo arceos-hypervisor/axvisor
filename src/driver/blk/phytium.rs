@@ -22,7 +22,7 @@ use core::{
 };
 
 use log::{debug, info};
-use rdrive::{PlatformDevice, module_driver, probe::OnProbeError, register::FdtInfo};
+use rdrive::{Device, PlatformDevice, module_driver, probe::OnProbeError, register::FdtInfo};
 
 use phytium_mci::sd::SdCard;
 use phytium_mci::{IoPad, PAD_ADDRESS, mci_host::err::MCIHostError};
@@ -103,7 +103,7 @@ fn probe_sdcard(info: FdtInfo<'_>, plat_dev: PlatformDevice) -> Result<(), OnPro
     info!("MCI reg mapped at {:p}", mci_reg);
 
     let sdcard = SdCardDriver::new(mci_reg, iopad);
-    let dev = rdif_block::Block::new(sdcard);
+    let dev = Device::new(sdcard);
     plat_dev.register(dev);
 
     debug!("phytium block device registered successfully");
@@ -129,12 +129,8 @@ unsafe impl Send for SdCardQueue {}
 unsafe impl Sync for SdCardQueue {}
 
 impl DriverGeneric for SdCardDriver {
-    fn open(&mut self) -> Result<(), KError> {
-        Ok(())
-    }
-
-    fn close(&mut self) -> Result<(), KError> {
-        Ok(())
+    fn name(&self) -> &str {
+        "phytium-sdcard"
     }
 }
 

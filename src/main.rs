@@ -18,6 +18,7 @@
 
 #![no_std]
 #![no_main]
+#![feature(used_with_arg)]
 
 #[macro_use]
 extern crate log;

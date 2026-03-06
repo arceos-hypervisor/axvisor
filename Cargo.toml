@@ -113,6 +113,8 @@ page_table_multiarch = "0.6"
 percpu = { version = "0.2.3-preview.1", features = ["arm-el2"] }
 
 rdif-intc = "0.14"
+rdif-block = "0.7"
+rdif-clk = "0.5"
 rdrive = "0.19"
 pcie = "0.5.0"
 

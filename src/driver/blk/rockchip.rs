@@ -15,7 +15,6 @@
 use alloc::{format, vec::Vec};
 use core::time::Duration;
 
-use rdif_block::Block;
 use rdif_clk::ClockId;
 use rdrive::{
     Device, DriverGeneric, PlatformDevice, module_driver, probe::OnProbeError, register::FdtInfo,
@@ -99,7 +98,7 @@ fn probe(info: FdtInfo<'_>, plat_dev: PlatformDevice) -> Result<(), OnProbeError
     info!("eMMC card info: {:#?}", info);
 
     let dev = BlockDivce { dev: Some(emmc) };
-    plat_dev.register(Block::new(dev));
+    plat_dev.register(Device::new(dev));
     debug!("virtio block device registered successfully");
     Ok(())
 }
@@ -113,12 +112,8 @@ struct BlockQueue {
 }
 
 impl DriverGeneric for BlockDivce {
-    fn open(&mut self) -> Result<(), rdrive::KError> {
-        Ok(())
-    }
-
-    fn close(&mut self) -> Result<(), rdrive::KError> {
-        Ok(())
+    fn name(&self) -> &str {
+        "rockchip-emmc"
     }
 }
 
