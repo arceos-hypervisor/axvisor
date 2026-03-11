@@ -356,6 +356,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "axallocator"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3894f6027940d4b013f1d1f9e2e61b47a9e4a7dbf1a0ba10dd33e7bb265ea733"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "axbacktrace"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -430,7 +439,6 @@ dependencies = [
  "cfg-if",
  "log",
  "memory_addr",
- "range-alloc",
  "spin 0.9.8",
 ]
 
@@ -1331,9 +1339,10 @@ dependencies = [
 
 [[package]]
 name = "buddy-slab-allocator"
-version = "0.1.0"
-source = "git+https://github.com/arceos-hypervisor/buddy-slab-allocator.git?branch=main#13167188073a43c58bff92b860c603ae10a03a0a"
+version = "0.2.0"
+source = "git+https://github.com/arceos-hypervisor/buddy-slab-allocator.git?branch=main#17964732570f20abef284c95e94a9d4ce1a61593"
 dependencies = [
+ "axallocator",
  "cfg-if",
  "log",
 ]
@@ -3781,9 +3790,9 @@ dependencies = [
 
 [[package]]
 name = "page-table-generic"
-version = "0.6.1"
+version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a302d085e35d9edfa3ec531475ed95eae8a92e7e47ce7a15bd4e9c5e74f7526"
+checksum = "b2a50a8da7eecc62ea87336e36aefec2726958f4610898f751b21ee452ce21b1"
 dependencies = [
  "bitflags 2.10.0",
  "log",
@@ -3927,9 +3936,9 @@ dependencies = [
 
 [[package]]
 name = "pie-boot-loader-aarch64"
-version = "0.3.3"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de8836eb8759cd65e70c73dc0f519345d8a734284e8e4cfc5889a6e445af9f09"
+checksum = "33f169cb289ecf091f494dd335e2530415054ca59d1065b2bfe6a65d588fae22"
 dependencies = [
  "aarch64-cpu 10.0.0",
  "aarch64-cpu-ext",
@@ -4222,11 +4231,6 @@ checksum = "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c"
 dependencies = [
  "getrandom 0.3.4",
 ]
-
-[[package]]
-name = "range-alloc"
-version = "0.1.4"
-source = "git+https://github.com/arceos-hypervisor/range-alloc.git#fc826e54dab9072be5358a1b0e7fc34503d6630d"
 
 [[package]]
 name = "ranges-ext"
@@ -5216,9 +5220,9 @@ dependencies = [
 
 [[package]]
 name = "somehal"
-version = "0.4.5"
+version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13b5f763b9ab0ce9efd2d8eba9e5b457f93f6426ede68435fe9567cf7681f29d"
+checksum = "11bb5628552fde6f28449b6517d639496c55e385f42d2ac78d200b70390ce389"
 dependencies = [
  "aarch64-cpu 10.0.0",
  "aarch64-cpu-ext",

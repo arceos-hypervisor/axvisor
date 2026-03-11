@@ -1,6 +1,7 @@
 [submodule "modules/axvm"]
 	path = modules/axvm
 	url = https://github.com/arceos-hypervisor/axvm.git
+	branch = s100_next
 [submodule "modules/axvcpu"]
 	path = modules/axvcpu
 	url = https://github.com/arceos-hypervisor/axvcpu.git
