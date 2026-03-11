@@ -12,9 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(any(feature = "sdmmc", feature = "phytium-blk"))]
 use core::ptr::NonNull;
 
+#[cfg(any(feature = "sdmmc", feature = "phytium-blk"))]
 use rdif_block::Interface;
+
+#[cfg(any(feature = "sdmmc", feature = "phytium-blk"))]
 use rdrive::PlatformDevice;
 
 #[cfg(feature = "sdmmc")]
@@ -24,8 +28,10 @@ mod rockchip;
 mod phytium;
 
 /// DMA implementation for block devices.
+#[cfg(any(feature = "sdmmc", feature = "phytium-blk"))]
 pub struct DmaImpl;
 
+#[cfg(any(feature = "sdmmc", feature = "phytium-blk"))]
 impl rdif_block::dma_api::DmaOp for DmaImpl {
     fn page_size(&self) -> usize {
         memory_addr::PAGE_SIZE_4K
@@ -40,7 +46,8 @@ impl rdif_block::dma_api::DmaOp for DmaImpl {
         _direction: rdif_block::dma_api::DmaDirection,
     ) -> Result<rdif_block::dma_api::DmaMapHandle, rdif_block::dma_api::DmaError> {
         let layout = core::alloc::Layout::from_size_align(size.get(), align)?;
-        let dma_addr = axvisor_api::memory::virt_to_phys((addr.as_ptr() as usize).into()).as_usize() as u64;
+        let dma_addr =
+            axvisor_api::memory::virt_to_phys((addr.as_ptr() as usize).into()).as_usize() as u64;
 
         if dma_addr > dma_mask || dma_addr.wrapping_add(size.get() as u64) > dma_mask {
             return Err(rdif_block::dma_api::DmaError::DmaMaskNotMatch {
@@ -56,9 +63,7 @@ impl rdif_block::dma_api::DmaOp for DmaImpl {
             });
         }
 
-        Ok(unsafe {
-            rdif_block::dma_api::DmaMapHandle::new(addr, dma_addr.into(), layout, None)
-        })
+        Ok(unsafe { rdif_block::dma_api::DmaMapHandle::new(addr, dma_addr.into(), layout, None) })
     }
 
     unsafe fn unmap_single(&self, _handle: rdif_block::dma_api::DmaMapHandle) {}
@@ -77,9 +82,7 @@ impl rdif_block::dma_api::DmaOp for DmaImpl {
             return None;
         }
 
-        Some(unsafe {
-            rdif_block::dma_api::DmaHandle::new(cpu_addr, dma_addr.into(), layout)
-        })
+        Some(unsafe { rdif_block::dma_api::DmaHandle::new(cpu_addr, dma_addr.into(), layout) })
     }
 
     unsafe fn dealloc_coherent(&self, handle: rdif_block::dma_api::DmaHandle) {
@@ -87,10 +90,12 @@ impl rdif_block::dma_api::DmaOp for DmaImpl {
     }
 }
 
+#[cfg(any(feature = "sdmmc", feature = "phytium-blk"))]
 pub trait PlatformDeviceBlock {
     fn register_block<T: Interface>(self, dev: T);
 }
 
+#[cfg(any(feature = "sdmmc", feature = "phytium-blk"))]
 impl PlatformDeviceBlock for PlatformDevice {
     fn register_block<T: Interface>(self, dev: T) {
         // Use rd_block::Block to wrap the Interface for axdriver compatibility

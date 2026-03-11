@@ -77,7 +77,10 @@ impl Context {
             vm_config_paths.push(vm_config);
         }
 
-        let log_level = config.log.as_ref().map(|l| format!("{:?}", l).to_lowercase());
+        let log_level = config
+            .log
+            .as_ref()
+            .map(|l| format!("{:?}", l).to_lowercase());
 
         let mut cargo = Cargo {
             target: config.target,

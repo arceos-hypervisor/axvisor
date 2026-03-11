@@ -58,9 +58,7 @@ fn probe(info: FdtInfo<'_>, plat_dev: PlatformDevice) -> Result<(), OnProbeError
     for clk in &clock {
         info!(
             "clock: phandle {}, name: {:?}, cells: {:?}",
-            clk.phandle,
-            clk.name,
-            clk.cells
+            clk.phandle, clk.name, clk.cells
         );
 
         if clk.name == Some("core".to_string()) {
