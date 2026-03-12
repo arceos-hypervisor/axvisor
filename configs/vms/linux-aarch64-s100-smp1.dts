@@ -61,7 +61,7 @@
 	chosen {
 		linux,initrd-end = <0x00 0xfb9f149a>;
 		linux,initrd-start = <0x00 0xfabfc000>;
-		bootargs = "console=ttyS0,921600n8 systemd.show-status=auto loglevel=8 hobot.kernel_in=mmc0 hobotboot.socname=S100P board.hwname=RDK board.ver=V1P0 board.pcie_mode=rc hobotboot.reason=poweroff hobotboot.slot_suffix=_a hobotboot.mode=normal hobotboot.secureboot=1 hobotboot.bootcount=1 systemd.unified_cgroup_hierarchy=0 hobotboot.serial=08354a21339238e4  clk_ignore_unused earlycon=uart8250,mmio32,0x394B0000 no_console_suspend root=/dev/ram0 rdinit=/init  rootwait net.ifnames=0 root=/dev/mmcblk0p17 rw rootfstype=ext4 rootwait";
+		bootargs = "console=ttyS0,921600n8 earlycon=uart8250,mmio32,0x394B0000 no_console_suspend root=/dev/mmcblk0p17 rw rootwait loglevel=8 hobotboot.slot_suffix=_a hobotboot.mode=normal hobotboot.reason=hwreset";
 		stdout-path = "serial0:115200n8";
 	};
 
