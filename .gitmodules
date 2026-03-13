@@ -8,6 +8,7 @@
 [submodule "modules/axdevice"]
 	path = modules/axdevice
 	url = https://github.com/arceos-hypervisor/axdevice.git
+	branch = rewrite
 [submodule "modules/arm_vcpu"]
 	path = modules/arm_vcpu
 	url = https://github.com/arceos-hypervisor/arm_vcpu
